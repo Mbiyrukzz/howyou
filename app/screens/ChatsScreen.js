@@ -235,8 +235,8 @@ export default function ChatsScreen({ navigation }) {
   }
 
   const handleNewChat = () => {
-    // Handle new chat creation
-    console.log('Create new chat')
+    // Navigate to NewChatScreen
+    navigation.navigate('NewChats')
   }
 
   const renderEmptyState = () => (

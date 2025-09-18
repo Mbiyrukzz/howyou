@@ -2,6 +2,7 @@ import React from 'react'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import ChatsScreen from '../screens/ChatsScreen'
 import ChatDetailScreen from '../screens/ChatDetailScreen'
+import NewChatScreen from '../screens/NewChatScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -17,6 +18,11 @@ export default function ChatsStack() {
         name="ChatDetail"
         component={ChatDetailScreen}
         options={{ title: 'Chat Detail' }}
+      />
+      <Stack.Screen
+        name="NewChats"
+        component={NewChatScreen}
+        options={{ title: 'New Chat' }}
       />
     </Stack.Navigator>
   )
