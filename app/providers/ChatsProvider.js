@@ -1,8 +1,7 @@
-// contexts/ChatsProvider.js
 import React, { useEffect, useState, useCallback } from 'react'
 import ChatsContext from '../contexts/ChatsContext'
 
-const API_URL = 'http://localhost:5000' // update if using device/IP
+const API_URL = 'http://localhost:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])

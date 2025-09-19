@@ -305,7 +305,6 @@ export default function SignupScreen({ navigation }) {
     name.trim() &&
     passwordsMatch &&
     passwordStrength.score >= 60
-
   const handleSignup = async () => {
     if (!isFormValid) {
       Alert.alert('Invalid Form', 'Please fill all fields correctly.')
@@ -314,8 +313,25 @@ export default function SignupScreen({ navigation }) {
 
     setLoading(true)
     try {
-      await createUserWithEmailAndPassword(auth, email.trim(), password)
-      // Firebase will automatically sign in the user after account creation
+      const userCredential = await createUserWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      )
+      const user = userCredential.user
+
+      // 👉 Send user details to backend (MongoDB)
+      await fetch('http://localhost:5000/api/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          firebaseUid: user.uid,
+          email: user.email,
+          name: name.trim(),
+        }),
+      })
+
+      // Firebase automatically signs in user after creation
       // onAuthStateChanged will handle navigation
     } catch (error) {
       console.error('Signup error:', error)
