@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from 'react'
-import { useUser } from './useUser'
 import axios from 'axios'
+import { useUser } from './useUser'
 
 const useAuthedRequest = () => {
   const { user } = useUser()
@@ -13,15 +13,17 @@ const useAuthedRequest = () => {
     const createToken = async () => {
       try {
         if (!user) {
-          setToken(null)
-          setIsReady(false)
+          if (isMounted) {
+            setToken(null)
+            setIsReady(false)
+          }
           return
         }
 
-        const token = await user.getIdToken()
+        const idToken = await user.getIdToken()
 
         if (isMounted) {
-          setToken(token)
+          setToken(idToken)
           setIsReady(true)
         }
       } catch (error) {
@@ -44,7 +46,7 @@ const useAuthedRequest = () => {
     async (method, url, body = null) => {
       if (!token) throw new Error('No auth token available')
 
-      const headers = { authtoken: token }
+      const headers = { Authorization: `Bearer ${token}` } // ✅ matches verifyAuthToken
       const response = await axios({ method, url, data: body, headers })
       return response.data
     },

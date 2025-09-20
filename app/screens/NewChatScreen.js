@@ -335,6 +335,26 @@ const EmptyText = styled.Text`
   text-align: center;
 `
 
+// Helper function to generate consistent user colors
+const getUserColor = (userId) => {
+  const colors = [
+    '#667eea',
+    '#f59e0b',
+    '#10b981',
+    '#8b5cf6',
+    '#ef4444',
+    '#06b6d4',
+    '#84cc16',
+    '#f97316',
+    '#ec4899',
+    '#6366f1',
+    '#14b8a6',
+    '#f59e0b',
+  ]
+  const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0
+  return colors[index]
+}
+
 export default function NewChatScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('contacts')
   const [searchText, setSearchText] = useState('')
@@ -350,10 +370,36 @@ export default function NewChatScreen({ navigation }) {
 
   // Handle case where contexts might not be available
   const contacts = contactsContext?.contacts || []
-  const loading = contactsContext?.loading || false
+  const contactsLoading = contactsContext?.loading || false
+
+  // Get users from ChatsContext
+  const users = chatsContext?.users || []
+  const usersLoading = chatsContext?.loading || false
+
   const createChat =
     chatsContext?.createChat || (() => Promise.resolve({ success: false }))
   const chats = chatsContext?.chats || []
+
+  // Combine contacts and users, prioritizing contacts
+  const allPeople = React.useMemo(() => {
+    const contactIds = new Set(contacts.map((c) => c._id || c.id))
+    const contactsWithType = contacts.map((c) => ({ ...c, type: 'contact' }))
+    const usersWithType = users
+      .filter((u) => !contactIds.has(u._id || u.id))
+      .map((u) => ({
+        ...u,
+        type: 'user',
+        // Ensure consistent data structure
+        name: u.name || u.username || 'Unknown User',
+        status: u.status || 'User',
+        online: u.online || false,
+        color: u.color || getUserColor(u._id || u.id),
+      }))
+
+    return [...contactsWithType, ...usersWithType]
+  }, [contacts, users])
+
+  const loading = contactsLoading || usersLoading
 
   // Categories for room creation
   const categories = [
@@ -369,19 +415,20 @@ export default function NewChatScreen({ navigation }) {
     'Food',
   ]
 
-  const filteredContacts = contacts.filter(
-    (contact) =>
-      contact.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-      contact.email?.toLowerCase().includes(searchText.toLowerCase())
+  const filteredPeople = allPeople.filter(
+    (person) =>
+      person.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+      person.email?.toLowerCase().includes(searchText.toLowerCase()) ||
+      person.username?.toLowerCase().includes(searchText.toLowerCase())
   )
 
-  const startDirectChat = async (contact) => {
+  const startDirectChat = async (person) => {
     try {
       // Check if chat already exists
       const existingChat = chats.find(
         (chat) =>
           chat.participants.length === 2 &&
-          chat.participants.includes(contact._id || contact.id)
+          chat.participants.includes(person._id || person.id)
       )
 
       if (existingChat) {
@@ -392,7 +439,7 @@ export default function NewChatScreen({ navigation }) {
       }
 
       // Otherwise create new chat
-      const data = await createChat([contact._id || contact.id], contact.name)
+      const data = await createChat([person._id || person.id], person.name)
       if (data.success && data.chat) {
         nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
       }
@@ -416,35 +463,44 @@ export default function NewChatScreen({ navigation }) {
     }
 
     try {
-      // This would typically call a createRoom function from context
-      // For now, just close the modal
-      setShowCreateModal(false)
-      setRoomName('')
-      setRoomDescription('')
-      setSelectedCategories([])
+      const data = await createChat([], roomName)
 
-      // Navigate back or to the new room
-      nav.goBack()
+      if (data.success && data.chat) {
+        setShowCreateModal(false)
+        setRoomName('')
+        setRoomDescription('')
+        setSelectedCategories([])
+
+        nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
+      }
     } catch (error) {
       console.error('Error creating room:', error)
     }
   }
 
-  const renderContact = ({ item }) => (
+  const renderPerson = ({ item }) => (
     <UserCard onPress={() => startDirectChat(item)}>
-      <UserAvatar color={item.color}>
+      <UserAvatar color={item.color || getUserColor(item._id || item.id)}>
         <UserAvatarText>
           {item.name
             .split(' ')
             .map((n) => n.charAt(0))
             .join('')
-            .substring(0, 2)}
+            .substring(0, 2)
+            .toUpperCase()}
         </UserAvatarText>
         <OnlineIndicator online={item.online} />
       </UserAvatar>
       <UserInfo>
-        <UserName>{item.name}</UserName>
-        <UserStatus>{item.status || 'Available'}</UserStatus>
+        <UserName>
+          {item.name}
+          {item.type === 'contact' && ' ★'}
+        </UserName>
+        <UserStatus>
+          {item.type === 'contact'
+            ? item.status || 'Contact'
+            : item.status || 'User'}
+        </UserStatus>
       </UserInfo>
       <UserActions>
         <ActionBtn onPress={() => startDirectChat(item)}>
@@ -457,12 +513,12 @@ export default function NewChatScreen({ navigation }) {
     </UserCard>
   )
 
-  const renderEmptyContacts = () => (
+  const renderEmptyPeople = () => (
     <EmptyContainer>
       <EmptyText>
         {searchText
-          ? `No contacts found matching "${searchText}"`
-          : 'No contacts available. Add some friends to start chatting!'}
+          ? `No people found matching "${searchText}"`
+          : 'No people available to chat with.'}
       </EmptyText>
     </EmptyContainer>
   )
@@ -477,7 +533,7 @@ export default function NewChatScreen({ navigation }) {
           <HeaderTitle>New Chat</HeaderTitle>
         </Header>
         <LoadingContainer>
-          <LoadingText>Loading contacts...</LoadingText>
+          <LoadingText>Loading people...</LoadingText>
         </LoadingContainer>
       </Container>
     )
@@ -497,7 +553,7 @@ export default function NewChatScreen({ navigation }) {
           active={activeTab === 'contacts'}
           onPress={() => setActiveTab('contacts')}
         >
-          <TabText active={activeTab === 'contacts'}>Contacts</TabText>
+          <TabText active={activeTab === 'contacts'}>People</TabText>
         </Tab>
         <Tab
           active={activeTab === 'rooms'}
@@ -511,7 +567,7 @@ export default function NewChatScreen({ navigation }) {
         <SearchInput
           placeholder={
             activeTab === 'contacts'
-              ? 'Search contacts...'
+              ? 'Search people...'
               : 'Search public rooms...'
           }
           value={searchText}
@@ -523,15 +579,13 @@ export default function NewChatScreen({ navigation }) {
       <ContentContainer>
         {activeTab === 'contacts' ? (
           <>
-            <SectionTitle>
-              Your Contacts ({filteredContacts.length})
-            </SectionTitle>
-            {filteredContacts.length === 0 ? (
-              renderEmptyContacts()
+            <SectionTitle>People ({filteredPeople.length})</SectionTitle>
+            {filteredPeople.length === 0 ? (
+              renderEmptyPeople()
             ) : (
               <FlatList
-                data={filteredContacts}
-                renderItem={renderContact}
+                data={filteredPeople}
+                renderItem={renderPerson}
                 keyExtractor={(item) => (item._id || item.id).toString()}
                 showsVerticalScrollIndicator={false}
                 contentContainerStyle={{ paddingBottom: 20 }}

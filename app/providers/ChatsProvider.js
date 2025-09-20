@@ -1,14 +1,19 @@
+// ChatsProvider.js
 import React, { useEffect, useState, useCallback } from 'react'
 import ChatsContext from '../contexts/ChatsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
+import { useUser } from '../hooks/useUser'
 
 const API_URL = 'http://10.216.188.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
   const [loading, setLoading] = useState(true)
+  const [users, setUsers] = useState([]) // 👈 all users except me
 
   const { isReady, get, post } = useAuthedRequest()
+
+  const { user } = useUser()
 
   const loadChats = useCallback(async () => {
     if (!isReady) return
@@ -21,7 +26,7 @@ const ChatsProvider = ({ children }) => {
     } finally {
       setLoading(false)
     }
-  }, [get, isReady])
+  }, [user, get, isReady])
 
   const createChat = useCallback(
     async (participants, name) => {
@@ -43,13 +48,32 @@ const ChatsProvider = ({ children }) => {
     [isReady, post]
   )
 
+  // 👇 load all users (except me)
+  const loadUsers = useCallback(async () => {
+    if (!isReady) return
+    try {
+      const data = await get(`${API_URL}/list-users`)
+      setUsers(data)
+    } catch (error) {
+      console.error('❌ Failed to load users:', error)
+    }
+  }, [get, isReady])
+
   useEffect(() => {
     loadChats()
-  }, [loadChats])
+    loadUsers()
+  }, [loadChats, loadUsers])
 
   return (
     <ChatsContext.Provider
-      value={{ chats, loading, reloadChats: loadChats, createChat }}
+      value={{
+        chats,
+        loading,
+        users,
+        reloadChats: loadChats,
+        loadUsers,
+        createChat,
+      }}
     >
       {children}
     </ChatsContext.Provider>
