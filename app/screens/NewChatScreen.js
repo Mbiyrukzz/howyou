@@ -1,6 +1,9 @@
-import React, { useState } from 'react'
+import React, { useState, useContext } from 'react'
 import styled from 'styled-components/native'
 import { FlatList, Modal } from 'react-native'
+import { useNavigation } from '@react-navigation/native'
+import ContactsContext from '../contexts/ContactsContext'
+import ChatsContext from '../contexts/ChatsContext'
 
 const Container = styled.View`
   flex: 1;
@@ -308,6 +311,30 @@ const CategoryText = styled.Text`
   font-weight: 600;
 `
 
+const LoadingContainer = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+`
+
+const LoadingText = styled.Text`
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+`
+
+const EmptyContainer = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  padding: 40px;
+`
+
+const EmptyText = styled.Text`
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 16px;
+  text-align: center;
+`
+
 export default function NewChatScreen({ navigation }) {
   const [activeTab, setActiveTab] = useState('contacts')
   const [searchText, setSearchText] = useState('')
@@ -316,69 +343,63 @@ export default function NewChatScreen({ navigation }) {
   const [roomDescription, setRoomDescription] = useState('')
   const [selectedCategories, setSelectedCategories] = useState([])
 
-  const contacts = [
-    {
-      id: 1,
-      name: 'Emma Watson',
-      status: 'Available for collaboration',
-      color: '#10b981',
-      online: true,
-    },
-    {
-      id: 2,
-      name: 'John Doe',
-      status: 'Focusing on React Native',
-      color: '#f59e0b',
-      online: true,
-    },
-    {
-      id: 3,
-      name: 'Sarah Kim',
-      status: 'Backend engineer',
-      color: '#8b5cf6',
-      online: false,
-    },
-    {
-      id: 4,
-      name: 'Mike Chen',
-      status: 'UI/UX Designer',
-      color: '#ef4444',
-      online: true,
-    },
-    {
-      id: 5,
-      name: 'Lisa Rodriguez',
-      status: 'Full-stack developer',
-      color: '#06b6d4',
-      online: false,
-    },
-    {
-      id: 6,
-      name: 'David Park',
-      status: 'DevOps specialist',
-      color: '#84cc16',
-      online: true,
-    },
-  ]
+  // Get contexts with error handling
+  const contactsContext = useContext(ContactsContext)
+  const chatsContext = useContext(ChatsContext)
+  const nav = useNavigation()
 
+  // Handle case where contexts might not be available
+  const contacts = contactsContext?.contacts || []
+  const loading = contactsContext?.loading || false
+  const createChat =
+    chatsContext?.createChat || (() => Promise.resolve({ success: false }))
+  const chats = chatsContext?.chats || []
+
+  // Categories for room creation
   const categories = [
-    'Frontend',
-    'Backend',
-    'Mobile',
-    'Design',
-    'DevOps',
-    'AI/ML',
-    'Blockchain',
+    'Technology',
+    'Business',
+    'Social',
     'Gaming',
-    'Startup',
-    'Freelance',
+    'Education',
+    'Health',
+    'Entertainment',
+    'Sports',
+    'Travel',
+    'Food',
   ]
 
   const filteredContacts = contacts.filter(
     (contact) =>
-      contact.name.toLowerCase().includes(searchText.toLowerCase()) ||
-      contact.status.toLowerCase().includes(searchText.toLowerCase())
+      contact.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+      contact.email?.toLowerCase().includes(searchText.toLowerCase())
   )
+
+  const startDirectChat = async (contact) => {
+    try {
+      // Check if chat already exists
+      const existingChat = chats.find(
+        (chat) =>
+          chat.participants.length === 2 &&
+          chat.participants.includes(contact._id || contact.id)
+      )
+
+      if (existingChat) {
+        nav.navigate('ChatDetail', {
+          chatId: existingChat._id || existingChat.id,
+        })
+        return
+      }
+
+      // Otherwise create new chat
+      const data = await createChat([contact._id || contact.id], contact.name)
+      if (data.success && data.chat) {
+        nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
+      }
+    } catch (error) {
+      console.error('Error starting direct chat:', error)
+    }
+  }
 
   const toggleCategory = (category) => {
     setSelectedCategories((prev) =>
@@ -388,33 +409,25 @@ export default function NewChatScreen({ navigation }) {
     )
   }
 
-  const createRoom = () => {
-    if (roomName.trim()) {
-      // Here you would typically make an API call to create the room
-      console.log('Creating room:', {
-        roomName,
-        roomDescription,
-        selectedCategories,
-      })
+  const createRoom = async () => {
+    if (!roomName.trim()) {
+      alert('Please enter a room name')
+      return
+    }
+
+    try {
+      // This would typically call a createRoom function from context
+      // For now, just close the modal
       setShowCreateModal(false)
       setRoomName('')
       setRoomDescription('')
       setSelectedCategories([])
-      navigation?.goBack()
-    }
-  }
 
-  const startDirectChat = (contact) => {
-    // Navigate to chat with this contact
-    console.log('Starting chat with:', contact.name)
-    navigation?.navigate('ChatDetail', {
-      room: {
-        name: contact.name,
-        color: contact.color,
-        members: 2,
-        onlineMembers: contact.online ? 1 : 0,
-      },
-    })
+      // Navigate back or to the new room
+      nav.goBack()
+    } catch (error) {
+      console.error('Error creating room:', error)
+    }
   }
 
   const renderContact = ({ item }) => (
@@ -424,16 +437,17 @@ export default function NewChatScreen({ navigation }) {
           {item.name
             .split(' ')
             .map((n) => n.charAt(0))
-            .join('')}
+            .join('')
+            .substring(0, 2)}
         </UserAvatarText>
         <OnlineIndicator online={item.online} />
       </UserAvatar>
       <UserInfo>
         <UserName>{item.name}</UserName>
-        <UserStatus>{item.status}</UserStatus>
+        <UserStatus>{item.status || 'Available'}</UserStatus>
       </UserInfo>
       <UserActions>
-        <ActionBtn>
+        <ActionBtn onPress={() => startDirectChat(item)}>
           <ActionBtnText>💬</ActionBtnText>
         </ActionBtn>
         <ActionBtn>
@@ -443,10 +457,36 @@ export default function NewChatScreen({ navigation }) {
     </UserCard>
   )
 
+  const renderEmptyContacts = () => (
+    <EmptyContainer>
+      <EmptyText>
+        {searchText
+          ? `No contacts found matching "${searchText}"`
+          : 'No contacts available. Add some friends to start chatting!'}
+      </EmptyText>
+    </EmptyContainer>
+  )
+
+  if (loading) {
+    return (
+      <Container>
+        <Header>
+          <BackButton onPress={() => nav?.goBack()}>
+            <BackButtonText>←</BackButtonText>
+          </BackButton>
+          <HeaderTitle>New Chat</HeaderTitle>
+        </Header>
+        <LoadingContainer>
+          <LoadingText>Loading contacts...</LoadingText>
+        </LoadingContainer>
+      </Container>
+    )
+  }
+
   return (
     <Container>
       <Header>
-        <BackButton onPress={() => navigation?.goBack()}>
+        <BackButton onPress={() => nav?.goBack()}>
           <BackButtonText>←</BackButtonText>
         </BackButton>
         <HeaderTitle>New Chat</HeaderTitle>
@@ -486,13 +526,17 @@ export default function NewChatScreen({ navigation }) {
             <SectionTitle>
               Your Contacts ({filteredContacts.length})
             </SectionTitle>
-            <FlatList
-              data={filteredContacts}
-              renderItem={renderContact}
-              keyExtractor={(item) => item.id.toString()}
-              showsVerticalScrollIndicator={false}
-              contentContainerStyle={{ paddingBottom: 20 }}
-            />
+            {filteredContacts.length === 0 ? (
+              renderEmptyContacts()
+            ) : (
+              <FlatList
+                data={filteredContacts}
+                renderItem={renderContact}
+                keyExtractor={(item) => (item._id || item.id).toString()}
+                showsVerticalScrollIndicator={false}
+                contentContainerStyle={{ paddingBottom: 20 }}
+              />
+            )}
           </>
         ) : (
           <>
@@ -535,7 +579,9 @@ export default function NewChatScreen({ navigation }) {
                   </UserAvatar>
                   <UserInfo>
                     <UserName>{item.name}</UserName>
-                    <UserStatus>{item.members} members</UserStatus>
+                    <UserStatus>
+                      {item.members.toLocaleString()} members
+                    </UserStatus>
                   </UserInfo>
                   <UserActions>
                     <ActionBtn>
@@ -546,6 +592,7 @@ export default function NewChatScreen({ navigation }) {
               )}
               keyExtractor={(item) => item.id.toString()}
               showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 20 }}
             />
           </>
         )}

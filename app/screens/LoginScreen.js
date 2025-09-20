@@ -273,7 +273,7 @@ export default function LoginScreen({ navigation }) {
         >
           <Header>
             <Logo>
-              <LogoText>C</LogoText>
+              <LogoText>A</LogoText>
             </Logo>
             <WelcomeTitle>Welcome Back</WelcomeTitle>
             <WelcomeSubtitle>

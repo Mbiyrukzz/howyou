@@ -2,6 +2,8 @@ import React, { useState } from 'react'
 import styled from 'styled-components/native'
 import { ScrollView, Switch, Alert } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { signOut, deleteUser } from 'firebase/auth'
+import { auth } from '../firebase/setUpFirebase'
 
 const Container = styled.View`
   flex: 1;
@@ -185,38 +187,44 @@ export default function SettingsScreen({ navigation }) {
   const [readReceipts, setReadReceipts] = useState(true)
   const [onlineStatus, setOnlineStatus] = useState(true)
 
-  const handleLogout = () => {
-    Alert.alert('Sign Out', 'Are you sure you want to sign out?', [
-      {
-        text: 'Cancel',
-        style: 'cancel',
-      },
-      {
-        text: 'Sign Out',
-        style: 'destructive',
-        onPress: () => {
-          // Handle logout logic here
-          console.log('User signed out')
-        },
-      },
-    ])
+  const handleLogout = async () => {
+    try {
+      await signOut(auth)
+      console.log('✅ User signed out')
+      // no need for navigation.replace('Login')
+    } catch (error) {
+      console.error('❌ Logout failed:', error)
+    }
   }
 
-  const handleDeleteAccount = () => {
+  const handleDeleteAccount = async () => {
     Alert.alert(
       'Delete Account',
       'This action cannot be undone. All your data will be permanently deleted.',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
-          onPress: () => {
-            // Handle account deletion logic here
-            console.log('Account deletion requested')
+          onPress: async () => {
+            try {
+              const user = auth.currentUser
+              if (user) {
+                await deleteUser(user)
+                console.log('✅ Account deleted')
+                // No navigation needed – AppNavigator will switch to Login
+              } else {
+                console.warn('⚠️ No user logged in')
+              }
+            } catch (error) {
+              console.error('❌ Account deletion failed:', error)
+              if (error.code === 'auth/requires-recent-login') {
+                Alert.alert(
+                  'Re-authentication required',
+                  'Please log in again before deleting your account.'
+                )
+              }
+            }
           },
         },
       ]

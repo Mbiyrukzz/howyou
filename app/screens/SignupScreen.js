@@ -321,7 +321,7 @@ export default function SignupScreen({ navigation }) {
       const user = userCredential.user
 
       // 👉 Send user details to backend (MongoDB)
-      await fetch('http://localhost:5000/api/users', {
+      await fetch('http://localhost:5000/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -391,7 +391,7 @@ export default function SignupScreen({ navigation }) {
             </BackButton>
 
             <Logo>
-              <LogoText>C</LogoText>
+              <LogoText>A</LogoText>
             </Logo>
             <WelcomeTitle>Create Account</WelcomeTitle>
             <WelcomeSubtitle>
