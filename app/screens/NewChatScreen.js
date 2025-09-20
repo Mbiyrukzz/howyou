@@ -1,9 +1,10 @@
 import React, { useState, useContext } from 'react'
 import styled from 'styled-components/native'
-import { FlatList, Modal } from 'react-native'
+import { FlatList, Modal, Alert } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import ContactsContext from '../contexts/ContactsContext'
 import ChatsContext from '../contexts/ChatsContext'
+import { useUser } from '../hooks/useUser' // Add this import
 
 const Container = styled.View`
   flex: 1;
@@ -89,6 +90,20 @@ const SectionTitle = styled.Text`
   color: white;
   margin-bottom: 16px;
   margin-left: 4px;
+`
+
+const DebugContainer = styled.View`
+  background-color: rgba(255, 0, 0, 0.1);
+  border: 1px solid rgba(255, 0, 0, 0.3);
+  border-radius: 8px;
+  padding: 12px;
+  margin: 10px 20px;
+`
+
+const DebugText = styled.Text`
+  color: #ff6b6b;
+  font-size: 12px;
+  font-family: monospace;
 `
 
 // Create Room Components
@@ -366,6 +381,7 @@ export default function NewChatScreen({ navigation }) {
   // Get contexts with error handling
   const contactsContext = useContext(ContactsContext)
   const chatsContext = useContext(ChatsContext)
+  const { user } = useUser() // Add this to get user data
   const nav = useNavigation()
 
   // Handle case where contexts might not be available
@@ -423,6 +439,19 @@ export default function NewChatScreen({ navigation }) {
   )
 
   const startDirectChat = async (person) => {
+    // Debug user state
+    console.log('Current user:', user)
+    console.log('User UID:', user?.uid)
+
+    if (!user?.uid) {
+      Alert.alert(
+        'Authentication Error',
+        'You need to be logged in to start a chat. Please log in and try again.',
+        [{ text: 'OK' }]
+      )
+      return
+    }
+
     try {
       // Check if chat already exists
       const existingChat = chats.find(
@@ -439,12 +468,24 @@ export default function NewChatScreen({ navigation }) {
       }
 
       // Otherwise create new chat
+      console.log('Creating chat with:', person)
       const data = await createChat([person._id || person.id], person.name)
+      console.log('Create chat response:', data)
+
       if (data.success && data.chat) {
         nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
+      } else {
+        Alert.alert(
+          'Error',
+          data.error || 'Failed to create chat. Please try again.',
+          [{ text: 'OK' }]
+        )
       }
     } catch (error) {
       console.error('Error starting direct chat:', error)
+      Alert.alert('Error', 'Failed to start chat. Please try again.', [
+        { text: 'OK' },
+      ])
     }
   }
 
@@ -458,7 +499,16 @@ export default function NewChatScreen({ navigation }) {
 
   const createRoom = async () => {
     if (!roomName.trim()) {
-      alert('Please enter a room name')
+      Alert.alert('Error', 'Please enter a room name', [{ text: 'OK' }])
+      return
+    }
+
+    if (!user?.uid) {
+      Alert.alert(
+        'Authentication Error',
+        'You need to be logged in to create a room. Please log in and try again.',
+        [{ text: 'OK' }]
+      )
       return
     }
 
@@ -472,9 +522,18 @@ export default function NewChatScreen({ navigation }) {
         setSelectedCategories([])
 
         nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
+      } else {
+        Alert.alert(
+          'Error',
+          data.error || 'Failed to create room. Please try again.',
+          [{ text: 'OK' }]
+        )
       }
     } catch (error) {
       console.error('Error creating room:', error)
+      Alert.alert('Error', 'Failed to create room. Please try again.', [
+        { text: 'OK' },
+      ])
     }
   }
 
@@ -547,6 +606,19 @@ export default function NewChatScreen({ navigation }) {
         </BackButton>
         <HeaderTitle>New Chat</HeaderTitle>
       </Header>
+
+      {/* Debug Panel - Remove in production */}
+      <DebugContainer>
+        <DebugText>
+          Debug: User:{' '}
+          {user
+            ? `${user.displayName || 'No name'} (${user.uid})`
+            : 'Not logged in'}
+        </DebugText>
+        <DebugText>
+          Users loaded: {users.length} | Contacts: {contacts.length}
+        </DebugText>
+      </DebugContainer>
 
       <TabContainer>
         <Tab
