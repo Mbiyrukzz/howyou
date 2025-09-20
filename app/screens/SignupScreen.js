@@ -261,6 +261,8 @@ const LoadingIndicator = styled.ActivityIndicator`
   margin-right: 10px;
 `
 
+const API_URL = 'http://10.216.188.87:5000'
+
 export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -305,6 +307,18 @@ export default function SignupScreen({ navigation }) {
     name.trim() &&
     passwordsMatch &&
     passwordStrength.score >= 60
+
+  // Enhanced error logging
+  const logError = (stage, error, additionalInfo = {}) => {
+    console.error(`🔥 Signup Error [${stage}]:`, {
+      error: error.message || error,
+      code: error.code || 'Unknown',
+      stack: error.stack,
+      timestamp: new Date().toISOString(),
+      ...additionalInfo,
+    })
+  }
+
   const handleSignup = async () => {
     if (!isFormValid) {
       Alert.alert('Invalid Form', 'Please fill all fields correctly.')
@@ -312,45 +326,106 @@ export default function SignupScreen({ navigation }) {
     }
 
     setLoading(true)
+    console.log('🚀 Starting signup process...')
+
     try {
+      // Step 1: Create Firebase user
+      console.log('📧 Creating Firebase user with email:', email.trim())
       const userCredential = await createUserWithEmailAndPassword(
         auth,
         email.trim(),
         password
       )
       const user = userCredential.user
+      console.log('✅ Firebase user created successfully:', user.uid)
 
-      // 👉 Send user details to backend (MongoDB)
-      await fetch('http://localhost:5000/users', {
+      // Step 2: Create user in MongoDB
+      console.log('💾 Creating user in backend database...')
+      const userData = {
+        firebaseUid: user.uid,
+        email: user.email,
+        name: name.trim(),
+      }
+
+      console.log('📤 Sending request to:', `${API_URL}/users`)
+      console.log('📋 User data:', userData)
+
+      const response = await fetch(`${API_URL}/users`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          firebaseUid: user.uid,
-          email: user.email,
-          name: name.trim(),
-        }),
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json',
+        },
+        body: JSON.stringify(userData),
+        timeout: 10000, // 10 second timeout
       })
 
-      // Firebase automatically signs in user after creation
-      // onAuthStateChanged will handle navigation
+      console.log('📨 Response status:', response.status)
+      console.log('📨 Response headers:', response.headers)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Backend response error:', errorText)
+        throw new Error(`Backend error: ${response.status} - ${errorText}`)
+      }
+
+      const result = await response.json()
+      console.log('✅ Backend user created successfully:', result)
+
+      // Success - Firebase automatically signs in the user
+      console.log('🎉 Signup completed successfully')
+      Alert.alert(
+        'Account Created!',
+        'Your account has been created successfully.',
+        [
+          {
+            text: 'OK',
+            onPress: () => {
+              // Navigation will be handled by onAuthStateChanged listener
+              console.log('📱 User account creation complete')
+            },
+          },
+        ]
+      )
     } catch (error) {
-      console.error('Signup error:', error)
+      logError('SIGNUP_PROCESS', error, {
+        email: email.trim(),
+        name: name.trim(),
+        API_BASE_URL,
+      })
 
       let errorMessage = 'Account creation failed. Please try again.'
 
-      switch (error.code) {
-        case 'auth/email-already-in-use':
-          errorMessage = 'An account with this email already exists.'
-          break
-        case 'auth/invalid-email':
-          errorMessage = 'Please enter a valid email address.'
-          break
-        case 'auth/operation-not-allowed':
-          errorMessage = 'Email/password accounts are not enabled.'
-          break
-        case 'auth/weak-password':
-          errorMessage = 'Password should be at least 6 characters long.'
-          break
+      // Firebase Auth errors
+      if (error.code) {
+        switch (error.code) {
+          case 'auth/email-already-in-use':
+            errorMessage = 'An account with this email already exists.'
+            break
+          case 'auth/invalid-email':
+            errorMessage = 'Please enter a valid email address.'
+            break
+          case 'auth/operation-not-allowed':
+            errorMessage = 'Email/password accounts are not enabled.'
+            break
+          case 'auth/weak-password':
+            errorMessage = 'Password should be at least 6 characters long.'
+            break
+          case 'auth/network-request-failed':
+            errorMessage =
+              'Network error. Please check your internet connection.'
+            break
+        }
+      }
+      // Network/Backend errors
+      else if (error.message.includes('fetch')) {
+        errorMessage =
+          'Unable to connect to server. Please check your internet connection and try again.'
+      } else if (error.message.includes('Backend error')) {
+        errorMessage = 'Server error occurred. Please try again later.'
+      } else if (error.message.includes('timeout')) {
+        errorMessage =
+          'Request timed out. Please check your connection and try again.'
       }
 
       Alert.alert('Signup Error', errorMessage)

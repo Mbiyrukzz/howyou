@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import ChatsContext from '../contexts/ChatsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 
-const API_URL = 'http://localhost:5000'
+const API_URL = 'http://10.216.188.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
