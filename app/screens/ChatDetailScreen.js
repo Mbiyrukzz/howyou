@@ -142,29 +142,6 @@ const DateText = styled.Text`
   overflow: hidden;
 `
 
-const TypingIndicator = styled.View`
-  flex-direction: row;
-  align-items: center;
-  margin: 8px 0;
-  padding: 12px 16px;
-  background-color: #fff;
-  border-radius: 20px;
-  max-width: 80px;
-  shadow-color: #000;
-  shadow-offset: 0px 1px;
-  shadow-opacity: 0.1;
-  shadow-radius: 2px;
-  elevation: 2;
-`
-
-const TypingDot = styled(Animated.View)`
-  width: 8px;
-  height: 8px;
-  border-radius: 4px;
-  background-color: #bdc3c7;
-  margin-horizontal: 2px;
-`
-
 const InputContainer = styled.View`
   background-color: #fff;
   padding: 16px;
@@ -292,42 +269,41 @@ const formatMessageDate = (timestamp) => {
   }
 }
 
-const TypingIndicatorComponent = () => {
-  const dot1 = useRef(new Animated.Value(0.3)).current
-  const dot2 = useRef(new Animated.Value(0.3)).current
-  const dot3 = useRef(new Animated.Value(0.3)).current
+const getInitials = (name) => {
+  if (!name) return '?'
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2)
+}
 
-  useEffect(() => {
-    const animateDot = (dot, delay) => {
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(dot, {
-            toValue: 1,
-            duration: 600,
-            delay,
-            useNativeDriver: false,
-          }),
-          Animated.timing(dot, {
-            toValue: 0.3,
-            duration: 600,
-            useNativeDriver: false,
-          }),
-        ])
-      ).start()
-    }
-
-    animateDot(dot1, 0)
-    animateDot(dot2, 200)
-    animateDot(dot3, 400)
-  }, [])
-
-  return (
-    <TypingIndicator>
-      <TypingDot style={{ opacity: dot1 }} />
-      <TypingDot style={{ opacity: dot2 }} />
-      <TypingDot style={{ opacity: dot3 }} />
-    </TypingIndicator>
+// Enhanced user finder that handles both Firebase UIDs and MongoDB ObjectIds
+const findUserByAnyId = (users, targetId) => {
+  console.log('🔍 Looking for user with ID:', targetId)
+  console.log(
+    '📝 Available users:',
+    users.map((u) => ({
+      name: u.name,
+      firebaseUid: u.firebaseUid,
+      _id: u._id?.toString(),
+      id: u.id?.toString(),
+    }))
   )
+
+  const found = users.find(
+    (u) =>
+      u.firebaseUid === targetId || // Match Firebase UID
+      (u._id && u._id.toString()) === targetId || // Match MongoDB ObjectId
+      (u.id && u.id.toString()) === targetId // Match regular ID
+  )
+
+  console.log(
+    '👤 User found:',
+    found ? `${found.name} (${found.firebaseUid || found._id})` : 'Not found'
+  )
+  return found
 }
 
 const MessageItem = ({ item, previousItem, currentUserId, users }) => {
@@ -337,7 +313,10 @@ const MessageItem = ({ item, previousItem, currentUserId, users }) => {
       formatMessageDate(item.createdAt)
 
   const isOwn = item.senderId === currentUserId
-  const sender = users.find((u) => (u._id || u.id) === item.senderId)
+
+  // Find sender details
+  const sender = findUserByAnyId(users, item.senderId)
+  const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
 
   return (
     <>
@@ -349,8 +328,7 @@ const MessageItem = ({ item, previousItem, currentUserId, users }) => {
       <MessageBubble isOwn={isOwn}>
         <MessageText isOwn={isOwn}>{item.content}</MessageText>
         <MessageTime isOwn={isOwn}>
-          {formatMessageTime(item.createdAt)}
-          {!isOwn && sender && ` • ${sender.name || 'Unknown'}`}
+          {formatMessageTime(item.createdAt)} • {displayName}
         </MessageTime>
         {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
       </MessageBubble>
@@ -374,20 +352,25 @@ export default function ChatDetailScreen({ navigation, route }) {
   const chats = chatsContext?.chats || []
   const users = chatsContext?.users || []
 
+  console.log('📱 ChatDetail loaded:', {
+    chatId,
+    currentUser: user?.uid,
+    usersAvailable: users.length,
+    messagesCount: messages.length,
+  })
+
   // Find the current chat
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
 
-  // Get chat participants (excluding current user)
+  // Get chat participants (excluding current user) - enhanced matching
   const participants =
     currentChat?.participants?.filter(
       (participantId) => participantId !== user?.uid
     ) || []
 
-  // Get participant details
+  // Get participant details using enhanced finder
   const chatParticipants = participants
-    .map((participantId) =>
-      users.find((u) => (u._id || u.id) === participantId)
-    )
+    .map((participantId) => findUserByAnyId(users, participantId))
     .filter(Boolean)
 
   // Determine chat display info
@@ -421,15 +404,6 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const chatInfo = getChatInfo()
 
-  const getInitials = (name) => {
-    return name
-      .split(' ')
-      .map((n) => n[0])
-      .join('')
-      .toUpperCase()
-      .substring(0, 2)
-  }
-
   // Load messages for this chat
   const loadMessages = async () => {
     if (!isReady || !chatId) return
@@ -437,7 +411,10 @@ export default function ChatDetailScreen({ navigation, route }) {
     try {
       setLoading(true)
       setError(null)
+      console.log('📥 Loading messages for chat:', chatId)
       const data = await get(`${API_URL}/get-messages/${chatId}`)
+
+      console.log('💬 Messages received:', data?.length || 0)
 
       // Sort messages by creation time
       const sortedMessages = (data || []).sort(
@@ -475,7 +452,6 @@ export default function ChatDetailScreen({ navigation, route }) {
       }
     } catch (error) {
       console.error('❌ Failed to send message:', error)
-      // Could show error toast here
     } finally {
       setSending(false)
     }

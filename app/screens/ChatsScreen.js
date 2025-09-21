@@ -387,6 +387,24 @@ const RetryButtonText = styled.Text`
   font-weight: 700;
 `
 
+// Helper function to extract text from lastMessage (handles both string and object formats)
+const getLastMessageText = (lastMessage) => {
+  if (!lastMessage) return null
+
+  // If it's a string, return it directly
+  if (typeof lastMessage === 'string') {
+    return lastMessage
+  }
+
+  // If it's an object with content property, return the content
+  if (typeof lastMessage === 'object' && lastMessage.content) {
+    return lastMessage.content
+  }
+
+  // Fallback for any other format
+  return null
+}
+
 // Helper functions
 const getUserColor = (userId) => {
   const colors = [
@@ -440,6 +458,15 @@ const formatTimestamp = (timestamp) => {
 }
 
 const ChatItemComponent = ({ item, onPress, currentUserId, users }) => {
+  // Debug logging to catch problematic data
+  if (item.lastMessage && typeof item.lastMessage === 'object') {
+    console.log('🐛 Found object lastMessage:', {
+      chatId: item._id || item.id,
+      lastMessage: JSON.stringify(item.lastMessage),
+      type: typeof item.lastMessage,
+    })
+  }
+
   const getChatInfo = () => {
     if (item.name) {
       return {
@@ -499,11 +526,12 @@ const ChatItemComponent = ({ item, onPress, currentUserId, users }) => {
           )}
         </ChatNameRow>
         <LastMessage numberOfLines={1}>
-          {item.lastMessage || 'No messages yet - start the conversation!'}
+          {getLastMessageText(item.lastMessage) ||
+            'No messages yet - start the conversation!'}
         </LastMessage>
       </ChatInfo>
       <ChatMeta>
-        <TimeStamp>{formatTimestamp(item.lastActivity)}</TimeStamp>
+        <TimeStamp>{formatTimestamp(item.lastActivity) || ''}</TimeStamp>
         {unreadCount > 0 && (
           <UnreadBadge>
             <UnreadText>{unreadCount > 9 ? '9+' : unreadCount}</UnreadText>
