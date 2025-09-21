@@ -457,87 +457,36 @@ const formatTimestamp = (timestamp) => {
   }
 }
 
-const ChatItemComponent = ({ item, onPress, currentUserId, users }) => {
-  // Debug logging to catch problematic data
-  if (item.lastMessage && typeof item.lastMessage === 'object') {
-    console.log('🐛 Found object lastMessage:', {
-      chatId: item._id || item.id,
-      lastMessage: JSON.stringify(item.lastMessage),
-      type: typeof item.lastMessage,
-    })
-  }
+// Helper: find user regardless of which id field is used
+const findUserByAnyId = (users, id) => {
+  if (!users || !id) return null
+  return (
+    users.find((u) => u._id === id || u.id === id || u.firebaseUid === id) ||
+    null
+  )
+}
 
-  const getChatInfo = () => {
-    if (item.name) {
-      return {
-        name: item.name,
-        color: getUserColor(item._id || item.id),
-        isGroup: true,
-        isOnline: false,
-      }
-    } else {
-      const otherParticipants =
-        item.participants?.filter(
-          (participantId) => participantId !== currentUserId
-        ) || []
+const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
+  const otherParticipants =
+    item.participants?.filter((id) => id !== currentUserId) || []
+  const otherUser = otherParticipants.length
+    ? findUserByAnyId(users, otherParticipants[0])
+    : null
 
-      if (otherParticipants.length === 1) {
-        const participant = users.find(
-          (u) =>
-            (u._id || u.id) === otherParticipants[0] ||
-            u.firebaseUid === otherParticipants[0]
-        )
-        return {
-          name: participant?.name || 'Unknown User',
-          color: participant?.color || getUserColor(otherParticipants[0]),
-          isGroup: false,
-          isOnline: participant?.online || false,
-        }
-      } else {
-        return {
-          name: `${otherParticipants.length + 1} participants`,
-          color: getUserColor(item._id || item.id),
-          isGroup: true,
-          isOnline: false,
-        }
-      }
-    }
-  }
+  const chatName = otherUser?.name || 'Unknown'
 
-  const chatInfo = getChatInfo()
-  const unreadCount = Math.floor(Math.random() * 5) // Replace with real unread count
+  const lastMsg = item.lastMessage
+  const isOwn = lastMsg?.senderId === currentUserId
+  const preview = lastMsg
+    ? `${isOwn ? 'You' : chatName}: ${getLastMessageText(lastMsg)}`
+    : 'No messages yet - start the conversation!'
 
   return (
-    <ChatItem onPress={() => onPress(item)} activeOpacity={0.7}>
-      <ChatItemGlow color={chatInfo.color} />
-      <AvatarContainer>
-        <Avatar color={chatInfo.color}>
-          <AvatarText>{getInitials(chatInfo.name)}</AvatarText>
-        </Avatar>
-        {chatInfo.isOnline && <OnlineIndicator />}
-      </AvatarContainer>
+    <ChatItem onPress={() => onPress(item)}>
       <ChatInfo>
-        <ChatNameRow>
-          <ChatName>{chatInfo.name}</ChatName>
-          {chatInfo.isGroup && (
-            <ChatBadge>
-              <ChatBadgeText>Group</ChatBadgeText>
-            </ChatBadge>
-          )}
-        </ChatNameRow>
-        <LastMessage numberOfLines={1}>
-          {getLastMessageText(item.lastMessage) ||
-            'No messages yet - start the conversation!'}
-        </LastMessage>
+        <ChatName>{chatName}</ChatName>
+        <LastMessage numberOfLines={1}>{preview}</LastMessage>
       </ChatInfo>
-      <ChatMeta>
-        <TimeStamp>{formatTimestamp(item.lastActivity) || ''}</TimeStamp>
-        {unreadCount > 0 && (
-          <UnreadBadge>
-            <UnreadText>{unreadCount > 9 ? '9+' : unreadCount}</UnreadText>
-          </UnreadBadge>
-        )}
-      </ChatMeta>
     </ChatItem>
   )
 }

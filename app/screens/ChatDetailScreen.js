@@ -5,7 +5,6 @@ import {
   StatusBar,
   KeyboardAvoidingView,
   Platform,
-  Animated,
   Dimensions,
 } from 'react-native'
 import styled from 'styled-components/native'
@@ -17,6 +16,7 @@ import { useUser } from '../hooks/useUser'
 const { width: screenWidth } = Dimensions.get('window')
 const API_URL = 'http://10.216.188.87:5000'
 
+/* =================== styled components =================== */
 const Container = styled.View`
   flex: 1;
   background-color: #f8f9fa;
@@ -175,11 +175,6 @@ const SendButton = styled.TouchableOpacity`
   background-color: ${(props) => (props.disabled ? '#bdc3c7' : '#3498db')};
   justify-content: center;
   align-items: center;
-  shadow-color: #000;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.2;
-  shadow-radius: 3px;
-  elevation: 4;
 `
 
 const AttachmentButton = styled.TouchableOpacity`
@@ -227,7 +222,7 @@ const RetryButtonText = styled.Text`
   font-weight: 600;
 `
 
-// Helper function to generate consistent colors
+/* =================== helpers =================== */
 const getUserColor = (userId) => {
   const colors = [
     '#3498db',
@@ -247,26 +242,20 @@ const getUserColor = (userId) => {
   return colors[index]
 }
 
-// Helper function to format time
 const formatMessageTime = (timestamp) => {
   const date = new Date(timestamp)
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
 }
 
-// Helper function to format date
 const formatMessageDate = (timestamp) => {
   const date = new Date(timestamp)
   const today = new Date()
   const yesterday = new Date(today)
   yesterday.setDate(yesterday.getDate() - 1)
 
-  if (date.toDateString() === today.toDateString()) {
-    return 'Today'
-  } else if (date.toDateString() === yesterday.toDateString()) {
-    return 'Yesterday'
-  } else {
-    return date.toLocaleDateString()
-  }
+  if (date.toDateString() === today.toDateString()) return 'Today'
+  if (date.toDateString() === yesterday.toDateString()) return 'Yesterday'
+  return date.toLocaleDateString()
 }
 
 const getInitials = (name) => {
@@ -279,33 +268,16 @@ const getInitials = (name) => {
     .substring(0, 2)
 }
 
-// Enhanced user finder that handles both Firebase UIDs and MongoDB ObjectIds
 const findUserByAnyId = (users, targetId) => {
-  console.log('🔍 Looking for user with ID:', targetId)
-  console.log(
-    '📝 Available users:',
-    users.map((u) => ({
-      name: u.name,
-      firebaseUid: u.firebaseUid,
-      _id: u._id?.toString(),
-      id: u.id?.toString(),
-    }))
-  )
-
-  const found = users.find(
+  return users.find(
     (u) =>
-      u.firebaseUid === targetId || // Match Firebase UID
-      (u._id && u._id.toString()) === targetId || // Match MongoDB ObjectId
-      (u.id && u.id.toString()) === targetId // Match regular ID
+      u.firebaseUid === targetId ||
+      (u._id && u._id.toString()) === targetId ||
+      (u.id && u.id.toString()) === targetId
   )
-
-  console.log(
-    '👤 User found:',
-    found ? `${found.name} (${found.firebaseUid || found._id})` : 'Not found'
-  )
-  return found
 }
 
+/* =================== message item =================== */
 const MessageItem = ({ item, previousItem, currentUserId, users }) => {
   const showDate =
     !previousItem ||
@@ -313,8 +285,6 @@ const MessageItem = ({ item, previousItem, currentUserId, users }) => {
       formatMessageDate(item.createdAt)
 
   const isOwn = item.senderId === currentUserId
-
-  // Find sender details
   const sender = findUserByAnyId(users, item.senderId)
   const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
 
@@ -336,6 +306,7 @@ const MessageItem = ({ item, previousItem, currentUserId, users }) => {
   )
 }
 
+/* =================== main screen =================== */
 export default function ChatDetailScreen({ navigation, route }) {
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState([])
@@ -352,78 +323,74 @@ export default function ChatDetailScreen({ navigation, route }) {
   const chats = chatsContext?.chats || []
   const users = chatsContext?.users || []
 
-  console.log('📱 ChatDetail loaded:', {
-    chatId,
-    currentUser: user?.uid,
-    usersAvailable: users.length,
-    messagesCount: messages.length,
-  })
-
-  // Find the current chat
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
 
-  // Get chat participants (excluding current user) - enhanced matching
   const participants =
-    currentChat?.participants?.filter(
-      (participantId) => participantId !== user?.uid
-    ) || []
+    currentChat?.participants?.filter((id) => id !== user?.uid) || []
 
-  // Get participant details using enhanced finder
   const chatParticipants = participants
-    .map((participantId) => findUserByAnyId(users, participantId))
+    .map((id) => findUserByAnyId(users, id))
     .filter(Boolean)
 
-  // Determine chat display info
+  /* ---------- FIXED getChatInfo ---------- */
   const getChatInfo = () => {
+    if (!currentChat) {
+      return {
+        name: 'Unknown Chat',
+        status: '',
+        color: '#95a5a6',
+        isGroup: false,
+      }
+    }
+
+    // Direct chat (2 participants, no custom name)
+    if (currentChat.participants?.length === 2 && !currentChat.name) {
+      const participant = chatParticipants[0]
+      return {
+        name: participant?.name || 'Unknown User',
+        status: participant?.online ? 'Online now' : 'Last seen recently',
+        color: participant
+          ? getUserColor(participant._id || participant.id)
+          : '#95a5a6',
+        isGroup: false,
+      }
+    }
+
+    // Named group
     if (currentChat?.name) {
-      // Named chat/room
       return {
         name: currentChat.name,
         status: `${currentChat.participants?.length || 0} members`,
         color: getUserColor(currentChat._id || currentChat.id),
+        isGroup: true,
       }
-    } else if (chatParticipants.length === 1) {
-      // Direct chat
-      const participant = chatParticipants[0]
-      return {
-        name: participant?.name || 'Unknown User',
-        status: participant?.online ? 'Online now' : 'Offline',
-        color:
-          participant?.color ||
-          getUserColor(participant?._id || participant?.id),
-      }
-    } else {
-      // Group chat
-      return {
-        name: chatParticipants.map((p) => p?.name || 'Unknown').join(', '),
-        status: `${chatParticipants.length} members`,
-        color: getUserColor(chatId),
-      }
+    }
+
+    // Fallback group
+    return {
+      name: chatParticipants.length
+        ? chatParticipants.map((p) => p?.name || 'Unknown').join(', ')
+        : 'Unknown Chat',
+      status: `${chatParticipants.length} members`,
+      color: getUserColor(currentChat?._id || currentChat?.id),
+      isGroup: true,
     }
   }
 
   const chatInfo = getChatInfo()
 
-  // Load messages for this chat
+  /* ---------- load messages ---------- */
   const loadMessages = async () => {
     if (!isReady || !chatId) return
-
     try {
       setLoading(true)
       setError(null)
-      console.log('📥 Loading messages for chat:', chatId)
       const data = await get(`${API_URL}/get-messages/${chatId}`)
-
-      console.log('💬 Messages received:', data?.length || 0)
-
-      // Sort messages by creation time
-      const sortedMessages = (data || []).sort(
+      const sorted = (data || []).sort(
         (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
       )
-
-      setMessages(sortedMessages)
-    } catch (error) {
-      console.error('❌ Failed to load messages:', error)
+      setMessages(sorted)
+    } catch (err) {
       setError('Failed to load messages')
     } finally {
       setLoading(false)
@@ -432,56 +399,46 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const sendMessage = async () => {
     if (!message.trim() || sending || !isReady) return
-
     try {
       setSending(true)
-
       const newMessage = await post(`${API_URL}/send-message`, {
         chatId,
         content: message.trim(),
       })
-
       if (newMessage.success) {
         setMessages((prev) => [...prev, newMessage.message])
         setMessage('')
-
-        // Scroll to bottom
-        setTimeout(() => {
-          flatListRef.current?.scrollToEnd({ animated: true })
-        }, 100)
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100
+        )
       }
-    } catch (error) {
-      console.error('❌ Failed to send message:', error)
+    } catch (err) {
+      console.error('send error', err)
     } finally {
       setSending(false)
     }
-  }
-
-  const handleBack = () => {
-    navigation.goBack()
-  }
-
-  const retryLoading = () => {
-    loadMessages()
   }
 
   useEffect(() => {
     loadMessages()
   }, [chatId, isReady])
 
-  // Auto-scroll when new messages arrive
   useEffect(() => {
     if (messages.length > 0) {
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: true })
-      }, 100)
+      setTimeout(
+        () => flatListRef.current?.scrollToEnd({ animated: true }),
+        100
+      )
     }
   }, [messages.length])
 
+  const handleBack = () => navigation.goBack()
+
+  /* ---------- render ---------- */
   if (!chatId) {
     return (
       <Container>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
         <ErrorContainer>
           <ErrorText>Invalid chat selected</ErrorText>
           <RetryButton onPress={handleBack}>
@@ -492,73 +449,20 @@ export default function ChatDetailScreen({ navigation, route }) {
     )
   }
 
-  if (loading) {
-    return (
-      <Container>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <Header>
-          <BackButton onPress={handleBack}>
-            <Ionicons name="arrow-back" size={24} color="#2c3e50" />
-          </BackButton>
-          <HeaderAvatar color={chatInfo.color}>
-            <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
-          </HeaderAvatar>
-          <HeaderInfo>
-            <HeaderName>{chatInfo.name}</HeaderName>
-            <HeaderStatus>Loading...</HeaderStatus>
-          </HeaderInfo>
-        </Header>
-        <LoadingContainer>
-          <LoadingText>Loading messages...</LoadingText>
-        </LoadingContainer>
-      </Container>
-    )
-  }
-
-  if (error) {
-    return (
-      <Container>
-        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-        <Header>
-          <BackButton onPress={handleBack}>
-            <Ionicons name="arrow-back" size={24} color="#2c3e50" />
-          </BackButton>
-          <HeaderAvatar color={chatInfo.color}>
-            <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
-          </HeaderAvatar>
-          <HeaderInfo>
-            <HeaderName>{chatInfo.name}</HeaderName>
-            <HeaderStatus>Error loading</HeaderStatus>
-          </HeaderInfo>
-        </Header>
-        <ErrorContainer>
-          <ErrorText>{error}</ErrorText>
-          <RetryButton onPress={retryLoading}>
-            <RetryButtonText>Retry</RetryButtonText>
-          </RetryButton>
-        </ErrorContainer>
-      </Container>
-    )
-  }
-
   return (
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-
       <Header>
         <BackButton onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#2c3e50" />
         </BackButton>
-
         <HeaderAvatar color={chatInfo.color}>
           <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
         </HeaderAvatar>
-
         <HeaderInfo>
           <HeaderName>{chatInfo.name}</HeaderName>
           <HeaderStatus>{chatInfo.status}</HeaderStatus>
         </HeaderInfo>
-
         <HeaderActions>
           <HeaderActionButton>
             <Ionicons name="videocam" size={24} color="#7f8c8d" />
@@ -603,7 +507,6 @@ export default function ChatDetailScreen({ navigation, route }) {
           <AttachmentButton>
             <Ionicons name="add" size={24} color="#7f8c8d" />
           </AttachmentButton>
-
           <InputWrapper>
             <TextInput
               value={message}
@@ -615,7 +518,6 @@ export default function ChatDetailScreen({ navigation, route }) {
               editable={!sending}
             />
           </InputWrapper>
-
           <SendButton
             disabled={!message.trim() || sending}
             onPress={sendMessage}

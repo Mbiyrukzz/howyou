@@ -469,7 +469,10 @@ export default function NewChatScreen({ navigation }) {
 
       // Otherwise create new chat
       console.log('Creating chat with:', person)
-      const data = await createChat([person._id || person.id], person.name)
+      // Use firebaseUid for Firebase users, _id for other users
+      const participantId = person.firebaseUid || person._id || person.id
+      console.log('Using participant ID:', participantId)
+      const data = await createChat([participantId], person.name)
       console.log('Create chat response:', data)
 
       if (data.success && data.chat) {
