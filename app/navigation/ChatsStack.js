@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import ChatsScreen from '../screens/ChatsScreen'
 import ChatDetailScreen from '../screens/ChatDetailScreen'
 import NewChatScreen from '../screens/NewChatScreen'
+import CallScreen from '../screens/CallScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -23,6 +24,12 @@ export default function ChatsStack() {
         name="NewChats"
         component={NewChatScreen}
         options={{ title: 'New Chat' }}
+      />
+
+      <Stack.Screen
+        name="CallScreen"
+        component={CallScreen}
+        options={{ title: 'CallScreen', headerShown: false }}
       />
     </Stack.Navigator>
   )

@@ -46,7 +46,7 @@ const useAuthedRequest = () => {
     async (method, url, body = null) => {
       if (!token) throw new Error('No auth token available')
 
-      const headers = { Authorization: `Bearer ${token}` } // ✅ matches verifyAuthToken
+      const headers = { Authorization: `Bearer ${token}` }
       const response = await axios({ method, url, data: body, headers })
       return response.data
     },

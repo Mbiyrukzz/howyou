@@ -6,15 +6,22 @@ import {
   KeyboardAvoidingView,
   Platform,
   Dimensions,
+  Image,
+  View,
+  Alert,
+  ActionSheetIOS,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
+import * as DocumentPicker from 'expo-document-picker'
+import * as ImagePicker from 'expo-image-picker'
+import * as MediaLibrary from 'expo-media-library'
+import { Camera } from 'expo-camera'
 import ChatsContext from '../contexts/ChatsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
 
 const { width: screenWidth } = Dimensions.get('window')
-const API_URL = 'http://10.216.188.87:5000'
 
 /* =================== styled components =================== */
 const Container = styled.View`
@@ -88,6 +95,7 @@ const HeaderActionButton = styled.TouchableOpacity`
   justify-content: center;
   align-items: center;
   margin-left: 8px;
+  background-color: ${(props) => props.bgColor || 'transparent'};
 `
 
 const MessagesContainer = styled.View`
@@ -113,6 +121,66 @@ const MessageText = styled.Text`
   font-size: 16px;
   line-height: 20px;
   color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
+`
+
+const MessageImage = styled.Image`
+  width: ${screenWidth * 0.6}px;
+  height: 200px;
+  border-radius: 10px;
+  margin-top: ${(props) => (props.hasText ? '8px' : '0px')};
+  background-color: #f0f0f0;
+`
+
+const MessageImageContainer = styled.TouchableOpacity`
+  position: relative;
+`
+
+const ImageLoadingOverlay = styled.View`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.3);
+  justify-content: center;
+  align-items: center;
+  border-radius: 10px;
+`
+
+const LoadingText = styled.Text`
+  color: white;
+  font-size: 12px;
+  margin-top: 8px;
+`
+
+const MessageVideo = styled.View`
+  width: ${screenWidth * 0.6}px;
+  height: 200px;
+  border-radius: 10px;
+  margin-top: 8px;
+  background-color: #000;
+  justify-content: center;
+  align-items: center;
+`
+
+const MessageFile = styled.TouchableOpacity`
+  flex-direction: row;
+  align-items: center;
+  margin-top: 8px;
+  background-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.2)' : '#f0f0f0'};
+  padding: 10px;
+  border-radius: 8px;
+`
+
+const FileIcon = styled(Ionicons)`
+  margin-right: 8px;
+`
+
+const FileText = styled.Text`
+  font-size: 14px;
+  color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
+  flex: 1;
 `
 
 const MessageTime = styled.Text`
@@ -184,6 +252,17 @@ const AttachmentButton = styled.TouchableOpacity`
   justify-content: center;
   align-items: center;
   margin-right: 8px;
+  background-color: #f8f9fa;
+`
+
+const CameraButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  justify-content: center;
+  align-items: center;
+  margin-right: 8px;
+  background-color: #f8f9fa;
 `
 
 const LoadingContainer = styled.View`
@@ -192,7 +271,7 @@ const LoadingContainer = styled.View`
   align-items: center;
 `
 
-const LoadingText = styled.Text`
+const LoadingTextContainer = styled.Text`
   color: #7f8c8d;
   font-size: 16px;
 `
@@ -220,6 +299,38 @@ const RetryButton = styled.TouchableOpacity`
 const RetryButtonText = styled.Text`
   color: white;
   font-weight: 600;
+`
+
+// Image preview modal components
+const ImagePreviewModal = styled.Modal``
+
+const ImagePreviewContainer = styled.View`
+  flex: 1;
+  background-color: rgba(0, 0, 0, 0.9);
+  justify-content: center;
+  align-items: center;
+`
+
+const ImagePreviewHeader = styled.View`
+  position: absolute;
+  top: ${Platform.OS === 'ios' ? '50px' : '30px'};
+  left: 0;
+  right: 0;
+  flex-direction: row;
+  justify-content: space-between;
+  padding: 0 20px;
+  z-index: 1;
+`
+
+const CloseButton = styled.TouchableOpacity`
+  background-color: rgba(255, 255, 255, 0.2);
+  padding: 10px;
+  border-radius: 20px;
+`
+
+const FullScreenImage = styled.Image`
+  width: 100%;
+  height: 70%;
 `
 
 /* =================== helpers =================== */
@@ -278,7 +389,16 @@ const findUserByAnyId = (users, targetId) => {
 }
 
 /* =================== message item =================== */
-const MessageItem = ({ item, previousItem, currentUserId, users }) => {
+const MessageItem = ({
+  item,
+  previousItem,
+  currentUserId,
+  users,
+  onImagePress,
+}) => {
+  const [imageLoading, setImageLoading] = useState(true)
+  const [imageError, setImageError] = useState(false)
+
   const showDate =
     !previousItem ||
     formatMessageDate(previousItem.createdAt) !==
@@ -288,6 +408,15 @@ const MessageItem = ({ item, previousItem, currentUserId, users }) => {
   const sender = findUserByAnyId(users, item.senderId)
   const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
 
+  const handleImageLoad = () => {
+    setImageLoading(false)
+  }
+
+  const handleImageError = () => {
+    setImageLoading(false)
+    setImageError(true)
+  }
+
   return (
     <>
       {showDate && (
@@ -296,7 +425,62 @@ const MessageItem = ({ item, previousItem, currentUserId, users }) => {
         </DateSeparator>
       )}
       <MessageBubble isOwn={isOwn}>
-        <MessageText isOwn={isOwn}>{item.content}</MessageText>
+        {item.content && (
+          <MessageText isOwn={isOwn}>{item.content}</MessageText>
+        )}
+
+        {item.type === 'image' && item.files?.[0]?.url && (
+          <MessageImageContainer
+            onPress={() => onImagePress(item.files[0].url)}
+          >
+            <MessageImage
+              source={{ uri: item.files[0].url }}
+              hasText={!!item.content}
+              onLoad={handleImageLoad}
+              onError={handleImageError}
+            />
+            {imageLoading && (
+              <ImageLoadingOverlay>
+                <Ionicons name="image-outline" size={24} color="white" />
+                <LoadingText>Loading...</LoadingText>
+              </ImageLoadingOverlay>
+            )}
+            {imageError && (
+              <ImageLoadingOverlay>
+                <Ionicons name="alert-circle-outline" size={24} color="white" />
+                <LoadingText>Failed to load</LoadingText>
+              </ImageLoadingOverlay>
+            )}
+          </MessageImageContainer>
+        )}
+
+        {item.type === 'video' && item.files?.[0]?.url && (
+          <MessageVideo>
+            <Ionicons name="play-circle" size={40} color="white" />
+            <MessageText isOwn={isOwn}>
+              Video: {item.files[0].originalname}
+            </MessageText>
+          </MessageVideo>
+        )}
+
+        {item.type === 'file' && item.files?.[0]?.url && (
+          <MessageFile isOwn={isOwn}>
+            <FileIcon
+              name="document"
+              size={20}
+              color={isOwn ? '#fff' : '#2c3e50'}
+            />
+            <FileText isOwn={isOwn}>{item.files[0].originalname}</FileText>
+          </MessageFile>
+        )}
+
+        {item.type === 'audio' && item.files?.[0]?.url && (
+          <MessageFile isOwn={isOwn}>
+            <FileIcon name="mic" size={20} color={isOwn ? '#fff' : '#2c3e50'} />
+            <FileText isOwn={isOwn}>{item.files[0].originalname}</FileText>
+          </MessageFile>
+        )}
+
         <MessageTime isOwn={isOwn}>
           {formatMessageTime(item.createdAt)} • {displayName}
         </MessageTime>
@@ -313,116 +497,345 @@ export default function ChatDetailScreen({ navigation, route }) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
+  const [imagePreviewVisible, setImagePreviewVisible] = useState(false)
+  const [previewImageUrl, setPreviewImageUrl] = useState('')
   const flatListRef = useRef(null)
 
   const { chatId } = route?.params || {}
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
-  const { isReady, get, post } = useAuthedRequest()
+  const { isReady, get } = useAuthedRequest()
 
-  const chats = chatsContext?.chats || []
-  const users = chatsContext?.users || []
+  const {
+    chats = [],
+    users = [],
+    loadMessages,
+    sendMessage: contextSendMessage,
+    initiateCall,
+  } = chatsContext || {}
 
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
 
-  const participants =
-    currentChat?.participants?.filter((id) => id !== user?.uid) || []
+  // Get the other user in the chat (not the current user)
+  const otherUserId = currentChat?.participants?.find((id) => id !== user?.uid)
+  const otherUser = findUserByAnyId(users, otherUserId)
 
-  const chatParticipants = participants
-    .map((id) => findUserByAnyId(users, id))
-    .filter(Boolean)
-
-  /* ---------- FIXED getChatInfo ---------- */
+  // Get chat info - simplified for direct messages only
   const getChatInfo = () => {
-    if (!currentChat) {
+    if (!otherUser) {
       return {
-        name: 'Unknown Chat',
-        status: '',
+        name: 'Unknown User',
+        status: 'Offline',
         color: '#95a5a6',
-        isGroup: false,
       }
     }
 
-    // Direct chat (2 participants, no custom name)
-    if (currentChat.participants?.length === 2 && !currentChat.name) {
-      const participant = chatParticipants[0]
-      return {
-        name: participant?.name || 'Unknown User',
-        status: participant?.online ? 'Online now' : 'Last seen recently',
-        color: participant
-          ? getUserColor(participant._id || participant.id)
-          : '#95a5a6',
-        isGroup: false,
-      }
-    }
-
-    // Named group
-    if (currentChat?.name) {
-      return {
-        name: currentChat.name,
-        status: `${currentChat.participants?.length || 0} members`,
-        color: getUserColor(currentChat._id || currentChat.id),
-        isGroup: true,
-      }
-    }
-
-    // Fallback group
     return {
-      name: chatParticipants.length
-        ? chatParticipants.map((p) => p?.name || 'Unknown').join(', ')
-        : 'Unknown Chat',
-      status: `${chatParticipants.length} members`,
-      color: getUserColor(currentChat?._id || currentChat?.id),
-      isGroup: true,
+      name: otherUser.name || 'Unknown User',
+      status: otherUser.online ? 'Online now' : 'Last seen recently',
+      color: getUserColor(otherUser._id || otherUser.id),
     }
   }
 
   const chatInfo = getChatInfo()
 
   /* ---------- load messages ---------- */
-  const loadMessages = async () => {
-    if (!isReady || !chatId) return
+  const loadChatMessages = async () => {
+    if (!chatId) return
     try {
       setLoading(true)
       setError(null)
-      const data = await get(`${API_URL}/get-messages/${chatId}`)
-      const sorted = (data || []).sort(
-        (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
-      )
-      setMessages(sorted)
+
+      const messagesData = await loadMessages(chatId)
+      setMessages(messagesData || [])
     } catch (err) {
+      console.error('Failed to load messages:', err)
       setError('Failed to load messages')
     } finally {
       setLoading(false)
     }
   }
 
-  const sendMessage = async () => {
-    if (!message.trim() || sending || !isReady) return
+  /* ---------- image picker ---------- */
+  const requestPermissions = async () => {
+    const { status: cameraStatus } =
+      await Camera.requestCameraPermissionsAsync()
+    const { status: libraryStatus } =
+      await ImagePicker.requestMediaLibraryPermissionsAsync()
+    const { status: mediaLibraryStatus } =
+      await MediaLibrary.requestPermissionsAsync()
+
+    return {
+      camera: cameraStatus === 'granted',
+      library: libraryStatus === 'granted',
+      mediaLibrary: mediaLibraryStatus === 'granted',
+    }
+  }
+
+  const showImagePickerOptions = () => {
+    const options = [
+      'Take Photo',
+      'Choose from Library',
+      'Choose File',
+      'Cancel',
+    ]
+
+    if (Platform.OS === 'ios') {
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options,
+          cancelButtonIndex: 3,
+        },
+        (buttonIndex) => {
+          switch (buttonIndex) {
+            case 0:
+              takePhoto()
+              break
+            case 1:
+              pickImageFromLibrary()
+              break
+            case 2:
+              pickFile()
+              break
+          }
+        }
+      )
+    } else {
+      Alert.alert('Select Image', 'Choose an option', [
+        { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Choose from Library', onPress: pickImageFromLibrary },
+        { text: 'Choose File', onPress: pickFile },
+        { text: 'Cancel', style: 'cancel' },
+      ])
+    }
+  }
+
+  const takePhoto = async () => {
+    try {
+      const permissions = await requestPermissions()
+      if (!permissions.camera) {
+        Alert.alert('Permission denied', 'Camera permission is required')
+        return
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets?.[0]) {
+        await sendImageMessage(result.assets[0])
+      }
+    } catch (error) {
+      console.error('Take photo error:', error)
+      Alert.alert('Error', 'Failed to take photo')
+    }
+  }
+
+  const pickImageFromLibrary = async () => {
+    try {
+      const permissions = await requestPermissions()
+      if (!permissions.library) {
+        Alert.alert('Permission denied', 'Media library permission is required')
+        return
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets?.[0]) {
+        await sendImageMessage(result.assets[0])
+      }
+    } catch (error) {
+      console.error('Pick image error:', error)
+      Alert.alert('Error', 'Failed to pick image')
+    }
+  }
+
+  const sendImageMessage = async (imageAsset) => {
     try {
       setSending(true)
-      const newMessage = await post(`${API_URL}/send-message`, {
+      const file = {
+        uri: imageAsset.uri,
+        name: `image_${Date.now()}.jpg`,
+        type: 'image/jpeg',
+      }
+
+      const result = await contextSendMessage({
         chatId,
         content: message.trim(),
+        files: [file],
+        messageType: 'image',
       })
-      if (newMessage.success) {
-        setMessages((prev) => [...prev, newMessage.message])
+
+      if (result.success) {
+        setMessages((prev) => [...prev, result.message])
         setMessage('')
         setTimeout(
           () => flatListRef.current?.scrollToEnd({ animated: true }),
           100
         )
+      } else {
+        setError('Failed to send image')
       }
     } catch (err) {
-      console.error('send error', err)
+      console.error('Send image error:', err)
+      setError('Failed to send image')
     } finally {
       setSending(false)
     }
   }
 
+  /* ---------- file picker ---------- */
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
+        multiple: true,
+      })
+
+      if (!result.canceled && result.assets) {
+        const files = result.assets.map((asset) => ({
+          uri: asset.uri,
+          name: asset.name,
+          type: asset.mimeType,
+        }))
+
+        const messageType = files[0].type.split('/')[0] // e.g., 'image', 'video', 'audio'
+        const resultSend = await contextSendMessage({
+          chatId,
+          content: message.trim(),
+          files,
+          messageType,
+        })
+
+        if (resultSend.success) {
+          setMessages((prev) => [...prev, resultSend.message])
+          setMessage('')
+          setTimeout(
+            () => flatListRef.current?.scrollToEnd({ animated: true }),
+            100
+          )
+        } else {
+          setError('Failed to send file')
+        }
+      }
+    } catch (err) {
+      console.error('File picker error:', err)
+      setError('Failed to pick file')
+    }
+  }
+
+  /* ---------- send message ---------- */
+  const handleSendMessage = async () => {
+    if (!message.trim() || sending || !chatId) return
+
+    try {
+      setSending(true)
+      const result = await contextSendMessage({
+        chatId,
+        content: message.trim(),
+        messageType: 'text',
+      })
+
+      if (result.success) {
+        setMessages((prev) => [...prev, result.message])
+        setMessage('')
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100
+        )
+      } else {
+        console.error('Failed to send message:', result.error)
+        setError('Failed to send message')
+      }
+    } catch (err) {
+      console.error('Send message error:', err)
+      setError('Failed to send message')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  /* ---------- call functions ---------- */
+  const startVideoCall = async () => {
+    if (!otherUser || !chatId) {
+      Alert.alert('Error', 'Cannot start call')
+      return
+    }
+
+    try {
+      const result = await initiateCall({
+        chatId,
+        callType: 'video',
+        recipientId: otherUserId,
+      })
+
+      if (result.success) {
+        navigation.navigate('CallScreen', {
+          chatId,
+          remoteUserId: otherUserId,
+          remoteUserName: otherUser.name,
+          callType: 'video',
+        })
+      } else {
+        Alert.alert('Error', 'Failed to start video call')
+      }
+    } catch (error) {
+      console.error('Start video call error:', error)
+      Alert.alert('Error', 'Failed to start video call')
+    }
+  }
+
+  const startAudioCall = async () => {
+    if (!otherUser || !chatId) {
+      Alert.alert('Error', 'Cannot start call')
+      return
+    }
+
+    try {
+      const result = await initiateCall({
+        chatId,
+        callType: 'audio',
+        recipientId: otherUserId,
+      })
+
+      if (result.success) {
+        navigation.navigate('CallScreen', {
+          chatId,
+          remoteUserId: otherUserId,
+          remoteUserName: otherUser.name,
+          callType: 'audio',
+        })
+      } else {
+        Alert.alert('Error', 'Failed to start audio call')
+      }
+    } catch (error) {
+      console.error('Start audio call error:', error)
+      Alert.alert('Error', 'Failed to start audio call')
+    }
+  }
+
+  /* ---------- image preview ---------- */
+  const handleImagePress = (imageUrl) => {
+    setPreviewImageUrl(imageUrl)
+    setImagePreviewVisible(true)
+  }
+
+  const closeImagePreview = () => {
+    setImagePreviewVisible(false)
+    setPreviewImageUrl('')
+  }
+
   useEffect(() => {
-    loadMessages()
-  }, [chatId, isReady])
+    loadChatMessages()
+  }, [chatId])
 
   useEffect(() => {
     if (messages.length > 0) {
@@ -449,6 +862,55 @@ export default function ChatDetailScreen({ navigation, route }) {
     )
   }
 
+  if (loading) {
+    return (
+      <Container>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <Header>
+          <BackButton onPress={handleBack}>
+            <Ionicons name="arrow-back" size={24} color="#2c3e50" />
+          </BackButton>
+          <HeaderAvatar color={chatInfo.color}>
+            <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
+          </HeaderAvatar>
+          <HeaderInfo>
+            <HeaderName>{chatInfo.name}</HeaderName>
+            <HeaderStatus>Loading...</HeaderStatus>
+          </HeaderInfo>
+        </Header>
+        <LoadingContainer>
+          <LoadingTextContainer>Loading messages...</LoadingTextContainer>
+        </LoadingContainer>
+      </Container>
+    )
+  }
+
+  if (error) {
+    return (
+      <Container>
+        <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+        <Header>
+          <BackButton onPress={handleBack}>
+            <Ionicons name="arrow-back" size={24} color="#2c3e50" />
+          </BackButton>
+          <HeaderAvatar color={chatInfo.color}>
+            <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
+          </HeaderAvatar>
+          <HeaderInfo>
+            <HeaderName>{chatInfo.name}</HeaderName>
+            <HeaderStatus>Error</HeaderStatus>
+          </HeaderInfo>
+        </Header>
+        <ErrorContainer>
+          <ErrorText>{error}</ErrorText>
+          <RetryButton onPress={loadChatMessages}>
+            <RetryButtonText>Retry</RetryButtonText>
+          </RetryButton>
+        </ErrorContainer>
+      </Container>
+    )
+  }
+
   return (
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -464,11 +926,11 @@ export default function ChatDetailScreen({ navigation, route }) {
           <HeaderStatus>{chatInfo.status}</HeaderStatus>
         </HeaderInfo>
         <HeaderActions>
-          <HeaderActionButton>
-            <Ionicons name="videocam" size={24} color="#7f8c8d" />
+          <HeaderActionButton onPress={startVideoCall} bgColor="#e8f5e8">
+            <Ionicons name="videocam" size={24} color="#27ae60" />
           </HeaderActionButton>
-          <HeaderActionButton>
-            <Ionicons name="call" size={24} color="#7f8c8d" />
+          <HeaderActionButton onPress={startAudioCall} bgColor="#e8f4fd">
+            <Ionicons name="call" size={24} color="#3498db" />
           </HeaderActionButton>
         </HeaderActions>
       </Header>
@@ -488,6 +950,7 @@ export default function ChatDetailScreen({ navigation, route }) {
                 previousItem={index > 0 ? messages[index - 1] : null}
                 currentUserId={user?.uid}
                 users={users}
+                onImagePress={handleImagePress}
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -504,8 +967,11 @@ export default function ChatDetailScreen({ navigation, route }) {
         </MessagesContainer>
 
         <InputContainer>
-          <AttachmentButton>
-            <Ionicons name="add" size={24} color="#7f8c8d" />
+          <CameraButton onPress={showImagePickerOptions}>
+            <Ionicons name="camera" size={24} color="#7f8c8d" />
+          </CameraButton>
+          <AttachmentButton onPress={pickFile}>
+            <Ionicons name="attach" size={24} color="#7f8c8d" />
           </AttachmentButton>
           <InputWrapper>
             <TextInput
@@ -520,7 +986,7 @@ export default function ChatDetailScreen({ navigation, route }) {
           </InputWrapper>
           <SendButton
             disabled={!message.trim() || sending}
-            onPress={sendMessage}
+            onPress={handleSendMessage}
           >
             <Ionicons
               name={sending ? 'hourglass' : 'send'}
@@ -530,6 +996,27 @@ export default function ChatDetailScreen({ navigation, route }) {
           </SendButton>
         </InputContainer>
       </KeyboardAvoidingView>
+
+      {/* Image Preview Modal */}
+      <ImagePreviewModal
+        visible={imagePreviewVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeImagePreview}
+      >
+        <ImagePreviewContainer>
+          <ImagePreviewHeader>
+            <View />
+            <CloseButton onPress={closeImagePreview}>
+              <Ionicons name="close" size={24} color="white" />
+            </CloseButton>
+          </ImagePreviewHeader>
+          <FullScreenImage
+            source={{ uri: previewImageUrl }}
+            resizeMode="contain"
+          />
+        </ImagePreviewContainer>
+      </ImagePreviewModal>
     </Container>
   )
 }
