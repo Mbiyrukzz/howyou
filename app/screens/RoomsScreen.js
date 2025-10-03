@@ -75,7 +75,7 @@ const RoomAvatar = styled.View`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: ${(props) => props.color || '#667eea'};
+  background-color: ${(props) => props.color || '#0046FF'};
   align-items: center;
   justify-content: center;
   margin-right: 16px;
@@ -186,10 +186,10 @@ const FloatingAddButton = styled.TouchableOpacity`
   width: 60px;
   height: 60px;
   border-radius: 30px;
-  background-color: #667eea;
+  background-color: #0046ff;
   align-items: center;
   justify-content: center;
-  shadow-color: #667eea;
+  shadow-color: #0046ff;
   shadow-offset: 0px 8px;
   shadow-opacity: 0.4;
   shadow-radius: 20px;
@@ -216,7 +216,7 @@ const Tab = styled.TouchableOpacity`
   padding: 12px;
   border-radius: 8px;
   align-items: center;
-  background-color: ${(props) => (props.active ? '#667eea' : 'transparent')};
+  background-color: ${(props) => (props.active ? '#0046FF' : 'transparent')};
 `
 
 const TabText = styled.Text`
@@ -242,7 +242,7 @@ export default function RoomsScreen() {
       lastMessageTime: '2m ago',
       unreadCount: 5,
       tags: ['React', 'Frontend'],
-      color: '#667eea',
+      color: '#0046FF',
       isOnline: true,
     },
     {

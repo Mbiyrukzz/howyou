@@ -802,7 +802,7 @@ export default function ChatDetailScreen({ navigation, route }) {
     try {
       const result = await initiateCall({
         chatId,
-        callType: 'audio',
+        callType: 'voice',
         recipientId: otherUserId,
       })
 
@@ -811,7 +811,7 @@ export default function ChatDetailScreen({ navigation, route }) {
           chatId,
           remoteUserId: otherUserId,
           remoteUserName: otherUser.name,
-          callType: 'audio',
+          callType: 'voice',
         })
       } else {
         Alert.alert('Error', 'Failed to start audio call')

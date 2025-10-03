@@ -11,7 +11,8 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
-import { Audio, Video } from 'expo-av'
+import { Video } from 'expo-video'
+import { Audio } from 'expo-audio'
 import { Camera } from 'expo-camera'
 import * as MediaLibrary from 'expo-media-library'
 import { useUser } from '../hooks/useUser'
@@ -85,48 +86,52 @@ const CallScreen = () => {
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const initWebSocket = () => {
-      const wsUrl = `${SIGNALING_URL}?userId=${user?.uid}&chatId=${chatId}`
-      wsRef.current = new WebSocket(wsUrl)
+    if (!user?.uid || !chatId) {
+      console.warn(
+        '🕓 Waiting for user or chatId before connecting WebSocket...'
+      )
+      return
+    }
 
-      wsRef.current.onopen = () => {
-        console.log('✅ WebSocket connected')
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'join-call',
-            chatId,
-            userId: user?.uid,
-          })
-        )
-      }
+    const wsUrl = `${SIGNALING_URL}?userId=${user.uid}&chatId=${chatId}`
+    console.log('🔌 Connecting WebSocket to:', wsUrl)
 
-      wsRef.current.onmessage = async (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          await handleWebSocketMessage(data)
-        } catch (error) {
-          console.error('❌ WebSocket message error:', error)
-        }
-      }
+    const ws = new WebSocket(wsUrl)
+    wsRef.current = ws
 
-      wsRef.current.onerror = (error) => {
-        console.error('❌ WebSocket error:', error)
-        Alert.alert('Connection Error', 'Failed to connect to call server')
-      }
+    ws.onopen = () => {
+      console.log('✅ WebSocket connected')
+      ws.send(
+        JSON.stringify({
+          type: 'join-call',
+          chatId,
+          userId: user.uid,
+        })
+      )
+    }
 
-      wsRef.current.onclose = () => {
-        console.log('🔴 WebSocket disconnected')
+    ws.onmessage = async (event) => {
+      try {
+        const data = JSON.parse(event.data)
+        await handleWebSocketMessage(data)
+      } catch (error) {
+        console.error('❌ WebSocket message error:', error)
       }
     }
 
-    initWebSocket()
+    ws.onerror = (error) => {
+      console.error('❌ WebSocket error:', error)
+      Alert.alert('Connection Error', 'Failed to connect to call server')
+    }
+
+    ws.onclose = () => {
+      console.log('🔴 WebSocket disconnected')
+    }
 
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
+      ws.close()
     }
-  }, [chatId, user?.uid])
+  }, [user?.uid, chatId])
 
   // Handle WebSocket messages
   const handleWebSocketMessage = async (data) => {

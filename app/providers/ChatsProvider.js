@@ -5,6 +5,7 @@ import { useUser } from '../hooks/useUser'
 import { Alert } from 'react-native'
 
 const API_URL = 'http://10.143.145.87:5000'
+const WS_URL = 'ws://10.143.145.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -14,19 +15,14 @@ const ChatsProvider = ({ children }) => {
   const [calls, setCalls] = useState({})
   const [incomingCall, setIncomingCall] = useState(null)
   const [callNotification, setCallNotification] = useState(null)
+  const [wsConnected, setWsConnected] = useState(false)
+
   const { isReady, get, post, upload } = useAuthedRequest()
   const { user } = useUser()
   const wsRef = useRef(null)
-
-  // Debug logging
-  useEffect(() => {
-    console.log('🔍 ChatsProvider Debug:', {
-      user: user ? `${user.displayName || 'No name'} (${user.uid})` : 'No user',
-      isReady,
-      usersCount: users.length,
-      chatsCount: chats.length,
-    })
-  }, [user, isReady, users.length, chats.length])
+  const reconnectTimeoutRef = useRef(null)
+  const reconnectAttemptsRef = useRef(0)
+  const maxReconnectAttempts = 5
 
   // WebSocket connection for real-time notifications
   useEffect(() => {
@@ -34,6 +30,9 @@ const ChatsProvider = ({ children }) => {
       initializeWebSocket()
     }
     return () => {
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current)
+      }
       if (wsRef.current) {
         wsRef.current.close()
       }
@@ -42,11 +41,20 @@ const ChatsProvider = ({ children }) => {
 
   const initializeWebSocket = () => {
     try {
-      const wsUrl = `ws://10.143.145.87:5000/notifications?userId=${user.uid}`
+      // Close existing connection if any
+      if (wsRef.current) {
+        wsRef.current.close()
+      }
+
+      const wsUrl = `${WS_URL}/notifications?userId=${user.uid}`
+      console.log('Connecting to WebSocket:', wsUrl)
+
       wsRef.current = new WebSocket(wsUrl)
 
       wsRef.current.onopen = () => {
-        console.log('📡 Notification WebSocket connected')
+        console.log('WebSocket connected successfully')
+        setWsConnected(true)
+        reconnectAttemptsRef.current = 0
       }
 
       wsRef.current.onmessage = (event) => {
@@ -54,59 +62,143 @@ const ChatsProvider = ({ children }) => {
           const data = JSON.parse(event.data)
           handleWebSocketMessage(data)
         } catch (error) {
-          console.error('❌ WebSocket message parse error:', error)
+          console.error('WebSocket message parse error:', error)
         }
       }
 
       wsRef.current.onerror = (error) => {
-        console.error('❌ WebSocket error:', error)
+        console.error('WebSocket error:', error)
+        setWsConnected(false)
       }
 
-      wsRef.current.onclose = () => {
-        console.log('🔌 Notification WebSocket disconnected')
-        // Attempt to reconnect after 3 seconds
-        setTimeout(() => {
-          if (user?.uid && isReady) {
-            initializeWebSocket()
-          }
-        }, 3000)
+      wsRef.current.onclose = (event) => {
+        console.log('WebSocket disconnected:', {
+          code: event.code,
+          reason: event.reason,
+          clean: event.wasClean,
+        })
+        setWsConnected(false)
+
+        // Attempt to reconnect with exponential backoff
+        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
+          const delay = Math.min(
+            1000 * Math.pow(2, reconnectAttemptsRef.current),
+            30000
+          )
+          console.log(
+            `Reconnecting in ${delay}ms (attempt ${
+              reconnectAttemptsRef.current + 1
+            }/${maxReconnectAttempts})`
+          )
+
+          reconnectTimeoutRef.current = setTimeout(() => {
+            reconnectAttemptsRef.current++
+            if (user?.uid && isReady) {
+              initializeWebSocket()
+            }
+          }, delay)
+        } else {
+          console.error('Max reconnection attempts reached')
+          Alert.alert(
+            'Connection Lost',
+            'Unable to connect to server. Please check your internet connection and restart the app.',
+            [{ text: 'OK' }]
+          )
+        }
       }
     } catch (error) {
-      console.error('❌ WebSocket initialization error:', error)
+      console.error('WebSocket initialization error:', error)
+      setWsConnected(false)
     }
   }
 
   const handleWebSocketMessage = (data) => {
+    console.log('WebSocket message received:', data.type)
+
     switch (data.type) {
+      case 'connected':
+        console.log('WebSocket connection confirmed')
+        break
+
       case 'incoming_call':
         handleIncomingCall(data)
         break
+
       case 'call_ended':
         handleCallEnded(data)
         break
+
+      case 'call_accepted':
+        console.log('Call accepted by recipient')
+        break
+
+      case 'call_rejected':
+        console.log('Call rejected by recipient')
+        Alert.alert('Call Declined', 'The other person declined your call')
+        break
+
       case 'new_message':
         handleNewMessage(data)
         break
+
       case 'typing':
         handleTyping(data)
         break
+
+      case 'ping':
+        // Respond to server ping
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'pong' }))
+        }
+        break
+
+      case 'pong':
+        // Server responded to our ping
+        break
+
+      case 'error':
+        console.error('Server error:', data.message)
+        break
+
       default:
         console.log('Unknown WebSocket message type:', data.type)
     }
   }
 
   const handleIncomingCall = (callData) => {
-    console.log('📞 Incoming call:', callData)
+    console.log('Incoming call notification:', callData)
+
     setIncomingCall(callData)
     setCallNotification({
       type: 'incoming_call',
       caller: callData.caller,
+      callerName: callData.callerName,
       callType: callData.callType,
       callId: callData.callId,
       chatId: callData.chatId,
     })
 
-    // Auto-dismiss notification after 30 seconds
+    // Show alert
+    Alert.alert(
+      `Incoming ${callData.callType === 'video' ? 'Video' : 'Voice'} Call`,
+      `${callData.callerName || 'Someone'} is calling you`,
+      [
+        {
+          text: 'Decline',
+          style: 'cancel',
+          onPress: () => rejectCall(callData.callId),
+        },
+        {
+          text: 'Answer',
+          onPress: () => {
+            // Navigation should be handled by the component consuming this context
+            console.log('User wants to answer call:', callData.callId)
+          },
+        },
+      ]
+    )
+
+    // Auto-dismiss after 30 seconds
     setTimeout(() => {
       setCallNotification(null)
       setIncomingCall(null)
@@ -114,13 +206,15 @@ const ChatsProvider = ({ children }) => {
   }
 
   const handleCallEnded = (data) => {
-    console.log('📱 Call ended:', data)
+    console.log('Call ended notification:', data)
     setIncomingCall(null)
     setCallNotification(null)
+
+    Alert.alert('Call Ended', `Call ended after ${data.duration || 0} seconds`)
   }
 
   const handleNewMessage = (messageData) => {
-    console.log('💬 New message received:', messageData)
+    console.log('New message received:', messageData)
     const { chatId, message } = messageData
     setMessages((prev) => ({
       ...prev,
@@ -129,8 +223,7 @@ const ChatsProvider = ({ children }) => {
   }
 
   const handleTyping = (typingData) => {
-    console.log('⌨️ User typing:', typingData)
-    // Handle typing indicators if needed
+    console.log('User typing:', typingData)
   }
 
   /** ──────────────── CHATS ──────────────── **/
@@ -141,7 +234,7 @@ const ChatsProvider = ({ children }) => {
       const data = await get(`${API_URL}/list-chats`)
       setChats(data)
     } catch (error) {
-      console.error('❌ Failed to load chats:', error)
+      console.error('Failed to load chats:', error)
     } finally {
       setLoading(false)
     }
@@ -160,7 +253,7 @@ const ChatsProvider = ({ children }) => {
         if (data.success) setChats((prev) => [...prev, data.chat])
         return data
       } catch (error) {
-        console.error('❌ createChat error:', error)
+        console.error('createChat error:', error)
         return { success: false, error }
       }
     },
@@ -173,7 +266,7 @@ const ChatsProvider = ({ children }) => {
       const data = await get(`${API_URL}/list-users`)
       setUsers(data)
     } catch (error) {
-      console.error('❌ Failed to load users:', error)
+      console.error('Failed to load users:', error)
     }
   }, [get, isReady])
 
@@ -189,7 +282,7 @@ const ChatsProvider = ({ children }) => {
         setMessages((prev) => ({ ...prev, [chatId]: sorted }))
         return sorted
       } catch (error) {
-        console.error('❌ Failed to load messages:', error)
+        console.error('Failed to load messages:', error)
         return []
       }
     },
@@ -236,7 +329,7 @@ const ChatsProvider = ({ children }) => {
 
         return data
       } catch (error) {
-        console.error('❌ sendMessage error:', error)
+        console.error('sendMessage error:', error)
         return { success: false, error }
       }
     },
@@ -255,25 +348,33 @@ const ChatsProvider = ({ children }) => {
         return { success: false, error: 'Auth not ready' }
       }
 
+      if (!wsConnected) {
+        Alert.alert(
+          'Connection Error',
+          'Not connected to server. Please try again.'
+        )
+        return { success: false, error: 'WebSocket not connected' }
+      }
+
       try {
-        console.log('🔄 Initiating call:', { chatId, callType, recipientId })
+        console.log('Initiating call:', { chatId, callType, recipientId })
         const data = await post(`${API_URL}/initiate-call`, {
           chatId,
           callType,
           recipientId,
         })
 
-        console.log('📞 Call initiation result:', data)
+        console.log('Call initiation result:', data)
         return data
       } catch (error) {
-        console.error('❌ initiateCall error:', error)
+        console.error('initiateCall error:', error)
         return {
           success: false,
           error: error.message || 'Failed to initiate call',
         }
       }
     },
-    [isReady, post, user?.uid]
+    [isReady, post, user?.uid, wsConnected]
   )
 
   const answerCall = useCallback(
@@ -283,20 +384,19 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('📱 Answering call:', { callId, accepted })
+        console.log('Answering call:', { callId, accepted })
         const data = await post(`${API_URL}/answer-call/${callId}`, {
           accepted,
         })
 
         if (accepted && data.success) {
-          // Clear call notification
           setIncomingCall(null)
           setCallNotification(null)
         }
 
         return data
       } catch (error) {
-        console.error('❌ answerCall error:', error)
+        console.error('answerCall error:', error)
         return {
           success: false,
           error: error.message || 'Failed to answer call',
@@ -323,16 +423,15 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('🔴 Ending call:', callId)
+        console.log('Ending call:', callId)
         const data = await post(`${API_URL}/end-call/${callId}`)
 
-        // Clear call states
         setIncomingCall(null)
         setCallNotification(null)
 
         return data
       } catch (error) {
-        console.error('❌ endCall error:', error)
+        console.error('endCall error:', error)
         return { success: false, error: error.message || 'Failed to end call' }
       }
     },
@@ -350,7 +449,7 @@ const ChatsProvider = ({ children }) => {
         }
         return []
       } catch (error) {
-        console.error('❌ getCallHistory error:', error)
+        console.error('getCallHistory error:', error)
         return []
       }
     },
@@ -389,7 +488,6 @@ const ChatsProvider = ({ children }) => {
   const getUnreadMessageCount = useCallback(
     (chatId) => {
       const chatMessages = messages[chatId] || []
-      // This would need to be implemented based on your read receipt system
       return chatMessages.filter(
         (msg) => !msg.read && msg.senderId !== user?.uid
       ).length
@@ -405,15 +503,6 @@ const ChatsProvider = ({ children }) => {
     }
   }, [isReady, loadChats, loadUsers])
 
-  // Cleanup on unmount
-  useEffect(() => {
-    return () => {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-    }
-  }, [])
-
   const contextValue = {
     // State
     chats,
@@ -423,6 +512,7 @@ const ChatsProvider = ({ children }) => {
     calls,
     incomingCall,
     callNotification,
+    wsConnected,
 
     // Chat functions
     reloadChats: loadChats,

@@ -21,7 +21,7 @@ const Container = styled.View`
 `
 
 const HeaderGradient = styled(LinearGradient).attrs({
-  colors: ['#667eea', '#764ba2'],
+  colors: ['#0046FF', '#0046FF'],
   start: { x: 0, y: 0 },
   end: { x: 1, y: 1 },
 })`
@@ -70,7 +70,7 @@ const SearchContainer = styled.View`
   border-radius: 16px;
   flex-direction: row;
   align-items: center;
-  shadow-color: #667eea;
+  shadow-color: #0046ff;
   shadow-offset: 0px 4px;
   shadow-opacity: 0.15;
   shadow-radius: 12px;
@@ -118,7 +118,7 @@ const ChatItemGlow = styled.View`
   left: 0;
   right: 0;
   height: 2px;
-  background-color: ${(props) => props.color || '#667eea'};
+  background-color: ${(props) => props.color || '#0046FF'};
   opacity: 0.6;
 `
 
@@ -131,11 +131,11 @@ const Avatar = styled.View`
   width: 56px;
   height: 56px;
   border-radius: 28px;
-  background-color: ${(props) => props.color || '#667eea'};
+  background-color: ${(props) => props.color || '#0046FF'};
   justify-content: center;
   align-items: center;
   border: 3px solid white;
-  shadow-color: ${(props) => props.color || '#667eea'};
+  shadow-color: ${(props) => props.color || '#0046FF'};
   shadow-offset: 0px 2px;
   shadow-opacity: 0.3;
   shadow-radius: 4px;
@@ -245,7 +245,7 @@ const FloatingActionButton = styled.TouchableOpacity`
   border-radius: 32px;
   justify-content: center;
   align-items: center;
-  shadow-color: #667eea;
+  shadow-color: #0046ff;
   shadow-offset: 0px 6px;
   shadow-opacity: 0.3;
   shadow-radius: 8px;
@@ -253,7 +253,7 @@ const FloatingActionButton = styled.TouchableOpacity`
 `
 
 const FABGradient = styled(LinearGradient).attrs({
-  colors: ['#667eea', '#764ba2'],
+  colors: ['#0046FF', '#0046FF'],
   start: { x: 0, y: 0 },
   end: { x: 1, y: 1 },
 })`
@@ -298,10 +298,10 @@ const EmptyStateText = styled.Text`
 `
 
 const EmptyStateButton = styled.TouchableOpacity`
-  background-color: #667eea;
+  background-color: #0046ff;
   padding: 16px 32px;
   border-radius: 16px;
-  shadow-color: #667eea;
+  shadow-color: #0046ff;
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 6px;
@@ -325,7 +325,7 @@ const LoadingIcon = styled(Animated.View)`
   width: 80px;
   height: 80px;
   border-radius: 40px;
-  background-color: #667eea;
+  background-color: #0046ff;
   justify-content: center;
   align-items: center;
   margin-bottom: 24px;
@@ -408,7 +408,7 @@ const getLastMessageText = (lastMessage) => {
 // Helper functions
 const getUserColor = (userId) => {
   const colors = [
-    '#667eea',
+    '#0046FF',
     '#f59e0b',
     '#10b981',
     '#8b5cf6',
@@ -604,7 +604,7 @@ export default function ChatsScreen({ navigation }) {
   if (loading && chats.length === 0) {
     return (
       <Container>
-        <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+        <StatusBar barStyle="light-content" backgroundColor="#0046FF" />
         <HeaderGradient>
           <HeaderContent>
             <HeaderLeft>
@@ -624,7 +624,7 @@ export default function ChatsScreen({ navigation }) {
   if (!chatsContext) {
     return (
       <Container>
-        <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+        <StatusBar barStyle="light-content" backgroundColor="#0046FF" />
         <HeaderGradient>
           <HeaderContent>
             <HeaderLeft>
@@ -640,7 +640,7 @@ export default function ChatsScreen({ navigation }) {
 
   return (
     <Container>
-      <StatusBar barStyle="light-content" backgroundColor="#667eea" />
+      <StatusBar barStyle="light-content" backgroundColor="#0046FF" />
 
       <HeaderGradient>
         <HeaderContent>
@@ -688,8 +688,8 @@ export default function ChatsScreen({ navigation }) {
           <RefreshControl
             refreshing={refreshing}
             onRefresh={handleRefresh}
-            colors={['#667eea']}
-            tintColor="#667eea"
+            colors={['#0046FF']}
+            tintColor="#0046FF"
             progressBackgroundColor="white"
           />
         }

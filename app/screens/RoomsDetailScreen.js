@@ -36,7 +36,7 @@ const RoomAvatar = styled.View`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: ${(props) => props.color || '#667eea'};
+  background-color: ${(props) => props.color || '#0046FF'};
   align-items: center;
   justify-content: center;
   margin-right: 12px;
@@ -104,7 +104,7 @@ const SenderAvatar = styled.View`
   width: 28px;
   height: 28px;
   border-radius: 14px;
-  background-color: ${(props) => props.color || '#667eea'};
+  background-color: ${(props) => props.color || '#0046FF'};
   align-items: center;
   justify-content: center;
   margin-right: 8px;
@@ -130,14 +130,14 @@ const MessageTime = styled.Text`
 
 const MessageContent = styled.View`
   background-color: ${(props) =>
-    props.isOwn ? '#667eea' : 'rgba(255, 255, 255, 0.08)'};
+    props.isOwn ? '#0046FF' : 'rgba(255, 255, 255, 0.08)'};
   padding: 12px 16px;
   border-radius: 18px;
   border-top-left-radius: ${(props) => (props.isOwn ? '18px' : '4px')};
   border-top-right-radius: ${(props) => (props.isOwn ? '4px' : '18px')};
   border-width: 1px;
   border-color: ${(props) =>
-    props.isOwn ? '#667eea' : 'rgba(255, 255, 255, 0.1)'};
+    props.isOwn ? '#0046FF' : 'rgba(255, 255, 255, 0.1)'};
 `
 
 const MessageText = styled.Text`
@@ -191,10 +191,10 @@ const SendButton = styled.TouchableOpacity`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: #667eea;
+  background-color: #0046ff;
   align-items: center;
   justify-content: center;
-  shadow-color: #667eea;
+  shadow-color: #0046ff;
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 8px;
@@ -225,7 +225,7 @@ export default function RoomsDetailScreen({ route, navigation }) {
     room: {
       id: 1,
       name: 'React Developers',
-      color: '#667eea',
+      color: '#0046FF',
       members: 1247,
       onlineMembers: 89,
     },
@@ -256,7 +256,7 @@ export default function RoomsDetailScreen({ route, navigation }) {
     {
       id: 3,
       sender: 'You',
-      senderColor: '#667eea',
+      senderColor: '#0046FF',
       content:
         "I'd be interested to see the accessibility features. Are you following WCAG guidelines?",
       time: '2:38 PM',
@@ -300,7 +300,7 @@ export default function RoomsDetailScreen({ route, navigation }) {
       const newMessage = {
         id: messages.length + 1,
         sender: 'You',
-        senderColor: '#667eea',
+        senderColor: '#0046FF',
         content: message.trim(),
         time: new Date().toLocaleTimeString([], {
           hour: '2-digit',
