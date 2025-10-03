@@ -453,11 +453,12 @@ export default function NewChatScreen({ navigation }) {
     }
 
     try {
-      // Check if chat already exists
+      const personUid = person.firebaseUid || person._id || person.id
       const existingChat = chats.find(
         (chat) =>
           chat.participants.length === 2 &&
-          chat.participants.includes(person._id || person.id)
+          chat.participants.includes(personUid) &&
+          chat.participants.includes(user?.uid)
       )
 
       if (existingChat) {
