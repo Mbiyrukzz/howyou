@@ -40,11 +40,11 @@ const Logo = styled.View`
   width: 80px;
   height: 80px;
   border-radius: 40px;
-  background-color: #0046ff;
+  background-color: #3396d3;
   align-items: center;
   justify-content: center;
   margin-bottom: 24px;
-  shadow-color: #0046ff;
+  shadow-color: #3396d3;
   shadow-offset: 0px 8px;
   shadow-opacity: 0.3;
   shadow-radius: 20px;
@@ -103,7 +103,7 @@ const Input = styled.TextInput`
   color: white;
   border-width: 2px;
   border-color: ${(props) =>
-    props.focused ? '#0046FF' : 'rgba(255, 255, 255, 0.2)'};
+    props.focused ? '#3396D3' : 'rgba(255, 255, 255, 0.2)'};
 `
 
 const InputIcon = styled.View`
@@ -157,12 +157,12 @@ const RequirementText = styled.Text`
 `
 
 const SignupButton = styled.TouchableOpacity`
-  background-color: #0046ff;
+  background-color: #3396d3;
   border-radius: 16px;
   padding: 18px;
   align-items: center;
   margin-top: 10px;
-  shadow-color: #0046ff;
+  shadow-color: #3396d3;
   shadow-offset: 0px 8px;
   shadow-opacity: 0.3;
   shadow-radius: 20px;
@@ -235,7 +235,7 @@ const LoginLink = styled.TouchableOpacity`
 `
 
 const LoginLinkText = styled.Text`
-  color: #0046ff;
+  color: #3396d3;
   font-size: 16px;
   font-weight: 700;
 `
@@ -253,7 +253,7 @@ const TermsText = styled.Text`
 `
 
 const TermsLink = styled.Text`
-  color: #0046ff;
+  color: #3396d3;
   font-weight: 600;
 `
 
@@ -482,7 +482,7 @@ export default function SignupScreen({ navigation }) {
                   <Ionicons
                     name="person-outline"
                     size={20}
-                    color={nameFocused ? '#0046FF' : 'rgba(255, 255, 255, 0.6)'}
+                    color={nameFocused ? '#3396D3' : 'rgba(255, 255, 255, 0.6)'}
                   />
                 </InputIcon>
                 <Input
@@ -507,7 +507,7 @@ export default function SignupScreen({ navigation }) {
                     name="mail-outline"
                     size={20}
                     color={
-                      emailFocused ? '#0046FF' : 'rgba(255, 255, 255, 0.6)'
+                      emailFocused ? '#3396D3' : 'rgba(255, 255, 255, 0.6)'
                     }
                   />
                 </InputIcon>
@@ -534,7 +534,7 @@ export default function SignupScreen({ navigation }) {
                     name="lock-closed-outline"
                     size={20}
                     color={
-                      passwordFocused ? '#0046FF' : 'rgba(255, 255, 255, 0.6)'
+                      passwordFocused ? '#3396D3' : 'rgba(255, 255, 255, 0.6)'
                     }
                   />
                 </InputIcon>
@@ -594,7 +594,7 @@ export default function SignupScreen({ navigation }) {
                     size={20}
                     color={
                       confirmPasswordFocused
-                        ? '#0046FF'
+                        ? '#3396D3'
                         : 'rgba(255, 255, 255, 0.6)'
                     }
                   />

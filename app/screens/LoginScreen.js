@@ -27,11 +27,11 @@ const Logo = styled.View`
   width: 80px;
   height: 80px;
   border-radius: 40px;
-  background-color: #0046ff;
+  background-color: #3396d3;
   align-items: center;
   justify-content: center;
   margin-bottom: 24px;
-  shadow-color: #0046ff;
+  shadow-color: #3396d3;
   shadow-offset: 0px 8px;
   shadow-opacity: 0.3;
   shadow-radius: 20px;
@@ -89,7 +89,7 @@ const Input = styled.TextInput`
   color: white;
   border-width: 2px;
   border-color: ${(props) =>
-    props.focused ? '#0046FF' : 'rgba(255, 255, 255, 0.2)'};
+    props.focused ? '#3396D3' : 'rgba(255, 255, 255, 0.2)'};
 `
 
 const InputIcon = styled.View`
@@ -100,12 +100,12 @@ const InputIcon = styled.View`
 `
 
 const LoginButton = styled.TouchableOpacity`
-  background-color: #0046ff;
+  background-color: #3396d3;
   border-radius: 16px;
   padding: 18px;
   align-items: center;
   margin-top: 10px;
-  shadow-color: #0046ff;
+  shadow-color: #3396d3;
   shadow-offset: 0px 8px;
   shadow-opacity: 0.3;
   shadow-radius: 20px;
@@ -178,7 +178,7 @@ const SignupLink = styled.TouchableOpacity`
 `
 
 const SignupLinkText = styled.Text`
-  color: #0046ff;
+  color: #3396d3;
   font-size: 16px;
   font-weight: 700;
 `
@@ -290,7 +290,7 @@ export default function LoginScreen({ navigation }) {
                     name="mail-outline"
                     size={20}
                     color={
-                      emailFocused ? '#0046FF' : 'rgba(255, 255, 255, 0.6)'
+                      emailFocused ? '#3396D3' : 'rgba(255, 255, 255, 0.6)'
                     }
                   />
                 </InputIcon>
@@ -317,7 +317,7 @@ export default function LoginScreen({ navigation }) {
                     name="lock-closed-outline"
                     size={20}
                     color={
-                      passwordFocused ? '#0046FF' : 'rgba(255, 255, 255, 0.6)'
+                      passwordFocused ? '#3396D3' : 'rgba(255, 255, 255, 0.6)'
                     }
                   />
                 </InputIcon>

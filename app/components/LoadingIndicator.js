@@ -71,7 +71,7 @@ const SpinnerRing = styled.View`
   border-radius: ${(props) => (props.size || 60) / 2}px;
   border-width: 4px;
   border-color: transparent;
-  border-top-color: #0046ff;
+  border-top-color: #3396d3;
   border-right-color: rgba(102, 126, 234, 0.3);
 `
 
@@ -82,7 +82,7 @@ const AnimatedSpinnerRing = styled(Animated.View)`
   border-radius: ${(props) => (props.size || 60) / 2}px;
   border-width: 4px;
   border-color: transparent;
-  border-top-color: #0046ff;
+  border-top-color: #3396d3;
   border-right-color: rgba(102, 126, 234, 0.3);
 `
 
@@ -97,7 +97,7 @@ const Dot = styled(Animated.View)`
   width: ${(props) => props.size || 12}px;
   height: ${(props) => props.size || 12}px;
   border-radius: ${(props) => (props.size || 12) / 2}px;
-  background-color: #0046ff;
+  background-color: #3396d3;
   margin: 0 4px;
 `
 
@@ -111,7 +111,7 @@ const PulseCircle = styled(Animated.View)`
   width: ${(props) => props.size || 60}px;
   height: ${(props) => props.size || 60}px;
   border-radius: ${(props) => (props.size || 60) / 2}px;
-  background-color: #0046ff;
+  background-color: #3396d3;
 `
 
 const PulseRing = styled(Animated.View)`
@@ -133,7 +133,7 @@ const WaveContainer = styled.View`
 
 const WaveBar = styled(Animated.View)`
   width: 4px;
-  background-color: #0046ff;
+  background-color: #3396d3;
   margin: 0 2px;
   border-radius: 2px;
 `

@@ -252,6 +252,8 @@ const ChatsProvider = ({ children }) => {
         })
         if (data.success) setChats((prev) => [...prev, data.chat])
         return data
+
+        console.log('🔍 Request body to /create-chat:', { participants, name })
       } catch (error) {
         console.error('createChat error:', error)
         return { success: false, error }

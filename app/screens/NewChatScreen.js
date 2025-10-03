@@ -56,7 +56,7 @@ const Tab = styled.TouchableOpacity`
   padding: 12px;
   border-radius: 8px;
   align-items: center;
-  background-color: ${(props) => (props.active ? '#0046FF' : 'transparent')};
+  background-color: ${(props) => (props.active ? '#3396D3' : 'transparent')};
 `
 
 const TabText = styled.Text`
@@ -122,7 +122,7 @@ const CreateIcon = styled.View`
   width: 60px;
   height: 60px;
   border-radius: 30px;
-  background-color: #0046ff;
+  background-color: #3396d3;
   align-items: center;
   justify-content: center;
   margin-bottom: 12px;
@@ -164,7 +164,7 @@ const UserAvatar = styled.View`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: ${(props) => props.color || '#0046FF'};
+  background-color: ${(props) => props.color || '#3396D3'};
   align-items: center;
   justify-content: center;
   margin-right: 16px;
@@ -294,7 +294,7 @@ const ModalButton = styled.TouchableOpacity`
   border-radius: 12px;
   align-items: center;
   background-color: ${(props) =>
-    props.primary ? '#0046FF' : 'rgba(255, 255, 255, 0.1)'};
+    props.primary ? '#3396D3' : 'rgba(255, 255, 255, 0.1)'};
 `
 
 const ModalButtonText = styled.Text`
@@ -312,12 +312,12 @@ const CategoryContainer = styled.View`
 
 const CategoryChip = styled.TouchableOpacity`
   background-color: ${(props) =>
-    props.selected ? '#0046FF' : 'rgba(255, 255, 255, 0.1)'};
+    props.selected ? '#3396D3' : 'rgba(255, 255, 255, 0.1)'};
   padding: 8px 16px;
   border-radius: 20px;
   border-width: 1px;
   border-color: ${(props) =>
-    props.selected ? '#0046FF' : 'rgba(255, 255, 255, 0.2)'};
+    props.selected ? '#3396D3' : 'rgba(255, 255, 255, 0.2)'};
 `
 
 const CategoryText = styled.Text`
@@ -353,7 +353,7 @@ const EmptyText = styled.Text`
 // Helper function to generate consistent user colors
 const getUserColor = (userId) => {
   const colors = [
-    '#0046FF',
+    '#3396D3',
     '#f59e0b',
     '#10b981',
     '#8b5cf6',
