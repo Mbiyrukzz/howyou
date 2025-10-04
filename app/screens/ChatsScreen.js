@@ -4,7 +4,6 @@ import {
   TouchableOpacity,
   StatusBar,
   RefreshControl,
-  Animated,
   Dimensions,
 } from 'react-native'
 import styled from 'styled-components/native'
@@ -12,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
+import LoadingIndicator from '../components/LoadingIndicator'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -108,92 +108,17 @@ const ChatItem = styled.TouchableOpacity`
   shadow-radius: 8px;
   elevation: 4;
   border: 1px solid #f1f5f9;
-  position: relative;
-  overflow: hidden;
-`
-
-const ChatItemGlow = styled.View`
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background-color: ${(props) => props.color || '#3396D3'};
-  opacity: 0.6;
-`
-
-const AvatarContainer = styled.View`
-  position: relative;
-  margin-right: 16px;
-`
-
-const Avatar = styled.View`
-  width: 56px;
-  height: 56px;
-  border-radius: 28px;
-  background-color: ${(props) => props.color || '#3396D3'};
-  justify-content: center;
-  align-items: center;
-  border: 3px solid white;
-  shadow-color: ${(props) => props.color || '#3396D3'};
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.3;
-  shadow-radius: 4px;
-  elevation: 3;
-`
-
-const AvatarText = styled.Text`
-  color: white;
-  font-size: 20px;
-  font-weight: 800;
-  letter-spacing: 0.5px;
-`
-
-const OnlineIndicator = styled.View`
-  position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 18px;
-  height: 18px;
-  border-radius: 9px;
-  background-color: #10b981;
-  border: 3px solid white;
-  shadow-color: #10b981;
-  shadow-offset: 0px 1px;
-  shadow-opacity: 0.5;
-  shadow-radius: 2px;
-  elevation: 2;
 `
 
 const ChatInfo = styled.View`
   flex: 1;
 `
 
-const ChatNameRow = styled.View`
-  flex-direction: row;
-  align-items: center;
-  margin-bottom: 6px;
-`
-
 const ChatName = styled.Text`
   font-size: 18px;
   font-weight: 700;
   color: #1e293b;
-  flex: 1;
-`
-
-const ChatBadge = styled.View`
-  background-color: #f59e0b;
-  padding: 4px 8px;
-  border-radius: 12px;
-  margin-left: 8px;
-`
-
-const ChatBadgeText = styled.Text`
-  color: white;
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
+  margin-bottom: 6px;
 `
 
 const LastMessage = styled.Text`
@@ -201,39 +126,6 @@ const LastMessage = styled.Text`
   color: #64748b;
   line-height: 20px;
   font-weight: 500;
-`
-
-const ChatMeta = styled.View`
-  align-items: flex-end;
-  margin-left: 12px;
-`
-
-const TimeStamp = styled.Text`
-  font-size: 13px;
-  color: #94a3b8;
-  margin-bottom: 6px;
-  font-weight: 600;
-`
-
-const UnreadBadge = styled.View`
-  background-color: #ef4444;
-  border-radius: 12px;
-  min-width: 24px;
-  height: 24px;
-  justify-content: center;
-  align-items: center;
-  padding-horizontal: 8px;
-  shadow-color: #ef4444;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.3;
-  shadow-radius: 3px;
-  elevation: 3;
-`
-
-const UnreadText = styled.Text`
-  color: white;
-  font-size: 12px;
-  font-weight: 800;
 `
 
 const FloatingActionButton = styled.TouchableOpacity`
@@ -314,29 +206,6 @@ const EmptyStateButtonText = styled.Text`
   font-weight: 700;
 `
 
-const LoadingContainer = styled.View`
-  flex: 1;
-  justify-content: center;
-  align-items: center;
-  padding: 48px;
-`
-
-const LoadingIcon = styled(Animated.View)`
-  width: 80px;
-  height: 80px;
-  border-radius: 40px;
-  background-color: #3396d3;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 24px;
-`
-
-const LoadingText = styled.Text`
-  font-size: 18px;
-  color: #64748b;
-  font-weight: 600;
-`
-
 const ErrorContainer = styled.View`
   flex: 1;
   justify-content: center;
@@ -387,77 +256,16 @@ const RetryButtonText = styled.Text`
   font-weight: 700;
 `
 
-// Helper function to extract text from lastMessage (handles both string and object formats)
+// Helper functions
 const getLastMessageText = (lastMessage) => {
   if (!lastMessage) return null
-
-  // If it's a string, return it directly
-  if (typeof lastMessage === 'string') {
-    return lastMessage
-  }
-
-  // If it's an object with content property, return the content
+  if (typeof lastMessage === 'string') return lastMessage
   if (typeof lastMessage === 'object' && lastMessage.content) {
     return lastMessage.content
   }
-
-  // Fallback for any other format
   return null
 }
 
-// Helper functions
-const getUserColor = (userId) => {
-  const colors = [
-    '#3396D3',
-    '#f59e0b',
-    '#10b981',
-    '#8b5cf6',
-    '#ef4444',
-    '#06b6d4',
-    '#84cc16',
-    '#f97316',
-    '#ec4899',
-    '#6366f1',
-    '#14b8a6',
-    '#f59e0b',
-  ]
-  const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0
-  return colors[index]
-}
-
-const getInitials = (name) => {
-  if (!name) return '?'
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .substring(0, 2)
-}
-
-const formatTimestamp = (timestamp) => {
-  if (!timestamp) return ''
-
-  const date = new Date(timestamp)
-  const now = new Date()
-  const diffTime = now - date
-  const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24))
-  const diffMinutes = Math.floor(diffTime / (1000 * 60))
-
-  if (diffMinutes < 1) return 'now'
-  if (diffMinutes < 60) return `${diffMinutes}m`
-  if (diffDays === 0) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
-  } else if (diffDays === 1) {
-    return 'Yesterday'
-  } else if (diffDays < 7) {
-    return date.toLocaleDateString([], { weekday: 'short' })
-  } else {
-    return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
-  }
-}
-
-// Helper: find user regardless of which id field is used
 const findUserByAnyId = (users, id) => {
   if (!users || !id) return null
   return (
@@ -474,7 +282,6 @@ const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
     : null
 
   const chatName = otherUser?.name || 'Unknown'
-
   const lastMsg = item.lastMessage
   const isOwn = lastMsg?.senderId === currentUserId
   const preview = lastMsg
@@ -494,30 +301,11 @@ const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
 export default function ChatsScreen({ navigation }) {
   const [searchText, setSearchText] = useState('')
   const [refreshing, setRefreshing] = useState(false)
-  const loadingRotation = new Animated.Value(0)
 
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
 
   const { chats = [], loading, users = [], reloadChats } = chatsContext || {}
-
-  // Animate loading icon
-  React.useEffect(() => {
-    if (loading) {
-      Animated.loop(
-        Animated.timing(loadingRotation, {
-          toValue: 1,
-          duration: 2000,
-          useNativeDriver: true,
-        })
-      ).start()
-    }
-  }, [loading])
-
-  const rotation = loadingRotation.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['0deg', '360deg'],
-  })
 
   // Filter chats based on search
   const filteredChats = chats.filter((chat) => {
@@ -576,15 +364,6 @@ export default function ChatsScreen({ navigation }) {
     </EmptyStateContainer>
   )
 
-  const renderLoadingState = () => (
-    <LoadingContainer>
-      <LoadingIcon style={{ transform: [{ rotate: rotation }] }}>
-        <Ionicons name="refresh" size={32} color="white" />
-      </LoadingIcon>
-      <LoadingText>Loading your conversations...</LoadingText>
-    </LoadingContainer>
-  )
-
   const renderErrorState = () => (
     <ErrorContainer>
       <ErrorIcon>
@@ -601,6 +380,7 @@ export default function ChatsScreen({ navigation }) {
     </ErrorContainer>
   )
 
+  // Show loading indicator when initially loading
   if (loading && chats.length === 0) {
     return (
       <Container>
@@ -616,7 +396,14 @@ export default function ChatsScreen({ navigation }) {
             </ProfileButton>
           </HeaderContent>
         </HeaderGradient>
-        {renderLoadingState()}
+        <LoadingIndicator
+          type="pulse"
+          size="large"
+          showText={true}
+          text="Loading conversations..."
+          showCard={true}
+          subtext="Please wait while we sync your messages"
+        />
       </Container>
     )
   }

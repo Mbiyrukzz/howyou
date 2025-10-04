@@ -27,7 +27,7 @@ const useAuthedRequest = () => {
           setIsReady(true)
         }
       } catch (error) {
-        console.error('❌ Error fetching token:', error)
+        console.error('Error fetching token:', error)
         if (isMounted) {
           setIsReady(false)
         }
@@ -53,7 +53,41 @@ const useAuthedRequest = () => {
     [token]
   )
 
-  // CRUD functions using `request`
+  // Upload function for multipart/form-data
+  const upload = useCallback(
+    async (url, formData) => {
+      if (!token) throw new Error('No auth token available')
+
+      try {
+        console.log('Uploading to:', url)
+
+        // Use fetch instead of axios for better React Native FormData support
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            // Don't set Content-Type - let browser/RN set it with boundary
+          },
+          body: formData,
+        })
+
+        const data = await response.json()
+        console.log('Upload response:', data)
+
+        if (!response.ok) {
+          throw new Error(data.error || 'Upload failed')
+        }
+
+        return data
+      } catch (error) {
+        console.error('Upload error:', error)
+        throw error
+      }
+    },
+    [token]
+  )
+
+  // CRUD functions
   const get = useCallback((url) => request('get', url), [request])
   const post = useCallback((url, body) => request('post', url, body), [request])
   const put = useCallback((url, body) => request('put', url, body), [request])
@@ -62,7 +96,7 @@ const useAuthedRequest = () => {
     [request]
   )
 
-  return { isReady, get, post, put, del }
+  return { isReady, get, post, put, del, upload }
 }
 
 export default useAuthedRequest

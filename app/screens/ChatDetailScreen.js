@@ -20,6 +20,7 @@ import { Camera } from 'expo-camera'
 import ChatsContext from '../contexts/ChatsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
+import LoadingIndicator from '../components/LoadingIndicator'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -660,19 +661,30 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const sendImageMessage = async (imageAsset) => {
     try {
-      setSending(true)
-      const file = {
-        uri: imageAsset.uri,
-        name: `image_${Date.now()}.jpg`,
-        type: 'image/jpeg',
+      if (!imageAsset?.uri) {
+        Alert.alert('Error', 'Invalid image selected')
+        return
       }
 
-      const result = await contextSendMessage({
-        chatId,
-        content: message.trim(),
-        files: [file],
-        messageType: 'image',
+      setSending(true)
+
+      const file = {
+        uri:
+          Platform.OS === 'android'
+            ? asset.uri
+            : asset.uri.replace('file://', ''),
+        name: asset.name || `file_${Date.now()}`,
+        type: asset.mimeType || 'application/octet-stream',
+      }
+      console.log('File object:', JSON.stringify(file, null, 2))
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
       })
+      console.log('ImagePicker result:', JSON.stringify(result, null, 2))
 
       if (result.success) {
         setMessages((prev) => [...prev, result.message])
@@ -682,53 +694,75 @@ export default function ChatDetailScreen({ navigation, route }) {
           100
         )
       } else {
-        setError('Failed to send image')
+        Alert.alert('Error', result.error || 'Failed to send image')
       }
     } catch (err) {
       console.error('Send image error:', err)
-      setError('Failed to send image')
+      Alert.alert('Error', 'Failed to send image')
     } finally {
       setSending(false)
     }
   }
 
-  /* ---------- file picker ---------- */
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
-        multiple: true,
+        multiple: false,
+      })
+      console.log('DocumentPicker result:', JSON.stringify(result, null, 2))
+
+      // Guard clause: ensure user picked something valid
+      if (result.canceled || !result.assets?.length) {
+        console.log('File picking canceled or empty.')
+        return
+      }
+
+      const asset = result.assets[0]
+      if (!asset?.uri) {
+        Alert.alert('Error', 'Invalid file selected')
+        return
+      }
+
+      setSending(true)
+
+      const file = {
+        uri: asset.uri,
+        name: asset.name || `file_${Date.now()}`,
+        type: asset.mimeType || 'application/octet-stream',
+      }
+
+      console.log('Sending file:', file)
+
+      let messageType = 'file'
+      if (file.type.startsWith('image/')) messageType = 'image'
+      else if (file.type.startsWith('video/')) messageType = 'video'
+      else if (file.type.startsWith('audio/')) messageType = 'audio'
+
+      const resultSend = await contextSendMessage({
+        chatId,
+        content: message.trim() || undefined, // avoid empty string
+        files: [file],
+        messageType,
       })
 
-      if (!result.canceled && result.assets) {
-        const files = result.assets.map((asset) => ({
-          uri: asset.uri,
-          name: asset.name,
-          type: asset.mimeType,
-        }))
+      console.log('Send result:', resultSend)
 
-        const messageType = files[0].type.split('/')[0] // e.g., 'image', 'video', 'audio'
-        const resultSend = await contextSendMessage({
-          chatId,
-          content: message.trim(),
-          files,
-          messageType,
-        })
-
-        if (resultSend.success) {
-          setMessages((prev) => [...prev, resultSend.message])
-          setMessage('')
-          setTimeout(
-            () => flatListRef.current?.scrollToEnd({ animated: true }),
-            100
-          )
-        } else {
-          setError('Failed to send file')
-        }
+      if (resultSend.success) {
+        setMessages((prev) => [...prev, resultSend.message])
+        setMessage('')
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100
+        )
+      } else {
+        Alert.alert('Error', resultSend.error || 'Failed to send file')
       }
     } catch (err) {
       console.error('File picker error:', err)
-      setError('Failed to pick file')
+      Alert.alert('Error', 'Failed to pick file')
+    } finally {
+      setSending(false)
     }
   }
 
@@ -879,7 +913,14 @@ export default function ChatDetailScreen({ navigation, route }) {
           </HeaderInfo>
         </Header>
         <LoadingContainer>
-          <LoadingTextContainer>Loading messages...</LoadingTextContainer>
+          <LoadingIndicator
+            type="pulse"
+            size="large"
+            showText={true}
+            text="Loading messages..."
+            showCard={true}
+            subtext="Please wait while we sync your messages"
+          />
         </LoadingContainer>
       </Container>
     )

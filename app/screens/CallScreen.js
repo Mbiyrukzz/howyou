@@ -546,14 +546,55 @@ const CallScreen = () => {
       .padStart(2, '0')}`
   }
 
+  // Update the renderLocalVideo function in CallScreen.js
+
   const renderLocalVideo = () => {
-    if (!localStream || !isVideoEnabled || Platform.OS === 'web') return null
+    if (!localStream) return null
+
+    // For web platform
+    if (Platform.OS === 'web') {
+      return (
+        <LocalVideoContainer>
+          <video
+            ref={(video) => {
+              if (video && localStream) {
+                video.srcObject = localStream
+              }
+            }}
+            autoPlay
+            playsInline
+            muted
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              transform: isFrontCamera ? 'scaleX(-1)' : 'none', // Mirror front camera
+            }}
+          />
+        </LocalVideoContainer>
+      )
+    }
+
+    // For React Native
+    if (!isVideoEnabled) {
+      return (
+        <LocalVideoContainer>
+          <LocalVideoPlaceholder>
+            <Ionicons name="videocam-off" size={32} color="#fff" />
+          </LocalVideoPlaceholder>
+        </LocalVideoContainer>
+      )
+    }
 
     return (
       <LocalVideoContainer>
         <Video
           source={{ uri: localStream.toURL() }}
-          style={{ width: '100%', height: '100%' }}
+          style={{
+            width: '100%',
+            height: '100%',
+            transform: isFrontCamera ? [{ scaleX: -1 }] : [], // Mirror front camera
+          }}
           shouldPlay
           isMuted
           resizeMode="cover"
@@ -562,37 +603,66 @@ const CallScreen = () => {
     )
   }
 
+  // Update renderRemoteVideo for web support
   const renderRemoteVideo = () => {
-    if (!remoteStream || Platform.OS === 'web') {
+    // Show placeholder when not connected or no remote stream
+    if (!remoteStream || !isConnected) {
       return (
         <PlaceholderView>
           <PlaceholderAvatar>
             {remoteUserName?.[0]?.toUpperCase() || '?'}
           </PlaceholderAvatar>
           <PlaceholderText>
-            {isConnected ? 'Camera off' : `Connecting to ${remoteUserName}...`}
+            {callStatus === 'connecting'
+              ? `Connecting to ${remoteUserName}...`
+              : callStatus === 'connected'
+              ? 'Waiting for video...'
+              : callStatus}
           </PlaceholderText>
         </PlaceholderView>
       )
     }
 
-    if (callType === 'video') {
+    // For audio calls, show avatar even when connected
+    if (callType === 'voice') {
       return (
-        <Video
-          source={{ uri: remoteStream.toURL() }}
-          style={{ width: '100%', height: '100%' }}
-          shouldPlay
-          resizeMode="cover"
+        <AudioCallView>
+          <AvatarLarge>{remoteUserName?.[0]?.toUpperCase() || '?'}</AvatarLarge>
+          <CallerName>{remoteUserName}</CallerName>
+          <CallTimer>{formatCallDuration(callDuration)}</CallTimer>
+        </AudioCallView>
+      )
+    }
+
+    // For web platform
+    if (Platform.OS === 'web') {
+      return (
+        <video
+          ref={(video) => {
+            if (video && remoteStream) {
+              video.srcObject = remoteStream
+            }
+          }}
+          autoPlay
+          playsInline
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            backgroundColor: '#000',
+          }}
         />
       )
     }
 
+    // For React Native
     return (
-      <AudioCallView>
-        <AvatarLarge>{remoteUserName?.[0]?.toUpperCase() || '?'}</AvatarLarge>
-        <CallerName>{remoteUserName}</CallerName>
-        <CallTimer>{formatCallDuration(callDuration)}</CallTimer>
-      </AudioCallView>
+      <Video
+        source={{ uri: remoteStream.toURL() }}
+        style={{ width: '100%', height: '100%' }}
+        shouldPlay
+        resizeMode="cover"
+      />
     )
   }
 
@@ -616,14 +686,11 @@ const CallScreen = () => {
       </Header>
 
       <VideoContainer>
-        {callType === 'video' ? (
-          <>
-            <RemoteVideoWrapper>{renderRemoteVideo()}</RemoteVideoWrapper>
-            {renderLocalVideo()}
-          </>
-        ) : (
-          renderRemoteVideo()
-        )}
+        {/* Remote video takes full screen */}
+        <RemoteVideoWrapper>{renderRemoteVideo()}</RemoteVideoWrapper>
+
+        {/* Local video in corner - ALWAYS show for video calls */}
+        {callType === 'video' && renderLocalVideo()}
       </VideoContainer>
 
       <Controls>
@@ -803,5 +870,11 @@ const EndCallButton = styled.TouchableOpacity`
   justify-content: center;
   align-items: center;
 `
-
+const LocalVideoPlaceholder = styled.View`
+  width: 100%;
+  height: 100%;
+  background-color: #333;
+  justify-content: center;
+  align-items: center;
+`
 export default CallScreen

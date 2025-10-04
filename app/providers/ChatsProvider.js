@@ -305,12 +305,15 @@ const ChatsProvider = ({ children }) => {
           formData.append('messageType', messageType || 'file')
           if (content) formData.append('content', content)
 
+          // React Native requires specific file object format
           files.forEach((file, index) => {
-            formData.append('files', {
+            const fileObj = {
               uri: file.uri,
-              name: file.name || `file_${index}`,
-              type: file.type || 'application/octet-stream',
-            })
+              name: file.name || `file_${Date.now()}_${index}.jpg`,
+              type: file.type || 'image/jpeg',
+            }
+            console.log('Appending file:', fileObj)
+            formData.append('files', fileObj)
           })
 
           data = await upload(`${API_URL}/send-message`, formData)
@@ -327,12 +330,26 @@ const ChatsProvider = ({ children }) => {
             ...prev,
             [chatId]: [...(prev[chatId] || []), data.message],
           }))
+
+          // Notify via WebSocket if connected
+          if (wsRef.current?.readyState === WebSocket.OPEN) {
+            wsRef.current.send(
+              JSON.stringify({
+                type: 'message_sent',
+                chatId,
+                message: data.message,
+              })
+            )
+          }
         }
 
         return data
       } catch (error) {
         console.error('sendMessage error:', error)
-        return { success: false, error }
+        return {
+          success: false,
+          error: error.message || 'Failed to send message',
+        }
       }
     },
     [isReady, post, upload]
