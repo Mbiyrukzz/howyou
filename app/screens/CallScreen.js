@@ -37,7 +37,7 @@ if (Platform.OS === 'web') {
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
 
 // WebSocket connection
-const SIGNALING_URL = 'ws://localhost:5000'
+const SIGNALING_URL = 'ws://10.172.194.87:5000'
 
 // WebRTC configuration
 const iceServers = {

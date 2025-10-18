@@ -10,6 +10,7 @@ import {
   View,
   Alert,
   ActionSheetIOS,
+  Animated,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -17,14 +18,30 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import * as MediaLibrary from 'expo-media-library'
 import { Camera } from 'expo-camera'
+import { Audio } from 'expo-audio'
 import ChatsContext from '../contexts/ChatsContext'
-import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
 import LoadingIndicator from '../components/LoadingIndicator'
 
 const { width: screenWidth } = Dimensions.get('window')
 
 /* =================== styled components =================== */
+
+const SoundWaveContainer = styled.View`
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  margin-bottom: 16px;
+`
+
+const SoundWaveBar = styled(Animated.View)`
+  width: 4px;
+  background-color: #e74c3c;
+  border-radius: 2px;
+  margin: 0 2px;
+`
+
 const Container = styled.View`
   flex: 1;
   background-color: #f8f9fa;
@@ -334,7 +351,150 @@ const FullScreenImage = styled.Image`
   height: 70%;
 `
 
-/* =================== helpers =================== */
+const AudioRecordingContainer = styled.View`
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: #fff;
+  padding: 20px;
+  border-top-width: 1px;
+  border-top-color: #e9ecef;
+  elevation: 10;
+  shadow-color: #000;
+  shadow-offset: 0px -2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 4px;
+`
+
+const RecordingIndicator = styled.View`
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+`
+
+const RecordingDot = styled.View`
+  width: 12px;
+  height: 12px;
+  border-radius: 6px;
+  background-color: #e74c3c;
+  margin-right: 8px;
+`
+
+const RecordingText = styled.Text`
+  font-size: 16px;
+  color: #2c3e50;
+  font-weight: 600;
+`
+
+const RecordingTime = styled.Text`
+  font-size: 14px;
+  color: #7f8c8d;
+  margin-left: 8px;
+`
+
+const RecordingActions = styled.View`
+  flex-direction: row;
+  justify-content: space-around;
+`
+
+const RecordButton = styled.TouchableOpacity`
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+  background-color: ${(props) => (props.recording ? '#e74c3c' : '#27ae60')};
+  justify-content: center;
+  align-items: center;
+  elevation: 3;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.2;
+  shadow-radius: 3px;
+`
+
+const CancelRecordButton = styled.TouchableOpacity`
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+  background-color: #95a5a6;
+  justify-content: center;
+  align-items: center;
+`
+
+const SendRecordButton = styled.TouchableOpacity`
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+  background-color: #3498db;
+  justify-content: center;
+  align-items: center;
+`
+
+const SelectedFilesContainer = styled.View`
+  flex-direction: row;
+  padding: 8px;
+  background-color: #f8f9fa;
+  border-top-width: 1px;
+  border-top-color: #e9ecef;
+  flex-wrap: wrap;
+`
+
+const SelectedFileChip = styled.View`
+  flex-direction: row;
+  align-items: center;
+  background-color: #3498db;
+  border-radius: 16px;
+  padding: 6px 12px;
+  margin: 4px;
+`
+
+const SelectedFileText = styled.Text`
+  color: white;
+  font-size: 12px;
+  margin-right: 8px;
+  max-width: 100px;
+`
+
+const RemoveFileButton = styled.TouchableOpacity`
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background-color: rgba(255, 255, 255, 0.3);
+  justify-content: center;
+  align-items: center;
+`
+
+const MessageAudioPlayer = styled.View`
+  flex-direction: row;
+  align-items: center;
+  margin-top: 8px;
+  background-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.2)' : '#f0f0f0'};
+  padding: 10px;
+  border-radius: 8px;
+`
+
+const PlayButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.3)' : '#3498db'};
+  justify-content: center;
+  align-items: center;
+  margin-right: 8px;
+`
+
+const AudioInfo = styled.View`
+  flex: 1;
+`
+
+const AudioDuration = styled.Text`
+  font-size: 12px;
+  color: ${(props) => (props.isOwn ? '#fff' : '#7f8c8d')};
+`
+
 const getUserColor = (userId) => {
   const colors = [
     '#3498db',
@@ -398,6 +558,27 @@ const MessageItem = ({
 }) => {
   const [imageLoading, setImageLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
+  const [sound, setSound] = useState(null)
+  const [isPlaying, setIsPlaying] = useState(false)
+  const [audioDuration, setAudioDuration] = useState(0)
+
+  useEffect(() => {
+    if (item.type === 'image' && item.files?.[0]?.url) {
+      console.log('Image message:', {
+        type: item.type,
+        url: item.files[0].url,
+        hasUrl: !!item.files[0].url,
+      })
+    }
+  }, [item])
+
+  useEffect(() => {
+    return () => {
+      if (sound) {
+        sound.unloadAsync()
+      }
+    }
+  }, [sound])
 
   const showDate =
     !previousItem ||
@@ -417,7 +598,126 @@ const MessageItem = ({
     setImageError(true)
   }
 
+  const playAudio = async (audioUrl) => {
+    try {
+      if (sound && isPlaying) {
+        await sound.stopAsync()
+        await sound.unloadAsync()
+        setSound(null)
+        setIsPlaying(false)
+        return
+      }
+
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true }
+      )
+
+      setSound(newSound)
+      setIsPlaying(true)
+
+      const status = await newSound.getStatusAsync()
+      if (status.isLoaded && status.durationMillis) {
+        setAudioDuration(Math.floor(status.durationMillis / 1000))
+      }
+
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          setIsPlaying(false)
+          newSound.unloadAsync()
+          setSound(null)
+        }
+      })
+    } catch (error) {
+      console.error('Error playing audio:', error)
+      Alert.alert('Error', 'Failed to play audio')
+      setIsPlaying(false)
+    }
+  }
+
+  const formatAudioDuration = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
   const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
+
+  const renderFiles = () => {
+    if (!item.files || item.files.length === 0) return null
+
+    return item.files
+      .map((file, index) => {
+        if (item.type === 'audio' || file.type === 'audio') {
+          return (
+            <MessageAudioPlayer key={`audio-${index}`} isOwn={isOwn}>
+              <PlayButton isOwn={isOwn} onPress={() => playAudio(file.url)}>
+                <Ionicons
+                  name={isPlaying ? 'pause' : 'play'}
+                  size={20}
+                  color={isOwn ? '#fff' : '#fff'}
+                />
+              </PlayButton>
+              <AudioInfo>
+                <FileText isOwn={isOwn}>
+                  {file.originalname || `Audio ${index + 1}`}
+                </FileText>
+                {audioDuration > 0 && (
+                  <AudioDuration isOwn={isOwn}>
+                    {formatAudioDuration(audioDuration)}
+                  </AudioDuration>
+                )}
+              </AudioInfo>
+            </MessageAudioPlayer>
+          )
+        } else if (item.type === 'image' && file.url) {
+          return (
+            <MessageImageContainer
+              key={`image-${index}`}
+              onPress={() => onImagePress(file.url)}
+            >
+              <MessageImage
+                source={{ uri: file.url }}
+                hasText={!!(item.content && item.content.trim())}
+                onLoad={handleImageLoad}
+                onError={handleImageError}
+              />
+              {imageLoading && (
+                <ImageLoadingOverlay>
+                  <Ionicons name="image-outline" size={24} color="white" />
+                  <LoadingText>Loading...</LoadingText>
+                </ImageLoadingOverlay>
+              )}
+              {imageError && (
+                <ImageLoadingOverlay>
+                  <Ionicons
+                    name="alert-circle-outline"
+                    size={24}
+                    color="white"
+                  />
+                  <LoadingText>Failed to load</LoadingText>
+                </ImageLoadingOverlay>
+              )}
+            </MessageImageContainer>
+          )
+        } else if (item.type === 'file' && file.url) {
+          return (
+            <MessageFile key={`file-${index}`} isOwn={isOwn}>
+              <FileIcon
+                name="document"
+                size={20}
+                color={isOwn ? '#fff' : '#2c3e50'}
+              />
+              <FileText isOwn={isOwn}>
+                {file.originalname || `File ${index + 1}`}
+              </FileText>
+            </MessageFile>
+          )
+        }
+        return null
+      })
+      .filter(Boolean)
+  }
 
   return (
     <>
@@ -427,45 +727,13 @@ const MessageItem = ({
         </DateSeparator>
       )}
       <MessageBubble isOwn={isOwn}>
-        {/* Render content only if there is valid content to display */}
         {[
           item.content && item.content.trim().length > 0 && (
             <MessageText key="text" isOwn={isOwn}>
               {item.content.trim()}
             </MessageText>
           ),
-          item.type === 'image' &&
-            item.files &&
-            item.files[0] &&
-            item.files[0].url && (
-              <MessageImageContainer
-                key="image"
-                onPress={() => onImagePress(item.files[0].url)}
-              >
-                <MessageImage
-                  source={{ uri: item.files[0].url }}
-                  hasText={!!(item.content && item.content.trim())}
-                  onLoad={handleImageLoad}
-                  onError={handleImageError}
-                />
-                {imageLoading && (
-                  <ImageLoadingOverlay>
-                    <Ionicons name="image-outline" size={24} color="white" />
-                    <LoadingText>Loading...</LoadingText>
-                  </ImageLoadingOverlay>
-                )}
-                {imageError && (
-                  <ImageLoadingOverlay>
-                    <Ionicons
-                      name="alert-circle-outline"
-                      size={24}
-                      color="white"
-                    />
-                    <LoadingText>Failed to load</LoadingText>
-                  </ImageLoadingOverlay>
-                )}
-              </MessageImageContainer>
-            ),
+          ...(renderFiles() || []),
           item.type === 'video' &&
             item.files &&
             item.files[0] &&
@@ -474,36 +742,6 @@ const MessageItem = ({
                 <Ionicons name="play-circle" size={40} color="white" />
               </MessageVideo>
             ),
-          item.type === 'file' &&
-            item.files &&
-            item.files[0] &&
-            item.files[0].url && (
-              <MessageFile key="file" isOwn={isOwn}>
-                <FileIcon
-                  name="document"
-                  size={20}
-                  color={isOwn ? '#fff' : '#2c3e50'}
-                />
-                <FileText isOwn={isOwn}>
-                  {item.files[0].originalname || 'File'}
-                </FileText>
-              </MessageFile>
-            ),
-          item.type === 'audio' &&
-            item.files &&
-            item.files[0] &&
-            item.files[0].url && (
-              <MessageFile key="audio" isOwn={isOwn}>
-                <FileIcon
-                  name="mic"
-                  size={20}
-                  color={isOwn ? '#fff' : '#2c3e50'}
-                />
-                <FileText isOwn={isOwn}>
-                  {item.files[0].originalname || 'Audio'}
-                </FileText>
-              </MessageFile>
-            ),
           <MessageTime key="time" isOwn={isOwn}>
             {timeString}
           </MessageTime>,
@@ -511,6 +749,55 @@ const MessageItem = ({
         ].filter(Boolean)}
       </MessageBubble>
     </>
+  )
+}
+
+const SoundWaveAnimation = () => {
+  const [animations] = useState(() =>
+    Array.from({ length: 20 }, () => new Animated.Value(0.3))
+  )
+  useEffect(() => {
+    const animateBars = () => {
+      const animationArray = animations.map((anim, index) => {
+        return Animated.sequence([
+          Animated.delay(index * 50),
+          Animated.loop(
+            Animated.sequence([
+              Animated.timing(anim, {
+                toValue: Math.random() * 0.7 + 0.3,
+                duration: 300 + Math.random() * 200,
+                useNativeDriver: false,
+              }),
+              Animated.timing(anim, {
+                toValue: 0.3,
+                duration: 300 + Math.random() * 200,
+                useNativeDriver: false,
+              }),
+            ])
+          ),
+        ])
+      })
+
+      Animated.parallel(animationArray).start()
+    }
+
+    animateBars()
+  }, [animations])
+
+  return (
+    <SoundWaveContainer>
+      {animations.map((anim, index) => (
+        <SoundWaveBar
+          key={index}
+          style={{
+            height: anim.interpolate({
+              inputRange: [0.3, 1],
+              outputRange: [10, 40],
+            }),
+          }}
+        />
+      ))}
+    </SoundWaveContainer>
   )
 }
 
@@ -523,12 +810,17 @@ export default function ChatDetailScreen({ navigation, route }) {
   const [sending, setSending] = useState(false)
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
+  const [recording, setRecording] = useState(null)
+  const [recordingDuration, setRecordingDuration] = useState(0)
+  const [showRecordingUI, setShowRecordingUI] = useState(false)
+  const [selectedFiles, setSelectedFiles] = useState([])
+  const recordingIntervalRef = useRef(null)
+
   const flatListRef = useRef(null)
 
   const { chatId } = route?.params || {}
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
-  const { isReady, get } = useAuthedRequest()
 
   const {
     chats = [],
@@ -634,18 +926,263 @@ export default function ChatDetailScreen({ navigation, route }) {
     }
   }
 
-  // Replace both sendImageMessage and handleSendMessage with this unified function:
+  const startRecording = async () => {
+    try {
+      console.log(
+        'startRecording: Starting audio recording, platform:',
+        Platform.OS
+      )
+      if (Platform.OS === 'web') {
+        console.log('startRecording: Web platform detected, showing alert')
+        Alert.alert(
+          'Audio Recording Unavailable',
+          'Audio recording is not supported in the web browser. Please use the mobile app to record audio.',
+          [
+            {
+              text: 'OK',
+              onPress: () => console.log('startRecording: Alert dismissed'),
+            },
+          ]
+        )
+        return
+      }
+      const { status } = await Audio.Recording.requestPermissionsAsync()
+      console.log('startRecording: Audio permission status:', status)
+      if (status !== 'granted') {
+        console.log('startRecording: Permission denied')
+        Alert.alert(
+          'Permission Denied',
+          'Audio recording permission is required',
+          [
+            {
+              text: 'OK',
+              onPress: () =>
+                console.log('startRecording: Permission alert dismissed'),
+            },
+          ]
+        )
+        return
+      }
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: true,
+        playsInSilentModeIOS: true,
+      })
+      console.log('startRecording: Audio mode set')
+      const newRecording = new Audio.Recording()
+      await newRecording.prepareToRecordAsync(
+        Audio.RecordingOptionsPresets.HIGH_QUALITY
+      )
+      await newRecording.startAsync()
+      console.log('startRecording: Recording started')
+      setRecording(newRecording)
+      setShowRecordingUI(true)
+      setRecordingDuration(0)
+      recordingIntervalRef.current = setInterval(() => {
+        setRecordingDuration((prev) => {
+          console.log('startRecording: Updating duration:', prev + 1)
+          return prev + 1
+        })
+      }, 1000)
+    } catch (err) {
+      console.error('startRecording: Error:', err)
+      Alert.alert('Error', 'Failed to start recording: ' + err.message, [
+        {
+          text: 'OK',
+          onPress: () => console.log('startRecording: Error alert dismissed'),
+        },
+      ])
+    }
+  }
+
+  const stopRecording = async () => {
+    if (!recording) return
+
+    try {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current)
+      }
+
+      await recording.stopAndUnloadAsync()
+      const uri = recording.getURI()
+
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      })
+
+      setRecording(null)
+      setShowRecordingUI(false)
+      setRecordingDuration(0)
+
+      return uri
+    } catch (err) {
+      console.error('Failed to stop recording:', err)
+      Alert.alert('Error', 'Failed to stop recording')
+    }
+  }
+
+  const cancelRecording = async () => {
+    if (!recording) return
+
+    try {
+      if (recordingIntervalRef.current) {
+        clearInterval(recordingIntervalRef.current)
+      }
+
+      await recording.stopAndUnloadAsync()
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+      })
+
+      setRecording(null)
+      setShowRecordingUI(false)
+      setRecordingDuration(0)
+    } catch (err) {
+      console.error('Failed to cancel recording:', err)
+    }
+  }
+
+  const sendRecording = async () => {
+    const uri = await stopRecording()
+    if (!uri) return
+
+    await handleSendMessage([
+      {
+        uri,
+        name: `recording_${Date.now()}.m4a`,
+        type: 'audio/m4a',
+      },
+    ])
+  }
+  const playAudio = async (audioUrl) => {
+    try {
+      if (sound && isPlaying) {
+        await sound.pauseAsync()
+        setIsPlaying(false)
+        return
+      }
+
+      if (sound) {
+        await sound.playAsync()
+        setIsPlaying(true)
+        return
+      }
+
+      // Create new sound with expo-audio
+      const { sound: newSound } = await Audio.Sound.createAsync(
+        { uri: audioUrl },
+        { shouldPlay: true }
+      )
+
+      setSound(newSound)
+      setIsPlaying(true)
+
+      // Get duration
+      const status = await newSound.getStatusAsync()
+      if (status.isLoaded && status.durationMillis) {
+        setAudioDuration(Math.floor(status.durationMillis / 1000))
+      }
+
+      // Set up playback status update
+      newSound.setOnPlaybackStatusUpdate((status) => {
+        if (status.didJustFinish) {
+          setIsPlaying(false)
+          newSound.unloadAsync()
+          setSound(null)
+        }
+      })
+    } catch (error) {
+      console.error('Error playing audio:', error)
+      Alert.alert('Error', 'Failed to play audio: ' + error.message)
+      setIsPlaying(false)
+    }
+  }
+  const formatRecordingTime = (seconds) => {
+    const mins = Math.floor(seconds / 60)
+    const secs = seconds % 60
+    return `${mins}:${secs.toString().padStart(2, '0')}`
+  }
+
+  // Enhanced file picker to support multiple files
+  const pickMultipleFiles = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
+        multiple: true, // Enable multiple selection
+      })
+
+      if (result.canceled || !result.assets?.length) {
+        return
+      }
+
+      const files = result.assets.map((asset) => ({
+        uri: asset.uri,
+        name: asset.name || `file_${Date.now()}`,
+        type: asset.mimeType || 'application/octet-stream',
+      }))
+
+      setSelectedFiles((prev) => [...prev, ...files])
+    } catch (err) {
+      console.error('File picker error:', err)
+      Alert.alert('Error', 'Failed to pick files')
+    }
+  }
+
+  const removeSelectedFile = (index) => {
+    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  }
+
+  const sendSelectedFiles = async () => {
+    if (selectedFiles.length === 0 && !message.trim()) return
+
+    await handleSendMessage(selectedFiles)
+    setSelectedFiles([])
+  }
+
+  // Update the pickFile function to add to selected files
+  const pickFile = async () => {
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
+        multiple: false,
+      })
+
+      if (result.canceled || !result.assets?.length) {
+        return
+      }
+
+      const asset = result.assets[0]
+      if (!asset?.uri) {
+        Alert.alert('Error', 'Invalid file selected')
+        return
+      }
+
+      setSelectedFiles((prev) => [
+        ...prev,
+        {
+          uri: asset.uri,
+          name: asset.name || `file_${Date.now()}`,
+          type: asset.mimeType || 'application/octet-stream',
+        },
+      ])
+    } catch (err) {
+      console.error('File picker error:', err)
+      Alert.alert('Error', 'Failed to pick file')
+    }
+  }
 
   const handleSendMessage = async (files = []) => {
+    const filesToSend = files.length > 0 ? files : selectedFiles
+
     // Validate input
-    if ((!message.trim() && files.length === 0) || sending || !chatId) return
+    if ((!message.trim() && filesToSend.length === 0) || sending || !chatId)
+      return
 
     try {
       setSending(true)
 
       let messageType = 'text'
-      if (files.length > 0) {
-        const fileType = files[0].type || files[0].mimeType
+      if (filesToSend.length > 0) {
+        const fileType = filesToSend[0].type || filesToSend[0].mimeType
         if (fileType?.startsWith('image/')) messageType = 'image'
         else if (fileType?.startsWith('video/')) messageType = 'video'
         else if (fileType?.startsWith('audio/')) messageType = 'audio'
@@ -655,13 +1192,14 @@ export default function ChatDetailScreen({ navigation, route }) {
       const result = await contextSendMessage({
         chatId,
         content: message.trim() || undefined,
-        files,
+        files: filesToSend,
         messageType,
       })
 
       if (result.success) {
         setMessages((prev) => [...prev, result.message])
         setMessage('')
+        setSelectedFiles([])
         setTimeout(
           () => flatListRef.current?.scrollToEnd({ animated: true }),
           100
@@ -674,38 +1212,6 @@ export default function ChatDetailScreen({ navigation, route }) {
       Alert.alert('Error', 'Failed to send message')
     } finally {
       setSending(false)
-    }
-  }
-
-  // Updated image picker functions
-  const takePhoto = async () => {
-    try {
-      const permissions = await requestPermissions()
-      if (!permissions.camera) {
-        Alert.alert('Permission denied', 'Camera permission is required')
-        return
-      }
-
-      const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      })
-
-      if (!result.canceled && result.assets?.[0]) {
-        const asset = result.assets[0]
-        await handleSendMessage([
-          {
-            uri: asset.uri,
-            name: asset.fileName || `photo_${Date.now()}.jpg`,
-            type: asset.type || 'image/jpeg',
-          },
-        ])
-      }
-    } catch (error) {
-      console.error('Take photo error:', error)
-      Alert.alert('Error', 'Failed to take photo')
     }
   }
 
@@ -740,33 +1246,67 @@ export default function ChatDetailScreen({ navigation, route }) {
     }
   }
 
-  const pickFile = async () => {
+  const takePhoto = async () => {
     try {
-      const result = await DocumentPicker.getDocumentAsync({
-        type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
-        multiple: false,
+      console.log('takePhoto: Starting camera action, platform:', Platform.OS)
+      if (Platform.OS === 'web') {
+        console.log('takePhoto: Web platform detected, showing alert')
+        Alert.alert(
+          'Camera Unavailable',
+          'Taking photos is not supported in the web browser. Please use the mobile app to take photos.',
+          [
+            {
+              text: 'OK',
+              onPress: () => console.log('takePhoto: Alert dismissed'),
+            },
+          ]
+        )
+        return
+      }
+      const permissions = await Camera.requestCameraPermissionsAsync()
+      console.log('takePhoto: Camera permission status:', permissions.status)
+      if (permissions.status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Camera permission is required to take photos',
+          [
+            {
+              text: 'OK',
+              onPress: () =>
+                console.log('takePhoto: Permission alert dismissed'),
+            },
+          ]
+        )
+        return
+      }
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
       })
-
-      if (result.canceled || !result.assets?.length) {
+      console.log('takePhoto: ImagePicker result:', result)
+      if (result.canceled || !result.assets?.[0]) {
+        console.log('takePhoto: User cancelled or no assets returned')
         return
       }
-
       const asset = result.assets[0]
-      if (!asset?.uri) {
-        Alert.alert('Error', 'Invalid file selected')
-        return
-      }
-
       await handleSendMessage([
         {
           uri: asset.uri,
-          name: asset.name || `file_${Date.now()}`,
-          type: asset.mimeType || 'application/octet-stream',
+          name: asset.fileName || `photo_${Date.now()}.jpg`,
+          type: asset.type || 'image/jpeg',
         },
       ])
-    } catch (err) {
-      console.error('File picker error:', err)
-      Alert.alert('Error', 'Failed to pick file')
+      console.log('takePhoto: Photo sent successfully')
+    } catch (error) {
+      console.error('takePhoto: Error:', error)
+      Alert.alert('Error', 'Failed to take photo: ' + error.message, [
+        {
+          text: 'OK',
+          onPress: () => console.log('takePhoto: Error alert dismissed'),
+        },
+      ])
     }
   }
 
@@ -980,45 +1520,93 @@ export default function ChatDetailScreen({ navigation, route }) {
           />
         </MessagesContainer>
 
-        <InputContainer>
-          <CameraButton onPress={showImagePickerOptions}>
-            <Ionicons name="camera" size={24} color="#7f8c8d" />
-          </CameraButton>
-          <AttachmentButton onPress={pickFile}>
-            <Ionicons name="attach" size={24} color="#7f8c8d" />
-          </AttachmentButton>
-          <InputWrapper>
-            <TextInput
-              value={message}
-              onChangeText={setMessage}
-              placeholder="Type a message..."
-              placeholderTextColor="#bdc3c7"
-              multiline
-              textAlignVertical="center"
-              editable={!sending}
-            />
-          </InputWrapper>
-          {/* <SendButton
-            disabled={!message.trim() || sending}
-            onPress={handleSendMessage}
-          >
-            <Ionicons
-              name={sending ? 'hourglass' : 'send'}
-              size={20}
-              color="#fff"
-            />
-          </SendButton> */}
-          <SendButton
-            disabled={!message.trim() || sending}
-            onPress={() => handleSendMessage()}
-          >
-            <Ionicons
-              name={sending ? 'hourglass' : 'send'}
-              size={20}
-              color="#fff"
-            />
-          </SendButton>
-        </InputContainer>
+        <>
+          {/* Selected Files Preview */}
+          {selectedFiles.length > 0 && (
+            <SelectedFilesContainer>
+              {selectedFiles.map((file, index) => (
+                <SelectedFileChip key={index}>
+                  <SelectedFileText numberOfLines={1}>
+                    {file.name}
+                  </SelectedFileText>
+                  <RemoveFileButton onPress={() => removeSelectedFile(index)}>
+                    <Ionicons name="close" size={12} color="white" />
+                  </RemoveFileButton>
+                </SelectedFileChip>
+              ))}
+            </SelectedFilesContainer>
+          )}
+
+          {/* Regular Input Container */}
+          {!showRecordingUI && (
+            <InputContainer>
+              <CameraButton onPress={showImagePickerOptions}>
+                <Ionicons name="camera" size={24} color="#7f8c8d" />
+              </CameraButton>
+              <AttachmentButton onPress={pickMultipleFiles}>
+                <Ionicons name="attach" size={24} color="#7f8c8d" />
+              </AttachmentButton>
+              <AttachmentButton onPress={startRecording}>
+                <Ionicons name="mic" size={24} color="#e74c3c" />
+              </AttachmentButton>
+              <InputWrapper>
+                <TextInput
+                  value={message}
+                  onChangeText={setMessage}
+                  placeholder="Type a message..."
+                  placeholderTextColor="#bdc3c7"
+                  multiline
+                  textAlignVertical="center"
+                  editable={!sending}
+                />
+              </InputWrapper>
+              <SendButton
+                disabled={
+                  (!message.trim() && selectedFiles.length === 0) || sending
+                }
+                onPress={() =>
+                  selectedFiles.length > 0
+                    ? sendSelectedFiles()
+                    : handleSendMessage()
+                }
+              >
+                <Ionicons
+                  name={sending ? 'hourglass' : 'send'}
+                  size={20}
+                  color="#fff"
+                />
+              </SendButton>
+            </InputContainer>
+          )}
+
+          {/* Recording UI */}
+          {showRecordingUI && (
+            <AudioRecordingContainer>
+              <RecordingIndicator>
+                <RecordingDot />
+                <RecordingText>Recording</RecordingText>
+                <RecordingTime>
+                  {formatRecordingTime(recordingDuration)}
+                </RecordingTime>
+              </RecordingIndicator>
+
+              {/* Add the sound wave animation */}
+              <SoundWaveAnimation />
+
+              <RecordingActions>
+                <CancelRecordButton onPress={cancelRecording}>
+                  <Ionicons name="close" size={28} color="white" />
+                </CancelRecordButton>
+                <RecordButton recording={!!recording}>
+                  <Ionicons name="stop" size={28} color="white" />
+                </RecordButton>
+                <SendRecordButton onPress={sendRecording}>
+                  <Ionicons name="send" size={24} color="white" />
+                </SendRecordButton>
+              </RecordingActions>
+            </AudioRecordingContainer>
+          )}
+        </>
       </KeyboardAvoidingView>
 
       {/* Image Preview Modal */}
