@@ -151,7 +151,7 @@ const ImageLoadingOverlay = styled.View`
 const LoadingText = styled.Text`
   color: white;
   font-size: 12px;
-  margin-top: 8px;
+  margin-top: 4px;
 `
 
 const MessageVideo = styled.View`
@@ -389,7 +389,6 @@ const findUserByAnyId = (users, targetId) => {
   )
 }
 
-/* =================== message item =================== */
 const MessageItem = ({
   item,
   previousItem,
@@ -418,6 +417,8 @@ const MessageItem = ({
     setImageError(true)
   }
 
+  const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
+
   return (
     <>
       {showDate && (
@@ -426,66 +427,88 @@ const MessageItem = ({
         </DateSeparator>
       )}
       <MessageBubble isOwn={isOwn}>
-        {item.content && (
-          <MessageText isOwn={isOwn}>{item.content}</MessageText>
-        )}
-
-        {item.type === 'image' && item.files?.[0]?.url && (
-          <MessageImageContainer
-            onPress={() => onImagePress(item.files[0].url)}
-          >
-            <MessageImage
-              source={{ uri: item.files[0].url }}
-              hasText={!!item.content}
-              onLoad={handleImageLoad}
-              onError={handleImageError}
-            />
-            {imageLoading && (
-              <ImageLoadingOverlay>
-                <Ionicons name="image-outline" size={24} color="white" />
-                <LoadingText>Loading...</LoadingText>
-              </ImageLoadingOverlay>
-            )}
-            {imageError && (
-              <ImageLoadingOverlay>
-                <Ionicons name="alert-circle-outline" size={24} color="white" />
-                <LoadingText>Failed to load</LoadingText>
-              </ImageLoadingOverlay>
-            )}
-          </MessageImageContainer>
-        )}
-
-        {item.type === 'video' && item.files?.[0]?.url && (
-          <MessageVideo>
-            <Ionicons name="play-circle" size={40} color="white" />
-            <MessageText isOwn={isOwn}>
-              Video: {item.files[0].originalname}
+        {/* Render content only if there is valid content to display */}
+        {[
+          item.content && item.content.trim().length > 0 && (
+            <MessageText key="text" isOwn={isOwn}>
+              {item.content.trim()}
             </MessageText>
-          </MessageVideo>
-        )}
-
-        {item.type === 'file' && item.files?.[0]?.url && (
-          <MessageFile isOwn={isOwn}>
-            <FileIcon
-              name="document"
-              size={20}
-              color={isOwn ? '#fff' : '#2c3e50'}
-            />
-            <FileText isOwn={isOwn}>{item.files[0].originalname}</FileText>
-          </MessageFile>
-        )}
-
-        {item.type === 'audio' && item.files?.[0]?.url && (
-          <MessageFile isOwn={isOwn}>
-            <FileIcon name="mic" size={20} color={isOwn ? '#fff' : '#2c3e50'} />
-            <FileText isOwn={isOwn}>{item.files[0].originalname}</FileText>
-          </MessageFile>
-        )}
-
-        <MessageTime isOwn={isOwn}>
-          {formatMessageTime(item.createdAt)} • {displayName}
-        </MessageTime>
-        {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
+          ),
+          item.type === 'image' &&
+            item.files &&
+            item.files[0] &&
+            item.files[0].url && (
+              <MessageImageContainer
+                key="image"
+                onPress={() => onImagePress(item.files[0].url)}
+              >
+                <MessageImage
+                  source={{ uri: item.files[0].url }}
+                  hasText={!!(item.content && item.content.trim())}
+                  onLoad={handleImageLoad}
+                  onError={handleImageError}
+                />
+                {imageLoading && (
+                  <ImageLoadingOverlay>
+                    <Ionicons name="image-outline" size={24} color="white" />
+                    <LoadingText>Loading...</LoadingText>
+                  </ImageLoadingOverlay>
+                )}
+                {imageError && (
+                  <ImageLoadingOverlay>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={24}
+                      color="white"
+                    />
+                    <LoadingText>Failed to load</LoadingText>
+                  </ImageLoadingOverlay>
+                )}
+              </MessageImageContainer>
+            ),
+          item.type === 'video' &&
+            item.files &&
+            item.files[0] &&
+            item.files[0].url && (
+              <MessageVideo key="video">
+                <Ionicons name="play-circle" size={40} color="white" />
+              </MessageVideo>
+            ),
+          item.type === 'file' &&
+            item.files &&
+            item.files[0] &&
+            item.files[0].url && (
+              <MessageFile key="file" isOwn={isOwn}>
+                <FileIcon
+                  name="document"
+                  size={20}
+                  color={isOwn ? '#fff' : '#2c3e50'}
+                />
+                <FileText isOwn={isOwn}>
+                  {item.files[0].originalname || 'File'}
+                </FileText>
+              </MessageFile>
+            ),
+          item.type === 'audio' &&
+            item.files &&
+            item.files[0] &&
+            item.files[0].url && (
+              <MessageFile key="audio" isOwn={isOwn}>
+                <FileIcon
+                  name="mic"
+                  size={20}
+                  color={isOwn ? '#fff' : '#2c3e50'}
+                />
+                <FileText isOwn={isOwn}>
+                  {item.files[0].originalname || 'Audio'}
+                </FileText>
+              </MessageFile>
+            ),
+          <MessageTime key="time" isOwn={isOwn}>
+            {timeString}
+          </MessageTime>,
+          isOwn && <MessageStatus key="status">✓✓ sent</MessageStatus>,
+        ].filter(Boolean)}
       </MessageBubble>
     </>
   )
@@ -611,6 +634,50 @@ export default function ChatDetailScreen({ navigation, route }) {
     }
   }
 
+  // Replace both sendImageMessage and handleSendMessage with this unified function:
+
+  const handleSendMessage = async (files = []) => {
+    // Validate input
+    if ((!message.trim() && files.length === 0) || sending || !chatId) return
+
+    try {
+      setSending(true)
+
+      let messageType = 'text'
+      if (files.length > 0) {
+        const fileType = files[0].type || files[0].mimeType
+        if (fileType?.startsWith('image/')) messageType = 'image'
+        else if (fileType?.startsWith('video/')) messageType = 'video'
+        else if (fileType?.startsWith('audio/')) messageType = 'audio'
+        else messageType = 'file'
+      }
+
+      const result = await contextSendMessage({
+        chatId,
+        content: message.trim() || undefined,
+        files,
+        messageType,
+      })
+
+      if (result.success) {
+        setMessages((prev) => [...prev, result.message])
+        setMessage('')
+        setTimeout(
+          () => flatListRef.current?.scrollToEnd({ animated: true }),
+          100
+        )
+      } else {
+        Alert.alert('Error', result.error || 'Failed to send message')
+      }
+    } catch (err) {
+      console.error('Send message error:', err)
+      Alert.alert('Error', 'Failed to send message')
+    } finally {
+      setSending(false)
+    }
+  }
+
+  // Updated image picker functions
   const takePhoto = async () => {
     try {
       const permissions = await requestPermissions()
@@ -627,7 +694,14 @@ export default function ChatDetailScreen({ navigation, route }) {
       })
 
       if (!result.canceled && result.assets?.[0]) {
-        await sendImageMessage(result.assets[0])
+        const asset = result.assets[0]
+        await handleSendMessage([
+          {
+            uri: asset.uri,
+            name: asset.fileName || `photo_${Date.now()}.jpg`,
+            type: asset.type || 'image/jpeg',
+          },
+        ])
       }
     } catch (error) {
       console.error('Take photo error:', error)
@@ -651,56 +725,18 @@ export default function ChatDetailScreen({ navigation, route }) {
       })
 
       if (!result.canceled && result.assets?.[0]) {
-        await sendImageMessage(result.assets[0])
+        const asset = result.assets[0]
+        await handleSendMessage([
+          {
+            uri: asset.uri,
+            name: asset.fileName || `image_${Date.now()}.jpg`,
+            type: asset.type || 'image/jpeg',
+          },
+        ])
       }
     } catch (error) {
       console.error('Pick image error:', error)
       Alert.alert('Error', 'Failed to pick image')
-    }
-  }
-
-  const sendImageMessage = async (imageAsset) => {
-    try {
-      if (!imageAsset?.uri) {
-        Alert.alert('Error', 'Invalid image selected')
-        return
-      }
-
-      setSending(true)
-
-      const file = {
-        uri:
-          Platform.OS === 'android'
-            ? asset.uri
-            : asset.uri.replace('file://', ''),
-        name: asset.name || `file_${Date.now()}`,
-        type: asset.mimeType || 'application/octet-stream',
-      }
-      console.log('File object:', JSON.stringify(file, null, 2))
-
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 0.8,
-      })
-      console.log('ImagePicker result:', JSON.stringify(result, null, 2))
-
-      if (result.success) {
-        setMessages((prev) => [...prev, result.message])
-        setMessage('')
-        setTimeout(
-          () => flatListRef.current?.scrollToEnd({ animated: true }),
-          100
-        )
-      } else {
-        Alert.alert('Error', result.error || 'Failed to send image')
-      }
-    } catch (err) {
-      console.error('Send image error:', err)
-      Alert.alert('Error', 'Failed to send image')
-    } finally {
-      setSending(false)
     }
   }
 
@@ -710,11 +746,8 @@ export default function ChatDetailScreen({ navigation, route }) {
         type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
         multiple: false,
       })
-      console.log('DocumentPicker result:', JSON.stringify(result, null, 2))
 
-      // Guard clause: ensure user picked something valid
       if (result.canceled || !result.assets?.length) {
-        console.log('File picking canceled or empty.')
         return
       }
 
@@ -724,76 +757,16 @@ export default function ChatDetailScreen({ navigation, route }) {
         return
       }
 
-      setSending(true)
-
-      const file = {
-        uri: asset.uri,
-        name: asset.name || `file_${Date.now()}`,
-        type: asset.mimeType || 'application/octet-stream',
-      }
-
-      console.log('Sending file:', file)
-
-      let messageType = 'file'
-      if (file.type.startsWith('image/')) messageType = 'image'
-      else if (file.type.startsWith('video/')) messageType = 'video'
-      else if (file.type.startsWith('audio/')) messageType = 'audio'
-
-      const resultSend = await contextSendMessage({
-        chatId,
-        content: message.trim() || undefined, // avoid empty string
-        files: [file],
-        messageType,
-      })
-
-      console.log('Send result:', resultSend)
-
-      if (resultSend.success) {
-        setMessages((prev) => [...prev, resultSend.message])
-        setMessage('')
-        setTimeout(
-          () => flatListRef.current?.scrollToEnd({ animated: true }),
-          100
-        )
-      } else {
-        Alert.alert('Error', resultSend.error || 'Failed to send file')
-      }
+      await handleSendMessage([
+        {
+          uri: asset.uri,
+          name: asset.name || `file_${Date.now()}`,
+          type: asset.mimeType || 'application/octet-stream',
+        },
+      ])
     } catch (err) {
       console.error('File picker error:', err)
       Alert.alert('Error', 'Failed to pick file')
-    } finally {
-      setSending(false)
-    }
-  }
-
-  /* ---------- send message ---------- */
-  const handleSendMessage = async () => {
-    if (!message.trim() || sending || !chatId) return
-
-    try {
-      setSending(true)
-      const result = await contextSendMessage({
-        chatId,
-        content: message.trim(),
-        messageType: 'text',
-      })
-
-      if (result.success) {
-        setMessages((prev) => [...prev, result.message])
-        setMessage('')
-        setTimeout(
-          () => flatListRef.current?.scrollToEnd({ animated: true }),
-          100
-        )
-      } else {
-        console.error('Failed to send message:', result.error)
-        setError('Failed to send message')
-      }
-    } catch (err) {
-      console.error('Send message error:', err)
-      setError('Failed to send message')
-    } finally {
-      setSending(false)
     }
   }
 
@@ -1025,9 +998,19 @@ export default function ChatDetailScreen({ navigation, route }) {
               editable={!sending}
             />
           </InputWrapper>
-          <SendButton
+          {/* <SendButton
             disabled={!message.trim() || sending}
             onPress={handleSendMessage}
+          >
+            <Ionicons
+              name={sending ? 'hourglass' : 'send'}
+              size={20}
+              color="#fff"
+            />
+          </SendButton> */}
+          <SendButton
+            disabled={!message.trim() || sending}
+            onPress={() => handleSendMessage()}
           >
             <Ionicons
               name={sending ? 'hourglass' : 'send'}

@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import ChatsContext from '../contexts/ChatsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
-import { Alert } from 'react-native'
+import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://10.143.145.87:5000'
-const WS_URL = 'ws://10.143.145.87:5000'
+const API_URL = 'http://localhost:5000'
+const WS_URL = 'ws://localhost:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -17,7 +17,7 @@ const ChatsProvider = ({ children }) => {
   const [callNotification, setCallNotification] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
 
-  const { isReady, get, post, upload } = useAuthedRequest()
+  const { isReady, get, post } = useAuthedRequest()
   const { user } = useUser()
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
@@ -252,8 +252,6 @@ const ChatsProvider = ({ children }) => {
         })
         if (data.success) setChats((prev) => [...prev, data.chat])
         return data
-
-        console.log('🔍 Request body to /create-chat:', { participants, name })
       } catch (error) {
         console.error('createChat error:', error)
         return { success: false, error }
@@ -299,28 +297,109 @@ const ChatsProvider = ({ children }) => {
 
       try {
         let data
+
         if (files.length > 0) {
+          // Use FormData for file uploads
           const formData = new FormData()
           formData.append('chatId', chatId)
-          formData.append('messageType', messageType || 'file')
-          if (content) formData.append('content', content)
 
-          // React Native requires specific file object format
-          files.forEach((file, index) => {
-            const fileObj = {
-              uri: file.uri,
-              name: file.name || `file_${Date.now()}_${index}.jpg`,
-              type: file.type || 'image/jpeg',
+          // Determine message type from first file if not provided
+          const firstFileType = files[0].type || files[0].mimeType || ''
+          let determinedType = messageType
+
+          if (!messageType || messageType === 'text') {
+            if (firstFileType.startsWith('image/')) {
+              determinedType = 'image'
+            } else if (firstFileType.startsWith('video/')) {
+              determinedType = 'video'
+            } else if (firstFileType.startsWith('audio/')) {
+              determinedType = 'audio'
+            } else {
+              determinedType = 'file'
             }
-            console.log('Appending file:', fileObj)
-            formData.append('files', fileObj)
+          }
+
+          formData.append('messageType', determinedType)
+
+          if (content && content.trim()) {
+            formData.append('content', content.trim())
+          }
+
+          // Process files - handle both React Native and Web
+          for (let i = 0; i < files.length; i++) {
+            const file = files[i]
+
+            if (Platform.OS === 'web' && file.uri.startsWith('blob:')) {
+              // For web, we need to fetch the blob and convert it to a File
+              try {
+                const response = await fetch(file.uri)
+                const blob = await response.blob()
+                const webFile = new File(
+                  [blob],
+                  file.name || `file_${Date.now()}_${i}.jpg`,
+                  { type: file.type || file.mimeType || 'image/jpeg' }
+                )
+                formData.append('files', webFile)
+                console.log(`Appending web file ${i}:`, {
+                  name: webFile.name,
+                  type: webFile.type,
+                  size: webFile.size,
+                })
+              } catch (blobError) {
+                console.error('Failed to convert blob:', blobError)
+                throw new Error('Failed to process image file')
+              }
+            } else {
+              // For React Native mobile
+              const fileObject = {
+                uri: file.uri,
+                name: file.name || `file_${Date.now()}_${i}.jpg`,
+                type: file.type || file.mimeType || 'image/jpeg',
+              }
+              formData.append('files', fileObject)
+              console.log(`Appending mobile file ${i}:`, fileObject)
+            }
+          }
+
+          console.log('Sending message with files:', {
+            chatId,
+            messageType: determinedType,
+            filesCount: files.length,
+            hasContent: !!(content && content.trim()),
+            platform: Platform.OS,
           })
 
-          data = await upload(`${API_URL}/send-message`, formData)
+          // Get auth token
+          const token = await user.getIdToken()
+
+          // Make the request with FormData using fetch
+          const response = await fetch(`${API_URL}/send-message`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              // DO NOT set Content-Type - let the browser set it with boundary
+            },
+            body: formData,
+          })
+
+          if (!response.ok) {
+            const errorData = await response.json().catch(() => ({}))
+            throw new Error(errorData.error || `HTTP ${response.status}`)
+          }
+
+          data = await response.json()
         } else {
+          // Text-only message
+          if (!content || !content.trim()) {
+            return {
+              success: false,
+              error: 'Message must have content or files',
+            }
+          }
+
           data = await post(`${API_URL}/send-message`, {
             chatId,
-            content,
+            content: content.trim(),
             messageType: 'text',
           })
         }
@@ -352,7 +431,7 @@ const ChatsProvider = ({ children }) => {
         }
       }
     },
-    [isReady, post, upload]
+    [isReady, post, user]
   )
 
   const getMessagesForChat = useCallback(
