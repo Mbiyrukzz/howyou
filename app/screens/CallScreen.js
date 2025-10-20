@@ -26,7 +26,6 @@ if (Platform.OS === 'web') {
   RTCIceCandidate = window.RTCIceCandidate
   mediaDevices = navigator.mediaDevices
 } else {
-  // For React Native, you'll need react-native-webrtc
   const WebRTC = require('react-native-webrtc')
   RTCPeerConnection = WebRTC.RTCPeerConnection
   RTCSessionDescription = WebRTC.RTCSessionDescription
@@ -36,21 +35,13 @@ if (Platform.OS === 'web') {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
 
-// WebSocket connection
-const SIGNALING_URL = 'ws://10.172.194.87:5000'
+const SIGNALING_URL = 'ws://10.38.189.87:5000'
 
-// WebRTC configuration
 const iceServers = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    // Add TURN server for production
-    // {
-    //   urls: 'turn:your-turn-server.com:3478',
-    //   username: 'username',
-    //   credential: 'password'
-    // }
   ],
   iceCandidatePoolSize: 10,
 }
@@ -75,11 +66,13 @@ const CallScreen = () => {
   const [isFrontCamera, setIsFrontCamera] = useState(true)
   const [callDuration, setCallDuration] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
+  const [isScreenSharing, setIsScreenSharing] = useState(false) // New state for screen sharing
 
   // Refs
   const wsRef = useRef(null)
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
+  const screenStreamRef = useRef(null) // New ref for screen sharing stream
   const candidatesQueue = useRef([])
   const callStartTime = useRef(null)
   const durationInterval = useRef(null)
@@ -164,6 +157,12 @@ const CallScreen = () => {
       case 'call-ended':
         handleEndCall()
         break
+      case 'screen-sharing': // New message type for screen sharing
+        if (data.from !== user?.uid) {
+          console.log('📺 Remote user toggled screen sharing:', data.enabled)
+          // Optionally handle UI updates or notifications
+        }
+        break
     }
   }
 
@@ -171,7 +170,6 @@ const CallScreen = () => {
   useEffect(() => {
     setupCall()
 
-    // Handle back button
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
       () => {
@@ -188,15 +186,10 @@ const CallScreen = () => {
 
   const setupCall = async () => {
     try {
-      // Request permissions
       await requestPermissions()
-
-      // Get media stream
       const stream = await getUserMedia()
       setLocalStream(stream)
       localStreamRef.current = stream
-
-      // Create peer connection
       await createPeerConnection()
     } catch (error) {
       console.error('❌ Setup call error:', error)
@@ -224,7 +217,6 @@ const CallScreen = () => {
 
   const getUserMedia = async () => {
     try {
-      // Configure audio session
       if (Platform.OS !== 'web') {
         await Audio.setAudioModeAsync({
           allowsRecordingIOS: true,
@@ -262,19 +254,47 @@ const CallScreen = () => {
     }
   }
 
+  // New function to get screen sharing stream
+  const getScreenShareStream = async () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
+      return null
+    }
+
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+        },
+        audio: false, // Set to true if you want to share system audio (browser support varies)
+      })
+
+      // Handle stream end (e.g., user stops sharing)
+      stream.getVideoTracks()[0].onended = () => {
+        stopScreenSharing()
+      }
+
+      return stream
+    } catch (error) {
+      console.error('❌ getDisplayMedia error:', error)
+      Alert.alert('Error', 'Failed to start screen sharing.')
+      return null
+    }
+  }
+
   const createPeerConnection = async () => {
     try {
       const pc = new RTCPeerConnection(iceServers)
       pcRef.current = pc
 
-      // Add local stream tracks
       if (localStreamRef.current) {
         localStreamRef.current.getTracks().forEach((track) => {
           pc.addTrack(track, localStreamRef.current)
         })
       }
 
-      // Handle remote stream
       pc.ontrack = (event) => {
         console.log('🎥 Received remote track')
         if (event.streams && event.streams[0]) {
@@ -285,7 +305,6 @@ const CallScreen = () => {
         }
       }
 
-      // Handle ICE candidates
       pc.onicecandidate = (event) => {
         if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(
@@ -299,7 +318,6 @@ const CallScreen = () => {
         }
       }
 
-      // Handle connection state changes
       pc.onconnectionstatechange = () => {
         console.log('📶 Connection state:', pc.connectionState)
         switch (pc.connectionState) {
@@ -349,7 +367,7 @@ const CallScreen = () => {
 
       const offer = await pcRef.current.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: callType === 'video',
+        offerToReceiveVideo: callType === 'video' || isScreenSharing,
       })
 
       await pcRef.current.setLocalDescription(offer)
@@ -377,7 +395,6 @@ const CallScreen = () => {
 
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer))
 
-      // Process queued ICE candidates
       while (candidatesQueue.current.length > 0) {
         const candidate = candidatesQueue.current.shift()
         await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
@@ -408,7 +425,6 @@ const CallScreen = () => {
           new RTCSessionDescription(answer)
         )
 
-        // Process queued ICE candidates
         while (candidatesQueue.current.length > 0) {
           const candidate = candidatesQueue.current.shift()
           await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
@@ -464,7 +480,6 @@ const CallScreen = () => {
       setLocalStream(newStream)
       localStreamRef.current = newStream
 
-      // Replace video track in peer connection
       if (pcRef.current) {
         const senders = pcRef.current.getSenders()
         const newVideoTrack = newStream.getVideoTracks()[0]
@@ -479,6 +494,111 @@ const CallScreen = () => {
     } catch (error) {
       console.error('❌ Switch camera error:', error)
       Alert.alert('Error', 'Failed to switch camera')
+    }
+  }
+
+  // New function to toggle screen sharing
+  const toggleScreenSharing = async () => {
+    if (Platform.OS !== 'web') {
+      Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
+      return
+    }
+
+    if (isScreenSharing) {
+      stopScreenSharing()
+    } else {
+      const screenStream = await getScreenShareStream()
+      if (!screenStream) return
+
+      setIsScreenSharing(true)
+      screenStreamRef.current = screenStream
+
+      if (pcRef.current) {
+        const senders = pcRef.current.getSenders()
+        const videoTrack = screenStream.getVideoTracks()[0]
+        const videoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === 'video'
+        )
+
+        if (videoSender) {
+          // Replace existing video track with screen sharing track
+          await videoSender.replaceTrack(videoTrack)
+        } else {
+          // Add new video track if none exists
+          pcRef.current.addTrack(videoTrack, screenStream)
+        }
+
+        // Renegotiate the connection
+        await createOffer()
+
+        // Notify remote user about screen sharing
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(
+            JSON.stringify({
+              type: 'screen-sharing',
+              enabled: true,
+              to: remoteUserId,
+              chatId,
+            })
+          )
+        }
+      }
+    }
+  }
+
+  // New function to stop screen sharing
+  const stopScreenSharing = async () => {
+    if (!isScreenSharing || !screenStreamRef.current) return
+
+    // Stop screen sharing tracks
+    screenStreamRef.current.getTracks().forEach((track) => track.stop())
+    screenStreamRef.current = null
+    setIsScreenSharing(false)
+
+    // Switch back to camera stream
+    if (callType === 'video') {
+      const newStream = await getUserMedia()
+      setLocalStream(newStream)
+      localStreamRef.current = newStream
+
+      if (pcRef.current) {
+        const senders = pcRef.current.getSenders()
+        const newVideoTrack = newStream.getVideoTracks()[0]
+        const videoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === 'video'
+        )
+
+        if (videoSender && newVideoTrack) {
+          await videoSender.replaceTrack(newVideoTrack)
+        }
+
+        // Renegotiate the connection
+        await createOffer()
+      }
+    } else {
+      // If it's an audio call, remove the video track
+      if (pcRef.current) {
+        const senders = pcRef.current.getSenders()
+        const videoSender = senders.find(
+          (sender) => sender.track && sender.track.kind === 'video'
+        )
+        if (videoSender) {
+          pcRef.current.removeTrack(videoSender)
+        }
+        await createOffer()
+      }
+    }
+
+    // Notify remote user about stopping screen sharing
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'screen-sharing',
+          enabled: false,
+          to: remoteUserId,
+          chatId,
+        })
+      )
     }
   }
 
@@ -500,31 +620,31 @@ const CallScreen = () => {
   }, [chatId, user?.uid, navigation])
 
   const cleanup = () => {
-    // Stop call timer
     if (durationInterval.current) {
       clearInterval(durationInterval.current)
       durationInterval.current = null
     }
 
-    // Stop media tracks
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
       localStreamRef.current = null
     }
 
-    // Close peer connection
+    if (screenStreamRef.current) {
+      screenStreamRef.current.getTracks().forEach((track) => track.stop())
+      screenStreamRef.current = null
+    }
+
     if (pcRef.current) {
       pcRef.current.close()
       pcRef.current = null
     }
 
-    // Close WebSocket
     if (wsRef.current) {
       wsRef.current.close()
       wsRef.current = null
     }
 
-    // Reset audio session
     if (Platform.OS !== 'web') {
       Audio.setAudioModeAsync({
         allowsRecordingIOS: false,
@@ -536,6 +656,7 @@ const CallScreen = () => {
     setLocalStream(null)
     setRemoteStream(null)
     setIsConnected(false)
+    setIsScreenSharing(false)
   }
 
   const formatCallDuration = (seconds) => {
@@ -546,19 +667,17 @@ const CallScreen = () => {
       .padStart(2, '0')}`
   }
 
-  // Update the renderLocalVideo function in CallScreen.js
-
   const renderLocalVideo = () => {
-    if (!localStream) return null
+    if (!localStream && !screenStreamRef.current) return null
 
-    // For web platform
     if (Platform.OS === 'web') {
+      const stream = isScreenSharing ? screenStreamRef.current : localStream
       return (
         <LocalVideoContainer>
           <video
             ref={(video) => {
-              if (video && localStream) {
-                video.srcObject = localStream
+              if (video && stream) {
+                video.srcObject = stream
               }
             }}
             autoPlay
@@ -568,15 +687,15 @@ const CallScreen = () => {
               width: '100%',
               height: '100%',
               objectFit: 'cover',
-              transform: isFrontCamera ? 'scaleX(-1)' : 'none', // Mirror front camera
+              transform:
+                isScreenSharing || !isFrontCamera ? 'none' : 'scaleX(-1)',
             }}
           />
         </LocalVideoContainer>
       )
     }
 
-    // For React Native
-    if (!isVideoEnabled) {
+    if (!isVideoEnabled && !isScreenSharing) {
       return (
         <LocalVideoContainer>
           <LocalVideoPlaceholder>
@@ -586,14 +705,16 @@ const CallScreen = () => {
       )
     }
 
+    const stream = isScreenSharing ? screenStreamRef.current : localStream
     return (
       <LocalVideoContainer>
         <Video
-          source={{ uri: localStream.toURL() }}
+          source={{ uri: stream?.toURL?.() }}
           style={{
             width: '100%',
             height: '100%',
-            transform: isFrontCamera ? [{ scaleX: -1 }] : [], // Mirror front camera
+            transform:
+              isScreenSharing || !isFrontCamera ? [] : [{ scaleX: -1 }],
           }}
           shouldPlay
           isMuted
@@ -603,9 +724,7 @@ const CallScreen = () => {
     )
   }
 
-  // Update renderRemoteVideo for web support
   const renderRemoteVideo = () => {
-    // Show placeholder when not connected or no remote stream
     if (!remoteStream || !isConnected) {
       return (
         <PlaceholderView>
@@ -623,7 +742,6 @@ const CallScreen = () => {
       )
     }
 
-    // For audio calls, show avatar even when connected
     if (callType === 'voice') {
       return (
         <AudioCallView>
@@ -634,7 +752,6 @@ const CallScreen = () => {
       )
     }
 
-    // For web platform
     if (Platform.OS === 'web') {
       return (
         <video
@@ -655,7 +772,6 @@ const CallScreen = () => {
       )
     }
 
-    // For React Native
     return (
       <Video
         source={{ uri: remoteStream.toURL() }}
@@ -686,10 +802,7 @@ const CallScreen = () => {
       </Header>
 
       <VideoContainer>
-        {/* Remote video takes full screen */}
         <RemoteVideoWrapper>{renderRemoteVideo()}</RemoteVideoWrapper>
-
-        {/* Local video in corner - ALWAYS show for video calls */}
         {callType === 'video' && renderLocalVideo()}
       </VideoContainer>
 
@@ -697,6 +810,16 @@ const CallScreen = () => {
         <ControlButton onPress={toggleMute} active={isMuted}>
           <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={28} color="#fff" />
         </ControlButton>
+
+        {callType === 'video' && Platform.OS === 'web' && (
+          <ControlButton onPress={toggleScreenSharing} active={isScreenSharing}>
+            <Ionicons
+              name={isScreenSharing ? 'stop-circle' : 'share'}
+              size={28}
+              color="#fff"
+            />
+          </ControlButton>
+        )}
 
         <EndCallButton onPress={handleEndCall}>
           <Ionicons name="call" size={28} color="#fff" />
@@ -720,7 +843,7 @@ const CallScreen = () => {
   )
 }
 
-// Styled Components
+// Styled Components (unchanged)
 const Container = styled.View`
   flex: 1;
   background-color: #1a1a1a;
@@ -870,6 +993,7 @@ const EndCallButton = styled.TouchableOpacity`
   justify-content: center;
   align-items: center;
 `
+
 const LocalVideoPlaceholder = styled.View`
   width: 100%;
   height: 100%;
@@ -877,4 +1001,5 @@ const LocalVideoPlaceholder = styled.View`
   justify-content: center;
   align-items: center;
 `
+
 export default CallScreen

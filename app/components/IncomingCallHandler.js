@@ -1,15 +1,14 @@
-// components/IncomingCallHandler.js
-import React, { useContext, useRef, useEffect } from 'react'
+import React, { useContext, useEffect } from 'react'
 import { useNavigation } from '@react-navigation/native'
+import * as Notifications from 'expo-notifications'
 import ChatsContext from '../contexts/ChatsContext'
 import IncomingCallModal from './IncomingCallModal'
-import { Alert } from 'react-native'
+import { Alert, AppState } from 'react-native'
 
 export default function IncomingCallHandler() {
   const navigation = useNavigation()
   const { incomingCall, answerCall, rejectCall } = useContext(ChatsContext)
 
-  // Log when incoming call state changes
   useEffect(() => {
     if (incomingCall) {
       console.log('🔔 IncomingCallHandler: New incoming call detected', {
@@ -18,10 +17,39 @@ export default function IncomingCallHandler() {
         callType: incomingCall.callType,
         callId: incomingCall.callId,
       })
+
+      // Show notification if app is in background
+      if (AppState.currentState !== 'active') {
+        showCallNotification(incomingCall)
+      }
     } else {
       console.log('🔕 IncomingCallHandler: No incoming call')
     }
   }, [incomingCall])
+
+  const showCallNotification = async (callData) => {
+    await Notifications.scheduleNotificationAsync({
+      content: {
+        title: `Incoming ${
+          callData.callType === 'video' ? 'Video' : 'Voice'
+        } Call`,
+        body: `${callData.callerName || 'Someone'} is calling you`,
+        sound: 'default',
+        priority: Notifications.AndroidNotificationPriority.MAX,
+        vibrate: [0, 250, 250, 250],
+        data: {
+          type: 'incoming_call',
+          callId: callData.callId,
+          chatId: callData.chatId,
+          caller: callData.caller,
+          callerName: callData.callerName,
+          callType: callData.callType,
+        },
+        categoryIdentifier: 'INCOMING_CALL',
+      },
+      trigger: null, // Show immediately
+    })
+  }
 
   const handleAcceptCall = async () => {
     if (!incomingCall) {
@@ -32,13 +60,14 @@ export default function IncomingCallHandler() {
     console.log('✅ Accepting call:', incomingCall.callId)
 
     try {
+      // Dismiss notification
+      await Notifications.dismissAllNotificationsAsync()
+
       const result = await answerCall(incomingCall.callId, true)
 
       console.log('📞 Answer call result:', result)
 
       if (result.success) {
-        // Navigate to call screen
-        // Use navigate with nested navigation
         navigation.navigate('Chats', {
           screen: 'CallScreen',
           params: {
@@ -67,6 +96,9 @@ export default function IncomingCallHandler() {
     console.log('❌ Rejecting call:', incomingCall.callId)
 
     try {
+      // Dismiss notification
+      await Notifications.dismissAllNotificationsAsync()
+
       await rejectCall(incomingCall.callId)
       console.log('✅ Call rejected successfully')
     } catch (error) {
@@ -74,7 +106,6 @@ export default function IncomingCallHandler() {
     }
   }
 
-  // Don't render anything if there's no incoming call
   if (!incomingCall) {
     return null
   }

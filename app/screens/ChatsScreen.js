@@ -20,52 +20,56 @@ const Container = styled.View`
   background-color: #f8fafc;
 `
 
-const HeaderGradient = styled(LinearGradient).attrs({
-  colors: ['#3396D3', '#3396D3'],
-  start: { x: 0, y: 0 },
-  end: { x: 1, y: 1 },
-})`
-  padding: 60px 24px 24px 24px;
-  border-bottom-left-radius: 24px;
-  border-bottom-right-radius: 24px;
-`
-
-const HeaderContent = styled.View`
+const Header = styled.View`
+  background-color: white;
+  padding: 16px 24px;
   flex-direction: row;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
-`
-
-const HeaderLeft = styled.View`
-  flex: 1;
+  justify-content: space-between;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 8px;
+  elevation: 4;
+  border-bottom-width: 1px;
+  border-bottom-color: #f1f5f9;
 `
 
 const HeaderTitle = styled.Text`
-  font-size: 32px;
+  font-size: 28px;
   font-weight: 800;
-  color: white;
-  margin-bottom: 4px;
+  color: #3396d3;
+  letter-spacing: -0.5px;
 `
 
-const HeaderSubtitle = styled.Text`
-  font-size: 16px;
-  color: rgba(255, 255, 255, 0.9);
-`
-
-const ProfileButton = styled.TouchableOpacity`
+const CameraButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: rgba(255, 255, 255, 0.2);
+  background-color: #f1f5f9;
   justify-content: center;
   align-items: center;
-  backdrop-filter: blur(10px);
+`
+
+const SearchInput = styled.TextInput`
+  flex: 1;
+  margin-left: 12px;
+  font-size: 16px;
+  color: #1e293b;
+  font-weight: 500;
+  border-width: 0;
+  outline: none;
+  text-decoration-line: none;
+  background-color: transparent;
+  &:focus {
+    border-bottom-width: 2px;
+    border-bottom-color: #3396d3;
+  }
 `
 
 const SearchContainer = styled.View`
   background-color: white;
-  margin: -12px 24px 24px 24px;
+  margin: 16px 24px;
   padding: 16px 20px;
   border-radius: 16px;
   flex-direction: row;
@@ -76,14 +80,6 @@ const SearchContainer = styled.View`
   shadow-radius: 12px;
   elevation: 8;
   border: 1px solid rgba(102, 126, 234, 0.1);
-`
-
-const SearchInput = styled.TextInput`
-  flex: 1;
-  margin-left: 12px;
-  font-size: 16px;
-  color: #1e293b;
-  font-weight: 500;
 `
 
 const SearchIcon = styled.View`
@@ -108,6 +104,22 @@ const ChatItem = styled.TouchableOpacity`
   shadow-radius: 8px;
   elevation: 4;
   border: 1px solid #f1f5f9;
+`
+
+const ChatAvatar = styled.View`
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
+  background-color: ${(props) => props.color || '#3396d3'};
+  justify-content: center;
+  align-items: center;
+  margin-right: 16px;
+`
+
+const ChatAvatarText = styled.Text`
+  color: white;
+  font-size: 18px;
+  font-weight: bold;
 `
 
 const ChatInfo = styled.View`
@@ -274,6 +286,35 @@ const findUserByAnyId = (users, id) => {
   )
 }
 
+const getUserColor = (userId) => {
+  const colors = [
+    '#3396d3',
+    '#e74c3c',
+    '#f39c12',
+    '#27ae60',
+    '#9b59b6',
+    '#1abc9c',
+    '#34495e',
+    '#e67e22',
+    '#2ecc71',
+    '#8e44ad',
+    '#16a085',
+    '#f1c40f',
+  ]
+  const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0
+  return colors[index]
+}
+
+const getInitials = (name) => {
+  if (!name) return '?'
+  return name
+    .split(' ')
+    .map((n) => n[0])
+    .join('')
+    .toUpperCase()
+    .substring(0, 2)
+}
+
 const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
   const otherParticipants =
     item.participants?.filter((id) => id !== currentUserId) || []
@@ -287,9 +328,15 @@ const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
   const preview = lastMsg
     ? `${isOwn ? 'You' : chatName}: ${getLastMessageText(lastMsg)}`
     : 'No messages yet - start the conversation!'
+  const avatarColor = getUserColor(
+    otherUser?._id || otherUser?.id || otherUser?.firebaseUid
+  )
 
   return (
     <ChatItem onPress={() => onPress(item)}>
+      <ChatAvatar color={avatarColor}>
+        <ChatAvatarText>{getInitials(chatName)}</ChatAvatarText>
+      </ChatAvatar>
       <ChatInfo>
         <ChatName>{chatName}</ChatName>
         <LastMessage numberOfLines={1}>{preview}</LastMessage>
@@ -299,6 +346,12 @@ const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
 }
 
 export default function ChatsScreen({ navigation }) {
+  useEffect(() => {
+    navigation.setOptions({
+      headerShown: false, // Hide default header since we're using custom header
+    })
+  }, [navigation])
+
   const [searchText, setSearchText] = useState('')
   const [refreshing, setRefreshing] = useState(false)
 
@@ -310,7 +363,6 @@ export default function ChatsScreen({ navigation }) {
   // Filter chats based on search
   const filteredChats = chats.filter((chat) => {
     if (!searchText) return true
-
     if (chat.name) {
       return chat.name.toLowerCase().includes(searchText.toLowerCase())
     } else {
@@ -318,7 +370,6 @@ export default function ChatsScreen({ navigation }) {
         chat.participants?.filter(
           (participantId) => participantId !== user?.uid
         ) || []
-
       return otherParticipants.some((participantId) => {
         const participant = users.find(
           (u) =>
@@ -332,6 +383,10 @@ export default function ChatsScreen({ navigation }) {
   })
 
   const handleChatPress = (chat) => {
+    console.log(
+      'handleChatPress: Navigating to ChatDetail, chatId:',
+      chat._id || chat.id
+    )
     navigation.navigate('ChatDetail', {
       chatId: chat._id || chat.id,
     })
@@ -339,6 +394,12 @@ export default function ChatsScreen({ navigation }) {
 
   const handleNewChat = () => {
     navigation.navigate('NewChats')
+  }
+
+  const handleStoryUpload = () => {
+    // Navigate to story upload screen or open camera
+    console.log('Opening camera for story upload...')
+    // navigation.navigate('StoryUpload') // Uncomment when you create this screen
   }
 
   const handleRefresh = async () => {
@@ -354,12 +415,12 @@ export default function ChatsScreen({ navigation }) {
       <EmptyStateIcon>
         <Ionicons name="chatbubbles-outline" size={60} color="#94a3b8" />
       </EmptyStateIcon>
-      <EmptyStateTitle>No conversations yet</EmptyStateTitle>
+      <EmptyStateTitle>No messages yet</EmptyStateTitle>
       <EmptyStateText>
         Connect with friends and colleagues by starting your first conversation
       </EmptyStateText>
       <EmptyStateButton onPress={handleNewChat} activeOpacity={0.8}>
-        <EmptyStateButtonText>Start Chatting</EmptyStateButtonText>
+        <EmptyStateButtonText>Start Messaging</EmptyStateButtonText>
       </EmptyStateButton>
     </EmptyStateContainer>
   )
@@ -384,18 +445,25 @@ export default function ChatsScreen({ navigation }) {
   if (loading && chats.length === 0) {
     return (
       <Container>
-        <StatusBar barStyle="light-content" backgroundColor="#3396D3" />
-        <HeaderGradient>
-          <HeaderContent>
-            <HeaderLeft>
-              <HeaderTitle>Messages</HeaderTitle>
-              <HeaderSubtitle>Loading...</HeaderSubtitle>
-            </HeaderLeft>
-            <ProfileButton activeOpacity={0.8}>
-              <Ionicons name="person-outline" size={20} color="white" />
-            </ProfileButton>
-          </HeaderContent>
-        </HeaderGradient>
+        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+        <Header>
+          <HeaderTitle>PeepGram</HeaderTitle>
+          <CameraButton disabled activeOpacity={0.6}>
+            <Ionicons name="camera-outline" size={24} color="#94a3b8" />
+          </CameraButton>
+        </Header>
+        <SearchContainer>
+          <SearchIcon>
+            <Ionicons name="search-outline" size={18} color="#64748b" />
+          </SearchIcon>
+          <SearchInput
+            placeholder="Search messages..."
+            placeholderTextColor="#94a3b8"
+            value={searchText}
+            onChangeText={setSearchText}
+            editable={false}
+          />
+        </SearchContainer>
         <LoadingIndicator
           type="pulse"
           size="large"
@@ -411,15 +479,25 @@ export default function ChatsScreen({ navigation }) {
   if (!chatsContext) {
     return (
       <Container>
-        <StatusBar barStyle="light-content" backgroundColor="#3396D3" />
-        <HeaderGradient>
-          <HeaderContent>
-            <HeaderLeft>
-              <HeaderTitle>Messages</HeaderTitle>
-              <HeaderSubtitle>Error</HeaderSubtitle>
-            </HeaderLeft>
-          </HeaderContent>
-        </HeaderGradient>
+        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+        <Header>
+          <HeaderTitle>PeepGram</HeaderTitle>
+          <CameraButton disabled activeOpacity={0.6}>
+            <Ionicons name="camera-outline" size={24} color="#94a3b8" />
+          </CameraButton>
+        </Header>
+        <SearchContainer>
+          <SearchIcon>
+            <Ionicons name="search-outline" size={18} color="#64748b" />
+          </SearchIcon>
+          <SearchInput
+            placeholder="Search messages..."
+            placeholderTextColor="#94a3b8"
+            value={searchText}
+            onChangeText={setSearchText}
+            editable={false}
+          />
+        </SearchContainer>
         {renderErrorState()}
       </Container>
     )
@@ -427,36 +505,24 @@ export default function ChatsScreen({ navigation }) {
 
   return (
     <Container>
-      <StatusBar barStyle="light-content" backgroundColor="#3396D3" />
-
-      <HeaderGradient>
-        <HeaderContent>
-          <HeaderLeft>
-            <HeaderTitle>Messages</HeaderTitle>
-            <HeaderSubtitle>
-              {filteredChats.length === 1
-                ? '1 conversation'
-                : `${filteredChats.length} conversations`}
-            </HeaderSubtitle>
-          </HeaderLeft>
-          <ProfileButton activeOpacity={0.8}>
-            <Ionicons name="person-outline" size={20} color="white" />
-          </ProfileButton>
-        </HeaderContent>
-      </HeaderGradient>
-
+      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+      <Header>
+        <HeaderTitle>PeepGram</HeaderTitle>
+        <CameraButton onPress={handleStoryUpload} activeOpacity={0.7}>
+          <Ionicons name="camera-outline" size={24} color="#3396d3" />
+        </CameraButton>
+      </Header>
       <SearchContainer>
         <SearchIcon>
           <Ionicons name="search-outline" size={18} color="#64748b" />
         </SearchIcon>
         <SearchInput
-          placeholder="Search conversations..."
+          placeholder="Search messages..."
           placeholderTextColor="#94a3b8"
           value={searchText}
           onChangeText={setSearchText}
         />
       </SearchContainer>
-
       <FlatList
         data={filteredChats}
         keyExtractor={(item) => (item._id || item.id).toString()}
@@ -481,7 +547,6 @@ export default function ChatsScreen({ navigation }) {
           />
         }
       />
-
       <FloatingActionButton onPress={handleNewChat} activeOpacity={0.8}>
         <FABGradient>
           <Ionicons name="add" size={28} color="white" />

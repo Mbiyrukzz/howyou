@@ -8,6 +8,41 @@
     "ios": "expo run:ios",
     "web": "expo start --web"
   },
+
+  
+  "expo": {
+    "plugins": [
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#3396D3",
+          "sounds": ["./assets/ringtone.mp3"]
+        }
+      ]
+    ],
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#3396D3",
+      "androidMode": "default",
+      "androidCollapsedTitle": "PeepGram"
+    },
+    "android": {
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "NOTIFICATIONS"
+      ]
+    },
+    "ios": {
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera for video calls",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for calls",
+        "UIBackgroundModes": ["audio", "voip"]
+      }
+    }
+  },
+
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.4.7",
@@ -18,11 +53,14 @@
     "expo-audio": "~1.0.13",
     "expo-av": "^16.0.7",
     "expo-camera": "~17.0.8",
+    "expo-constants": "~18.0.9",
     "expo-dev-client": "^6.0.12",
+    "expo-device": "~8.0.9",
     "expo-document-picker": "~14.0.7",
     "expo-image-picker": "~17.0.8",
     "expo-linear-gradient": "~15.0.7",
     "expo-media-library": "~18.2.0",
+    "expo-notifications": "~0.32.12",
     "expo-status-bar": "~3.0.8",
     "expo-video": "~3.0.11",
     "firebase": "^12.2.1",
