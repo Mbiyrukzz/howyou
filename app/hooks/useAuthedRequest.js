@@ -53,15 +53,35 @@ const useAuthedRequest = () => {
         headers['Content-Type'] = 'application/json'
       }
 
-      const response = await axios({
+      const config = {
         method,
         url,
-        data: body,
         headers,
-        // Increase timeout for file uploads
         timeout: isFormData ? 30000 : 10000,
-      })
-      return response.data
+      }
+
+      // Only add data if body is provided and not null/undefined
+      if (body !== null && body !== undefined) {
+        config.data = body
+      }
+
+      try {
+        const response = await axios(config)
+        return response.data
+      } catch (error) {
+        console.error(`${method.toUpperCase()} ${url} error:`, error)
+
+        // Extract error message from response
+        if (error.response?.data) {
+          throw new Error(
+            error.response.data.error ||
+              error.response.data.message ||
+              error.message
+          )
+        }
+
+        throw error
+      }
     },
     [token]
   )
@@ -74,7 +94,7 @@ const useAuthedRequest = () => {
   )
   const put = useCallback((url, body) => request('put', url, body), [request])
   const del = useCallback(
-    (url, body) => request('delete', url, body),
+    (url) => request('delete', url), // Don't send body for DELETE
     [request]
   )
 

@@ -17,7 +17,7 @@ const ChatsProvider = ({ children }) => {
   const [callNotification, setCallNotification] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
 
-  const { isReady, get, post } = useAuthedRequest()
+  const { isReady, get, put, post, del } = useAuthedRequest()
   const { user } = useUser()
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
@@ -270,6 +270,50 @@ const ChatsProvider = ({ children }) => {
     }
   }, [get, isReady])
 
+  const deleteChat = useCallback(
+    async (chatId) => {
+      if (!isReady || !user?.uid) {
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      try {
+        console.log('Deleting chat:', chatId)
+
+        // Use the del method from useAuthedRequest
+        const data = await del(`${API_URL}/delete-chat/${chatId}`)
+
+        if (data.success) {
+          // Remove chat from local state
+          setChats((prev) => prev.filter((c) => (c._id || c.id) !== chatId))
+
+          // Remove messages for this chat
+          setMessages((prev) => {
+            const updated = { ...prev }
+            delete updated[chatId]
+            return updated
+          })
+
+          // Remove calls for this chat
+          setCalls((prev) => {
+            const updated = { ...prev }
+            delete updated[chatId]
+            return updated
+          })
+
+          console.log('✅ Chat deleted successfully')
+        }
+
+        return data
+      } catch (error) {
+        console.error('deleteChat error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to delete chat',
+        }
+      }
+    },
+    [isReady, del, user?.uid]
+  )
   /** ──────────────── MESSAGES ──────────────── **/
   const loadMessages = useCallback(
     async (chatId) => {
@@ -616,6 +660,7 @@ const ChatsProvider = ({ children }) => {
     reloadChats: loadChats,
     loadUsers,
     createChat,
+    deleteChat,
 
     // Message functions
     loadMessages,

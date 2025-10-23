@@ -2,10 +2,14 @@ import React, { useContext, useState, useEffect } from 'react'
 import {
   FlatList,
   TouchableOpacity,
+  Platform,
   StatusBar,
   RefreshControl,
   Dimensions,
+  Alert,
+  View,
 } from 'react-native'
+
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
@@ -91,9 +95,13 @@ const SearchIcon = styled.View`
   align-items: center;
 `
 
+const ChatItemContainer = styled.View`
+  position: relative;
+  margin: 6px 24px;
+`
+
 const ChatItem = styled.TouchableOpacity`
   background-color: white;
-  margin: 6px 24px;
   padding: 20px;
   border-radius: 20px;
   flex-direction: row;
@@ -138,6 +146,47 @@ const LastMessage = styled.Text`
   color: #64748b;
   line-height: 20px;
   font-weight: 500;
+`
+
+const OptionsButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #f1f5f9;
+  justify-content: center;
+  align-items: center;
+  margin-left: 8px;
+`
+
+const DropdownMenu = styled.View`
+  position: absolute;
+  right: 20px;
+  top: 60px;
+  background-color: white;
+  border-radius: 12px;
+  padding: 8px 0;
+  min-width: 180px;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.15;
+  shadow-radius: 12px;
+  elevation: 8;
+  border: 1px solid #f1f5f9;
+  z-index: 1000;
+`
+
+const DropdownItem = styled.TouchableOpacity`
+  flex-direction: row;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: ${(props) => (props.danger ? '#fef2f2' : 'transparent')};
+`
+
+const DropdownItemText = styled.Text`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${(props) => (props.danger ? '#dc2626' : '#1e293b')};
+  margin-left: 12px;
 `
 
 const FloatingActionButton = styled.TouchableOpacity`
@@ -315,7 +364,16 @@ const getInitials = (name) => {
     .substring(0, 2)
 }
 
-const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
+const ChatItemComponent = ({
+  item,
+  onPress,
+  onLongPress,
+  onOptionsPress,
+  users,
+  currentUserId,
+  showDropdown,
+  onDeletePress,
+}) => {
   const otherParticipants =
     item.participants?.filter((id) => id !== currentUserId) || []
   const otherUser = otherParticipants.length
@@ -332,33 +390,90 @@ const ChatItemComponent = ({ item, onPress, users, currentUserId }) => {
     otherUser?._id || otherUser?.id || otherUser?.firebaseUid
   )
 
+  const isWeb = Platform.OS === 'web'
+
+  console.log('📱 Rendering chat item:', {
+    chatId: item._id || item.id,
+    chatName,
+    isWeb,
+    showDropdown,
+  })
+
   return (
-    <ChatItem onPress={() => onPress(item)}>
-      <ChatAvatar color={avatarColor}>
-        <ChatAvatarText>{getInitials(chatName)}</ChatAvatarText>
-      </ChatAvatar>
-      <ChatInfo>
-        <ChatName>{chatName}</ChatName>
-        <LastMessage numberOfLines={1}>{preview}</LastMessage>
-      </ChatInfo>
-    </ChatItem>
+    <ChatItemContainer>
+      <ChatItem
+        onPress={() => {
+          console.log('👆 Chat item pressed:', item._id || item.id)
+          onPress(item)
+        }}
+        onLongPress={
+          !isWeb
+            ? () => {
+                console.log('👆👆 Chat item long pressed:', item._id || item.id)
+                onLongPress(item)
+              }
+            : undefined
+        }
+        delayLongPress={500}
+      >
+        <ChatAvatar color={avatarColor}>
+          <ChatAvatarText>{getInitials(chatName)}</ChatAvatarText>
+        </ChatAvatar>
+        <ChatInfo>
+          <ChatName>{chatName}</ChatName>
+          <LastMessage numberOfLines={1}>{preview}</LastMessage>
+        </ChatInfo>
+        {isWeb && (
+          <OptionsButton
+            onPress={(e) => {
+              console.log('🔘 Options button clicked')
+              e.stopPropagation()
+              onOptionsPress(item)
+            }}
+          >
+            <Ionicons name="ellipsis-vertical" size={20} color="#64748b" />
+          </OptionsButton>
+        )}
+      </ChatItem>
+      {isWeb && showDropdown && (
+        <DropdownMenu>
+          <DropdownItem
+            danger
+            onPress={() => {
+              console.log('🗑️ Delete button in dropdown clicked')
+              onDeletePress()
+            }}
+          >
+            <Ionicons name="trash-outline" size={20} color="#dc2626" />
+            <DropdownItemText danger>Delete Chat</DropdownItemText>
+          </DropdownItem>
+        </DropdownMenu>
+      )}
+    </ChatItemContainer>
   )
 }
 
 export default function ChatsScreen({ navigation }) {
   useEffect(() => {
     navigation.setOptions({
-      headerShown: false, // Hide default header since we're using custom header
+      headerShown: false,
     })
   }, [navigation])
 
   const [searchText, setSearchText] = useState('')
   const [refreshing, setRefreshing] = useState(false)
+  const [activeDropdown, setActiveDropdown] = useState(null)
 
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
 
-  const { chats = [], loading, users = [], reloadChats } = chatsContext || {}
+  const {
+    chats = [],
+    loading,
+    users = [],
+    reloadChats,
+    deleteChat,
+  } = chatsContext || {}
 
   // Filter chats based on search
   const filteredChats = chats.filter((chat) => {
@@ -383,6 +498,9 @@ export default function ChatsScreen({ navigation }) {
   })
 
   const handleChatPress = (chat) => {
+    // Close dropdown if open
+    setActiveDropdown(null)
+
     console.log(
       'handleChatPress: Navigating to ChatDetail, chatId:',
       chat._id || chat.id
@@ -397,9 +515,7 @@ export default function ChatsScreen({ navigation }) {
   }
 
   const handleStoryUpload = () => {
-    // Navigate to story upload screen or open camera
     console.log('Opening camera for story upload...')
-    // navigation.navigate('StoryUpload') // Uncomment when you create this screen
   }
 
   const handleRefresh = async () => {
@@ -407,6 +523,120 @@ export default function ChatsScreen({ navigation }) {
       setRefreshing(true)
       await reloadChats()
       setRefreshing(false)
+    }
+  }
+
+  const handleDeleteChat = async (chatId, chatName) => {
+    console.log('🎯 handleDeleteChat called')
+    console.log('  Chat ID:', chatId)
+    console.log('  Chat Name:', chatName)
+    console.log('  deleteChat function exists?', !!deleteChat)
+
+    if (!deleteChat) {
+      console.error('❌ deleteChat function not available from context')
+      Alert.alert('Error', 'Delete function not available')
+      return
+    }
+
+    // Close dropdown
+    setActiveDropdown(null)
+
+    try {
+      console.log('🚀 Calling deleteChat...')
+      const result = await deleteChat(chatId)
+      console.log('✅ deleteChat returned:', result)
+
+      if (result.success) {
+        Alert.alert('Success', 'Chat deleted successfully')
+      } else {
+        Alert.alert('Error', result.error || 'Failed to delete chat')
+      }
+    } catch (error) {
+      console.error('❌ Delete chat error:', error)
+      Alert.alert('Error', 'Failed to delete chat: ' + error.message)
+    }
+  }
+
+  const handleOptionsPress = (chat) => {
+    const chatId = chat._id || chat.id
+    console.log('🔘 Options button pressed for chat:', chatId)
+    console.log('  Current activeDropdown:', activeDropdown)
+    // Toggle dropdown
+    setActiveDropdown(activeDropdown === chatId ? null : chatId)
+    console.log(
+      '  New activeDropdown:',
+      activeDropdown === chatId ? null : chatId
+    )
+  }
+
+  const handleChatLongPress = (chat) => {
+    const chatId = chat._id || chat.id
+    const otherParticipants =
+      chat.participants?.filter((id) => id !== user?.uid) || []
+    const otherUser = otherParticipants.length
+      ? findUserByAnyId(users, otherParticipants[0])
+      : null
+    const chatName = otherUser?.name || 'Unknown'
+
+    console.log('Long press detected for chat:', chatId)
+
+    Alert.alert(
+      'Chat Options',
+      `Chat with ${chatName}`,
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete Chat',
+          style: 'destructive',
+          onPress: () => confirmDeleteChat(chatId, chatName),
+        },
+      ],
+      { cancelable: true }
+    )
+  }
+
+  const confirmDeleteChat = (chatId, chatName) => {
+    console.log('⚠️ confirmDeleteChat called')
+    console.log('  Chat ID:', chatId)
+    console.log('  Chat Name:', chatName)
+    console.log('  Platform:', Platform.OS)
+
+    if (Platform.OS === 'web') {
+      // For web, use window.confirm
+      const confirmed = window.confirm(
+        `Are you sure you want to delete your chat with ${chatName}? This will delete all messages and cannot be undone.`
+      )
+
+      if (confirmed) {
+        console.log('✅ User confirmed delete (web)')
+        handleDeleteChat(chatId, chatName)
+      } else {
+        console.log('❌ User cancelled delete (web)')
+      }
+    } else {
+      // For mobile, use Alert.alert
+      Alert.alert(
+        'Delete Chat',
+        `Are you sure you want to delete your chat with ${chatName}? This will delete all messages and cannot be undone.`,
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => console.log('❌ User cancelled delete'),
+          },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              console.log('✅ User confirmed delete (mobile)')
+              handleDeleteChat(chatId, chatName)
+            },
+          },
+        ]
+      )
     }
   }
 
@@ -441,7 +671,6 @@ export default function ChatsScreen({ navigation }) {
     </ErrorContainer>
   )
 
-  // Show loading indicator when initially loading
   if (loading && chats.length === 0) {
     return (
       <Container>
@@ -526,14 +755,28 @@ export default function ChatsScreen({ navigation }) {
       <FlatList
         data={filteredChats}
         keyExtractor={(item) => (item._id || item.id).toString()}
-        renderItem={({ item }) => (
-          <ChatItemComponent
-            item={item}
-            onPress={handleChatPress}
-            currentUserId={user?.uid}
-            users={users}
-          />
-        )}
+        renderItem={({ item }) => {
+          const chatId = item._id || item.id
+          const otherParticipants =
+            item.participants?.filter((id) => id !== user?.uid) || []
+          const otherUser = otherParticipants.length
+            ? findUserByAnyId(users, otherParticipants[0])
+            : null
+          const chatName = otherUser?.name || 'Unknown'
+
+          return (
+            <ChatItemComponent
+              item={item}
+              onPress={handleChatPress}
+              onLongPress={handleChatLongPress}
+              onOptionsPress={handleOptionsPress}
+              currentUserId={user?.uid}
+              users={users}
+              showDropdown={activeDropdown === chatId}
+              onDeletePress={() => confirmDeleteChat(chatId, chatName)}
+            />
+          )
+        }}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={{ paddingBottom: 120 }}
         ListEmptyComponent={renderEmptyState}
