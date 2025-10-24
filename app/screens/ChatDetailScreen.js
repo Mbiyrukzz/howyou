@@ -22,6 +22,13 @@ import { Audio } from 'expo-audio'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import LoadingIndicator from '../components/LoadingIndicator'
+import {
+  EditMessageModal,
+  MessageActionMenu,
+  MessageEditedLabel,
+  ThreeDotsButton,
+  WebMessageDropdown,
+} from '../components/MessageActions'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -120,7 +127,17 @@ const MessagesContainer = styled.View`
   flex: 1;
   padding: 16px;
 `
+const MessageItemWrapper = styled.View`
+  flex-direction: ${(props) => (props.isOwn ? 'row-reverse' : 'row')};
+  align-items: center;
+  margin-vertical: 4px;
+  position: relative;
+  pointer-events: auto;
+`
 
+const MessageItemContent = styled.View`
+  flex: 1;
+`
 const MessageBubble = styled.View`
   max-width: ${screenWidth * 0.75}px;
   margin-vertical: 4px;
@@ -555,22 +572,32 @@ const MessageItem = ({
   currentUserId,
   users,
   onImagePress,
+  onLongPress,
+  onThreeDotsPress,
+  hoveredMessageId,
+  setHoveredMessageId,
 }) => {
   const [imageLoading, setImageLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
   const [sound, setSound] = useState(null)
   const [isPlaying, setIsPlaying] = useState(false)
   const [audioDuration, setAudioDuration] = useState(0)
+  const messageRef = useRef(null)
+  const dotsButtonRef = useRef(null)
 
-  useEffect(() => {
-    if (item.type === 'image' && item.files?.[0]?.url) {
-      console.log('Image message:', {
-        type: item.type,
-        url: item.files[0].url,
-        hasUrl: !!item.files[0].url,
-      })
-    }
-  }, [item])
+  const isOwn = item.senderId === currentUserId
+  const messageId = item._id || item.id
+  const isHovered = Platform.OS === 'web' && hoveredMessageId === messageId
+  const showDate =
+    !previousItem ||
+    formatMessageDate(previousItem.createdAt) !==
+      formatMessageDate(item.createdAt)
+  const sender = findUserByAnyId(users, item.senderId)
+  const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
+  const isEdited =
+    item.updatedAt &&
+    new Date(item.updatedAt).getTime() > new Date(item.createdAt).getTime()
+  const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
 
   useEffect(() => {
     return () => {
@@ -580,19 +607,7 @@ const MessageItem = ({
     }
   }, [sound])
 
-  const showDate =
-    !previousItem ||
-    formatMessageDate(previousItem.createdAt) !==
-      formatMessageDate(item.createdAt)
-
-  const isOwn = item.senderId === currentUserId
-  const sender = findUserByAnyId(users, item.senderId)
-  const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
-
-  const handleImageLoad = () => {
-    setImageLoading(false)
-  }
-
+  const handleImageLoad = () => setImageLoading(false)
   const handleImageError = () => {
     setImageLoading(false)
     setImageError(true)
@@ -641,8 +656,6 @@ const MessageItem = ({
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
-
   const renderFiles = () => {
     if (!item.files || item.files.length === 0) return null
 
@@ -655,7 +668,7 @@ const MessageItem = ({
                 <Ionicons
                   name={isPlaying ? 'pause' : 'play'}
                   size={20}
-                  color={isOwn ? '#fff' : '#fff'}
+                  color="#fff"
                 />
               </PlayButton>
               <AudioInfo>
@@ -685,7 +698,7 @@ const MessageItem = ({
               {imageLoading && (
                 <ImageLoadingOverlay>
                   <Ionicons name="image-outline" size={24} color="white" />
-                  <LoadingText>Loading...</LoadingText>
+                  <LoadingText>Loading</LoadingText>
                 </ImageLoadingOverlay>
               )}
               {imageError && (
@@ -719,36 +732,130 @@ const MessageItem = ({
       .filter(Boolean)
   }
 
+  const handleThreeDotsPress = () => {
+    console.log('🔘 Three dots clicked for message:', messageId, {
+      isOwn,
+      isHovered,
+    })
+    if (Platform.OS === 'web' && messageRef.current) {
+      console.log('messageRef.current:', messageRef.current)
+      messageRef.current.measure(
+        (fx, fy, width, height, px, py) => {
+          console.log('📍 Measured position:', {
+            fx,
+            fy,
+            width,
+            height,
+            px,
+            py,
+          })
+          const dropdownX = isOwn ? px + width - 160 : px // Align right for isOwn, left for others
+          const dropdownY = py + height + 5 // Below the message
+          onThreeDotsPress(item, { x: dropdownX, y: dropdownY })
+        },
+        (error) => {
+          console.error('⚠️ Measure failed:', error)
+          onThreeDotsPress(item, {
+            x: isOwn ? window.innerWidth - 200 : 10,
+            y: 150,
+          })
+        }
+      )
+    } else {
+      console.warn('⚠️ Three dots press ignored: no ref or not web platform')
+      onThreeDotsPress(item, {
+        x: isOwn ? window.innerWidth - 200 : 10,
+        y: 150,
+      })
+    }
+  }
+
   return (
-    <>
+    <View style={{ marginVertical: 4 }}>
       {showDate && (
         <DateSeparator>
           <DateText>{formatMessageDate(item.createdAt)}</DateText>
         </DateSeparator>
       )}
-      <MessageBubble isOwn={isOwn}>
-        {[
-          item.content && item.content.trim().length > 0 && (
-            <MessageText key="text" isOwn={isOwn}>
-              {item.content.trim()}
-            </MessageText>
-          ),
-          ...(renderFiles() || []),
-          item.type === 'video' &&
-            item.files &&
-            item.files[0] &&
-            item.files[0].url && (
-              <MessageVideo key="video">
-                <Ionicons name="play-circle" size={40} color="white" />
-              </MessageVideo>
-            ),
-          <MessageTime key="time" isOwn={isOwn}>
-            {timeString}
-          </MessageTime>,
-          isOwn && <MessageStatus key="status">✓✓ sent</MessageStatus>,
-        ].filter(Boolean)}
-      </MessageBubble>
-    </>
+      <MessageItemWrapper
+        isOwn={isOwn}
+        ref={messageRef}
+        onMouseEnter={() => {
+          if (Platform.OS === 'web') {
+            console.log('🐭 Mouse enter:', messageId, {
+              isOwn,
+              currentUserId,
+              senderId: item.senderId,
+            })
+            setHoveredMessageId(messageId)
+          }
+        }}
+        onMouseLeave={() => {
+          if (Platform.OS === 'web') {
+            console.log('🐭 Mouse leave:', messageId)
+            setHoveredMessageId(null)
+          }
+        }}
+        style={{ padding: 4, flexDirection: isOwn ? 'row-reverse' : 'row' }}
+      >
+        <MessageItemContent>
+          <TouchableOpacity
+            onLongPress={() => isOwn && onLongPress(item)}
+            delayLongPress={500}
+            activeOpacity={0.9}
+          >
+            <MessageBubble isOwn={isOwn}>
+              {item.content && item.content.trim().length > 0 && (
+                <MessageText isOwn={isOwn}>{item.content.trim()}</MessageText>
+              )}
+              {renderFiles()}
+              {item.type === 'video' && item.files?.[0]?.url && (
+                <MessageVideo>
+                  <Ionicons name="play-circle" size={40} color="white" />
+                </MessageVideo>
+              )}
+              <View
+                style={{
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  marginTop: 4,
+                }}
+              >
+                <MessageTime isOwn={isOwn}>{timeString}</MessageTime>
+                {isEdited && (
+                  <MessageEditedLabel isOwn={isOwn}>
+                    (edited)
+                  </MessageEditedLabel>
+                )}
+              </View>
+              {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
+            </MessageBubble>
+          </TouchableOpacity>
+        </MessageItemContent>
+        {Platform.OS === 'web' && isOwn && (
+          <ThreeDotsButton
+            ref={dotsButtonRef}
+            visible={isHovered}
+            onPress={handleThreeDotsPress}
+            isOwn={isOwn}
+            style={{
+              position: 'absolute',
+              right: isOwn ? 8 : undefined,
+              left: !isOwn ? 8 : undefined,
+              top: 8,
+              opacity: isHovered ? 1 : 0.3, // Faintly visible for debugging
+              pointerEvents: isHovered ? 'auto' : 'none',
+              backgroundColor: isHovered ? '#e9ecef' : 'transparent',
+              padding: 8,
+              borderRadius: 4,
+              zIndex: 10,
+            }}
+          >
+            <Ionicons name="ellipsis-vertical" size={18} color="#2c3e50" />
+          </ThreeDotsButton>
+        )}
+      </MessageItemWrapper>
+    </View>
   )
 }
 
@@ -814,6 +921,14 @@ export default function ChatDetailScreen({ navigation, route }) {
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [showRecordingUI, setShowRecordingUI] = useState(false)
   const [selectedFiles, setSelectedFiles] = useState([])
+  const [actionMenuVisible, setActionMenuVisible] = useState(false)
+  const [selectedMessage, setSelectedMessage] = useState(null)
+  const [editModalVisible, setEditModalVisible] = useState(false)
+  const [webDropdownVisible, setWebDropdownVisible] = useState(false)
+
+  const [hoveredMessageId, setHoveredMessageId] = useState(null)
+  const [savingEdit, setSavingEdit] = useState(false)
+  const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
   const recordingIntervalRef = useRef(null)
 
   const flatListRef = useRef(null)
@@ -827,6 +942,8 @@ export default function ChatDetailScreen({ navigation, route }) {
     users = [],
     loadMessages,
     sendMessage: contextSendMessage,
+    updateMessage,
+    deleteMessage,
     initiateCall,
   } = chatsContext || {}
 
@@ -855,6 +972,118 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const chatInfo = getChatInfo()
 
+  const handleEditMessage = () => {
+    setActionMenuVisible(false)
+    setWebDropdownVisible(false)
+    setEditModalVisible(true)
+  }
+
+  const handleDeleteMessage = () => {
+    setActionMenuVisible(false)
+    setWebDropdownVisible(false)
+
+    Alert.alert(
+      'Delete Message',
+      'Are you sure you want to delete this message? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            const messageId = selectedMessage._id || selectedMessage.id
+            const result = await deleteMessage(messageId, chatId)
+
+            if (result.success) {
+              // Remove from local state
+              setMessages((prev) =>
+                prev.filter((msg) => (msg._id || msg.id) !== messageId)
+              )
+              Alert.alert('Success', 'Message deleted successfully')
+            } else {
+              Alert.alert('Error', result.error || 'Failed to delete message')
+            }
+
+            setSelectedMessage(null)
+          },
+        },
+      ]
+    )
+  }
+
+  const handleSaveEdit = async (newContent) => {
+    setSavingEdit(true)
+
+    const messageId = selectedMessage._id || selectedMessage.id
+    const result = await updateMessage(messageId, chatId, newContent)
+
+    setSavingEdit(false)
+
+    if (result.success) {
+      // Update local state
+      setMessages((prev) =>
+        prev.map((msg) =>
+          (msg._id || msg.id) === messageId
+            ? { ...msg, content: newContent, updatedAt: new Date() }
+            : msg
+        )
+      )
+      Alert.alert('Success', 'Message updated successfully')
+      setEditModalVisible(false)
+      setSelectedMessage(null)
+    } else {
+      Alert.alert('Error', result.error || 'Failed to update message')
+    }
+  }
+
+  const closeActionMenu = () => {
+    setActionMenuVisible(false)
+    setSelectedMessage(null)
+  }
+
+  const closeWebDropdown = () => {
+    setWebDropdownVisible(false)
+    setSelectedMessage(null)
+  }
+
+  const closeEditModal = () => {
+    setEditModalVisible(false)
+    if (!actionMenuVisible && !webDropdownVisible) {
+      setSelectedMessage(null)
+    }
+  }
+
+  const handleMessageLongPress = (message) => {
+    if (Platform.OS !== 'web' && message.senderId === user?.uid) {
+      setSelectedMessage(message)
+      setActionMenuVisible(true)
+    }
+  }
+
+  const handleMessageThreeDotsPress = (message, position) => {
+    console.log('🎯 handleMessageThreeDotsPress called:', {
+      messageId: message._id || message.id,
+      position,
+      platform: Platform.OS,
+    })
+    if (Platform.OS === 'web') {
+      setSelectedMessage(message)
+      setDropdownPosition(position || { x: window.innerWidth - 200, y: 150 })
+      setWebDropdownVisible(true)
+      console.log('✅ State updated:', {
+        selectedMessage: message._id || message.id,
+        dropdownPosition: position || { x: window.innerWidth - 200, y: 150 },
+        webDropdownVisible: true,
+      })
+      // Force re-render to ensure dropdown appears
+      setTimeout(() => {
+        setWebDropdownVisible((prev) => {
+          console.log('🔄 Forcing webDropdownVisible:', prev)
+          return true
+        })
+      }, 0)
+    }
+  }
   /* ---------- load messages ---------- */
   const loadChatMessages = async () => {
     if (!chatId) return
@@ -1505,6 +1734,10 @@ export default function ChatDetailScreen({ navigation, route }) {
                 currentUserId={user?.uid}
                 users={users}
                 onImagePress={handleImagePress}
+                onLongPress={handleMessageLongPress}
+                onThreeDotsPress={handleMessageThreeDotsPress}
+                hoveredMessageId={hoveredMessageId}
+                setHoveredMessageId={setHoveredMessageId}
               />
             )}
             showsVerticalScrollIndicator={false}
@@ -1629,6 +1862,33 @@ export default function ChatDetailScreen({ navigation, route }) {
           />
         </ImagePreviewContainer>
       </ImagePreviewModal>
+      {/* Mobile Action Menu */}
+      <MessageActionMenu
+        visible={actionMenuVisible}
+        onClose={closeActionMenu}
+        onEdit={handleEditMessage}
+        onDelete={handleDeleteMessage}
+      />
+
+      {/* ✅ WEB DROPDOWN - Must have BOTH conditions */}
+      {Platform.OS === 'web' && webDropdownVisible && (
+        <WebMessageDropdown
+          visible={webDropdownVisible}
+          onClose={closeWebDropdown}
+          position={dropdownPosition}
+          onEdit={handleEditMessage}
+          onDelete={handleDeleteMessage}
+        />
+      )}
+
+      {/* Edit Message Modal */}
+      <EditMessageModal
+        visible={editModalVisible}
+        onClose={closeEditModal}
+        initialContent={selectedMessage?.content || ''}
+        onSave={handleSaveEdit}
+        saving={savingEdit}
+      />
     </Container>
   )
 }

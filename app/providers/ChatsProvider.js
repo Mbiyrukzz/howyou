@@ -478,6 +478,84 @@ const ChatsProvider = ({ children }) => {
     [isReady, post, user]
   )
 
+  const deleteMessage = useCallback(
+    async (messageId, chatId) => {
+      if (!isReady || !user?.uid) {
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      try {
+        console.log('Deleting message:', messageId)
+
+        const data = await del(`${API_URL}/delete-message/${messageId}`)
+
+        if (data.success) {
+          // Remove message from local state
+          setMessages((prev) => ({
+            ...prev,
+            [chatId]: (prev[chatId] || []).filter(
+              (msg) => (msg._id || msg.id) !== messageId
+            ),
+          }))
+
+          console.log('✅ Message deleted successfully')
+        }
+
+        return data
+      } catch (error) {
+        console.error('deleteMessage error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to delete message',
+        }
+      }
+    },
+    [isReady, del, user?.uid]
+  )
+
+  const updateMessage = useCallback(
+    async (messageId, chatId, content) => {
+      if (!isReady || !user?.uid) {
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      if (!content || !content.trim()) {
+        return { success: false, error: 'Content cannot be empty' }
+      }
+
+      try {
+        console.log('Updating message:', messageId)
+
+        const data = await put(`${API_URL}/update-message/${messageId}`, {
+          content: content.trim(),
+        })
+
+        if (data.success) {
+          // Update message in local state
+          setMessages((prev) => ({
+            ...prev,
+            [chatId]: (prev[chatId] || []).map((msg) =>
+              (msg._id || msg.id) === messageId
+                ? { ...msg, content: content.trim(), updatedAt: new Date() }
+                : msg
+            ),
+          }))
+
+          console.log('✅ Message updated successfully')
+        }
+
+        return data
+      } catch (error) {
+        console.error('updateMessage error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to update message',
+        }
+      }
+    },
+    [isReady, put, user?.uid]
+  )
+
   const getMessagesForChat = useCallback(
     (chatId) => messages[chatId] || [],
     [messages]
@@ -665,6 +743,8 @@ const ChatsProvider = ({ children }) => {
     // Message functions
     loadMessages,
     sendMessage,
+    updateMessage,
+    deleteMessage,
     getMessagesForChat,
 
     // Call functions
