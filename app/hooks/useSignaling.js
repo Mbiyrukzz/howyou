@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react'
 import { Alert } from 'react-native'
 import { RTCPeerConnection, mediaDevices } from 'react-native-webrtc'
 
-const SIGNALING_URL = 'ws://10.38.189.87:5000/signaling'
+const SIGNALING_URL = 'ws://localhost:5000/signaling'
 const iceServers = [{ urls: 'stun:stun.l.google.com:19302' }]
 
 export default function useSignaling(userId, chatId, onRemoteStream) {

@@ -4,8 +4,8 @@ import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
 import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://10.38.189.87:5000'
-const WS_URL = 'ws://10.38.189.87:5000'
+const API_URL = 'http://localhost:5000'
+const WS_URL = 'ws://localhost:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])

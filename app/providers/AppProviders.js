@@ -1,11 +1,14 @@
 import React from 'react'
 import ChatsProvider from './ChatsProvider'
 import ContactsProvider from './ContactsProvider'
+import { PostsProvider } from './PostsProvider'
 
 const AppProviders = ({ children }) => {
   return (
     <ChatsProvider>
-      <ContactsProvider>{children}</ContactsProvider>
+      <PostsProvider>
+        <ContactsProvider>{children}</ContactsProvider>
+      </PostsProvider>
     </ChatsProvider>
   )
 }

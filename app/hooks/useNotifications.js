@@ -99,7 +99,7 @@ async function registerForPushNotificationsAsync() {
 
 async function savePushTokenToBackend(token, userId) {
   try {
-    const API_URL = 'http://10.38.189.87:5000'
+    const API_URL = 'http://localhost:5000'
     const response = await fetch(`${API_URL}/save-push-token`, {
       method: 'POST',
       headers: {

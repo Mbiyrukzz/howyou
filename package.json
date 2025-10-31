@@ -8,8 +8,6 @@
     "ios": "expo run:ios",
     "web": "expo start --web"
   },
-
-  
   "expo": {
     "plugins": [
       [
@@ -17,7 +15,9 @@
         {
           "icon": "./assets/notification-icon.png",
           "color": "#3396D3",
-          "sounds": ["./assets/ringtone.mp3"]
+          "sounds": [
+            "./assets/ringtone.mp3"
+          ]
         }
       ]
     ],
@@ -38,12 +38,15 @@
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera for video calls",
         "NSMicrophoneUsageDescription": "This app uses the microphone for calls",
-        "UIBackgroundModes": ["audio", "voip"]
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ]
       }
     }
   },
-
   "dependencies": {
+    "@expo/vector-icons": "^15.0.3",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/bottom-tabs": "^7.4.7",
     "@react-navigation/native": "^7.1.17",

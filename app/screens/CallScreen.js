@@ -12,7 +12,7 @@ import { useRoute, useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
 import { Video } from 'expo-video'
-import { Audio } from 'expo-audio'
+import { Audio } from 'expo-av'
 import { Camera } from 'expo-camera'
 import * as MediaLibrary from 'expo-media-library'
 import { useUser } from '../hooks/useUser'
@@ -35,7 +35,8 @@ if (Platform.OS === 'web') {
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
 
-const SIGNALING_URL = 'ws://10.38.189.87:5000'
+const SIGNALING_URL = 'ws://localhost:5000'
+const RING_TIMEOUT = 40000 // 40 seconds
 
 const iceServers = {
   iceServers: [
@@ -55,27 +56,181 @@ const CallScreen = () => {
     remoteUserId,
     remoteUserName,
     callType = 'video',
+    isIncoming = false,
   } = route.params || {}
 
   // State management
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
-  const [callStatus, setCallStatus] = useState('connecting')
+  const [callStatus, setCallStatus] = useState(
+    isIncoming ? 'ringing' : 'connecting'
+  )
   const [isMuted, setIsMuted] = useState(false)
   const [isVideoEnabled, setIsVideoEnabled] = useState(callType === 'video')
   const [isFrontCamera, setIsFrontCamera] = useState(true)
   const [callDuration, setCallDuration] = useState(0)
   const [isConnected, setIsConnected] = useState(false)
-  const [isScreenSharing, setIsScreenSharing] = useState(false) // New state for screen sharing
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [callAnswered, setCallAnswered] = useState(!isIncoming)
 
   // Refs
   const wsRef = useRef(null)
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
-  const screenStreamRef = useRef(null) // New ref for screen sharing stream
+  const screenStreamRef = useRef(null)
   const candidatesQueue = useRef([])
   const callStartTime = useRef(null)
   const durationInterval = useRef(null)
+  const ringTimerRef = useRef(null)
+  const ringtoneRef = useRef(null)
+  const ringbackToneRef = useRef(null)
+
+  const isStoppingRingtones = useRef(false)
+  const isRingtonesSetup = useRef(false)
+
+  // Initialize ring timer and sounds
+  useEffect(() => {
+    setupRingtones()
+
+    if (isIncoming) {
+      playRingtone()
+      startRingTimer()
+    } else {
+      playRingbackTone()
+      startRingTimer()
+    }
+
+    return () => {
+      stopRingtones() // safe now
+      clearRingTimer()
+    }
+  }, [])
+
+  const setupRingtones = async () => {
+    if (isRingtonesSetup.current) return
+    isRingtonesSetup.current = true
+
+    try {
+      await Audio.setAudioModeAsync({
+        allowsRecordingIOS: false,
+        playsInSilentModeIOS: true,
+        staysActiveInBackground: true,
+        shouldDuckAndroid: true,
+      })
+
+      const { sound: ringtone } = await Audio.Sound.createAsync(
+        require('../assets/ringtone.mp3'),
+        { isLooping: true, volume: 1.0 }
+      )
+      ringtoneRef.current = ringtone
+
+      const { sound: ringback } = await Audio.Sound.createAsync(
+        require('../assets/ringbacktone.mp3'),
+        { isLooping: true, volume: 0.8 }
+      )
+      ringbackToneRef.current = ringback
+    } catch (error) {
+      console.error('Setup ringtones error:', error)
+      isRingtonesSetup.current = false // allow retry if needed
+    }
+  }
+
+  const playRingtone = async () => {
+    try {
+      if (ringtoneRef.current) {
+        await ringtoneRef.current.playAsync()
+      }
+    } catch (error) {
+      console.error('❌ Play ringtone error:', error)
+    }
+  }
+
+  const playRingbackTone = async () => {
+    try {
+      if (ringbackToneRef.current) {
+        await ringbackToneRef.current.playAsync()
+      }
+    } catch (error) {
+      console.error('❌ Play ringback tone error:', error)
+    }
+  }
+
+  const stopRingtones = async () => {
+    if (isStoppingRingtones.current) return
+    isStoppingRingtones.current = true
+
+    try {
+      if (ringtoneRef.current) {
+        await ringtoneRef.current.stopAsync().catch(() => {})
+        await ringtoneRef.current.unloadAsync().catch(() => {})
+        ringtoneRef.current = null
+      }
+      if (ringbackToneRef.current) {
+        await ringbackToneRef.current.stopAsync().catch(() => {})
+        await ringbackToneRef.current.unloadAsync().catch(() => {})
+        ringbackToneRef.current = null
+      }
+    } catch (error) {
+      console.warn('Stop ringtones error:', error)
+    } finally {
+      isStoppingRingtones.current = false
+    }
+  }
+
+  const startRingTimer = () => {
+    ringTimerRef.current = setTimeout(() => {
+      console.log('⏰ Ring timeout - call not answered')
+      handleCallTimeout()
+    }, RING_TIMEOUT)
+  }
+
+  const clearRingTimer = () => {
+    if (ringTimerRef.current) {
+      clearTimeout(ringTimerRef.current)
+      ringTimerRef.current = null
+    }
+  }
+
+  const handleCallTimeout = useCallback(() => {
+    console.log('⏰ Handling call timeout')
+    stopRingtones()
+    clearRingTimer()
+
+    // Send end call signal
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'end-call',
+          chatId,
+          userId: user?.uid,
+          reason: 'timeout',
+        })
+      )
+    }
+
+    cleanup()
+
+    // Show alert and navigate back
+    Alert.alert(
+      'Call Ended',
+      'No answer',
+      [{ text: 'OK', onPress: () => navigation.goBack() }],
+      { cancelable: false }
+    )
+
+    // Fallback navigation in case alert doesn't trigger
+    setTimeout(() => {
+      navigation.goBack()
+    }, 100)
+  }, [chatId, user?.uid, navigation])
+
+  const handleAnswerCall = async () => {
+    stopRingtones()
+    clearRingTimer()
+    setCallAnswered(true)
+    setCallStatus('connecting')
+    await setupCall()
+  }
 
   // Initialize WebSocket connection
   useEffect(() => {
@@ -131,7 +286,16 @@ const CallScreen = () => {
     switch (data.type) {
       case 'user-joined':
         if (data.userId !== user?.uid) {
+          stopRingtones()
+          clearRingTimer()
           await createOffer()
+        }
+        break
+      case 'call-answered':
+        if (data.from !== user?.uid) {
+          stopRingtones()
+          clearRingTimer()
+          setCallStatus('connecting')
         }
         break
       case 'webrtc-offer':
@@ -157,10 +321,9 @@ const CallScreen = () => {
       case 'call-ended':
         handleEndCall()
         break
-      case 'screen-sharing': // New message type for screen sharing
+      case 'screen-sharing':
         if (data.from !== user?.uid) {
           console.log('📺 Remote user toggled screen sharing:', data.enabled)
-          // Optionally handle UI updates or notifications
         }
         break
     }
@@ -168,7 +331,9 @@ const CallScreen = () => {
 
   // Initialize media and WebRTC
   useEffect(() => {
-    setupCall()
+    if (!isIncoming || callAnswered) {
+      setupCall()
+    }
 
     const backHandler = BackHandler.addEventListener(
       'hardwareBackPress',
@@ -182,7 +347,7 @@ const CallScreen = () => {
       cleanup()
       backHandler.remove()
     }
-  }, [])
+  }, [callAnswered])
 
   const setupCall = async () => {
     try {
@@ -254,7 +419,6 @@ const CallScreen = () => {
     }
   }
 
-  // New function to get screen sharing stream
   const getScreenShareStream = async () => {
     if (Platform.OS !== 'web') {
       Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
@@ -268,10 +432,9 @@ const CallScreen = () => {
           height: { ideal: 720 },
           frameRate: { ideal: 30 },
         },
-        audio: false, // Set to true if you want to share system audio (browser support varies)
+        audio: false,
       })
 
-      // Handle stream end (e.g., user stops sharing)
       stream.getVideoTracks()[0].onended = () => {
         stopScreenSharing()
       }
@@ -301,6 +464,8 @@ const CallScreen = () => {
           setRemoteStream(event.streams[0])
           setCallStatus('connected')
           setIsConnected(true)
+          stopRingtones()
+          clearRingTimer()
           startCallTimer()
         }
       }
@@ -324,6 +489,8 @@ const CallScreen = () => {
           case 'connected':
             setCallStatus('connected')
             setIsConnected(true)
+            stopRingtones()
+            clearRingTimer()
             startCallTimer()
             break
           case 'disconnected':
@@ -338,6 +505,8 @@ const CallScreen = () => {
         if (pc.iceConnectionState === 'connected') {
           setCallStatus('connected')
           setIsConnected(true)
+          stopRingtones()
+          clearRingTimer()
           startCallTimer()
         }
       }
@@ -497,7 +666,6 @@ const CallScreen = () => {
     }
   }
 
-  // New function to toggle screen sharing
   const toggleScreenSharing = async () => {
     if (Platform.OS !== 'web') {
       Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
@@ -521,17 +689,13 @@ const CallScreen = () => {
         )
 
         if (videoSender) {
-          // Replace existing video track with screen sharing track
           await videoSender.replaceTrack(videoTrack)
         } else {
-          // Add new video track if none exists
           pcRef.current.addTrack(videoTrack, screenStream)
         }
 
-        // Renegotiate the connection
         await createOffer()
 
-        // Notify remote user about screen sharing
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(
             JSON.stringify({
@@ -546,16 +710,13 @@ const CallScreen = () => {
     }
   }
 
-  // New function to stop screen sharing
   const stopScreenSharing = async () => {
     if (!isScreenSharing || !screenStreamRef.current) return
 
-    // Stop screen sharing tracks
     screenStreamRef.current.getTracks().forEach((track) => track.stop())
     screenStreamRef.current = null
     setIsScreenSharing(false)
 
-    // Switch back to camera stream
     if (callType === 'video') {
       const newStream = await getUserMedia()
       setLocalStream(newStream)
@@ -572,11 +733,9 @@ const CallScreen = () => {
           await videoSender.replaceTrack(newVideoTrack)
         }
 
-        // Renegotiate the connection
         await createOffer()
       }
     } else {
-      // If it's an audio call, remove the video track
       if (pcRef.current) {
         const senders = pcRef.current.getSenders()
         const videoSender = senders.find(
@@ -589,7 +748,6 @@ const CallScreen = () => {
       }
     }
 
-    // Notify remote user about stopping screen sharing
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
@@ -604,6 +762,9 @@ const CallScreen = () => {
 
   const handleEndCall = useCallback(() => {
     console.log('🔴 Ending call')
+
+    stopRingtones()
+    clearRingTimer()
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(
@@ -620,6 +781,9 @@ const CallScreen = () => {
   }, [chatId, user?.uid, navigation])
 
   const cleanup = () => {
+    stopRingtones()
+    clearRingTimer()
+
     if (durationInterval.current) {
       clearInterval(durationInterval.current)
       durationInterval.current = null
@@ -699,7 +863,7 @@ const CallScreen = () => {
       return (
         <LocalVideoContainer>
           <LocalVideoPlaceholder>
-            <Ionicons name="videocam-off" size={32} color="#fff" />
+            <Ionicons name="videocam-off" size={32} color="#666" />
           </LocalVideoPlaceholder>
         </LocalVideoContainer>
       )
@@ -732,7 +896,11 @@ const CallScreen = () => {
             {remoteUserName?.[0]?.toUpperCase() || '?'}
           </PlaceholderAvatar>
           <PlaceholderText>
-            {callStatus === 'connecting'
+            {callStatus === 'ringing'
+              ? isIncoming
+                ? `${remoteUserName} is calling...`
+                : `Calling ${remoteUserName}...`
+              : callStatus === 'connecting'
               ? `Connecting to ${remoteUserName}...`
               : callStatus === 'connected'
               ? 'Waiting for video...'
@@ -766,7 +934,7 @@ const CallScreen = () => {
             width: '100%',
             height: '100%',
             objectFit: 'cover',
-            backgroundColor: '#000',
+            backgroundColor: '#f5f5f5',
           }}
         />
       )
@@ -782,11 +950,37 @@ const CallScreen = () => {
     )
   }
 
+  // Render incoming call UI
+  if (isIncoming && !callAnswered) {
+    return (
+      <Container>
+        <IncomingCallView>
+          <IncomingAvatar>
+            {remoteUserName?.[0]?.toUpperCase() || '?'}
+          </IncomingAvatar>
+          <IncomingCallerName>{remoteUserName}</IncomingCallerName>
+          <IncomingCallType>
+            {callType === 'video' ? 'Video Call' : 'Voice Call'}
+          </IncomingCallType>
+
+          <IncomingCallActions>
+            <DeclineButton onPress={handleEndCall}>
+              <Ionicons name="close" size={36} color="#fff" />
+            </DeclineButton>
+            <AcceptButton onPress={handleAnswerCall}>
+              <Ionicons name="call" size={36} color="#fff" />
+            </AcceptButton>
+          </IncomingCallActions>
+        </IncomingCallView>
+      </Container>
+    )
+  }
+
   return (
     <Container>
       <Header>
         <BackButton onPress={handleEndCall}>
-          <Ionicons name="chevron-back" size={24} color="#fff" />
+          <Ionicons name="chevron-back" size={24} color="#333" />
         </BackButton>
         <HeaderInfo>
           <Title>{remoteUserName || 'Unknown'}</Title>
@@ -796,7 +990,7 @@ const CallScreen = () => {
         </HeaderInfo>
         {callType === 'video' && Platform.OS !== 'web' && (
           <IconButton onPress={switchCamera}>
-            <Ionicons name="camera-reverse" size={24} color="#fff" />
+            <Ionicons name="camera-reverse" size={24} color="#333" />
           </IconButton>
         )}
       </Header>
@@ -808,7 +1002,7 @@ const CallScreen = () => {
 
       <Controls>
         <ControlButton onPress={toggleMute} active={isMuted}>
-          <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={28} color="#fff" />
+          <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={28} color="#333" />
         </ControlButton>
 
         {callType === 'video' && Platform.OS === 'web' && (
@@ -816,7 +1010,7 @@ const CallScreen = () => {
             <Ionicons
               name={isScreenSharing ? 'stop-circle' : 'share'}
               size={28}
-              color="#fff"
+              color="#333"
             />
           </ControlButton>
         )}
@@ -830,23 +1024,23 @@ const CallScreen = () => {
             <Ionicons
               name={isVideoEnabled ? 'videocam' : 'videocam-off'}
               size={28}
-              color="#fff"
+              color="#333"
             />
           </ControlButton>
         )}
 
         <ControlButton>
-          <Ionicons name="volume-high" size={28} color="#fff" />
+          <Ionicons name="volume-high" size={28} color="#333" />
         </ControlButton>
       </Controls>
     </Container>
   )
 }
 
-// Styled Components (unchanged)
+// Styled Components - Light Theme
 const Container = styled.View`
   flex: 1;
-  background-color: #1a1a1a;
+  background-color: #f5f5f5;
 `
 
 const Header = styled.View`
@@ -855,12 +1049,14 @@ const Header = styled.View`
   padding-bottom: 20px;
   flex-direction: row;
   align-items: center;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(255, 255, 255, 0.95);
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
   z-index: 10;
+  border-bottom-width: 1px;
+  border-bottom-color: #e0e0e0;
 `
 
 const BackButton = styled.TouchableOpacity`
@@ -873,13 +1069,13 @@ const HeaderInfo = styled.View`
 `
 
 const Title = styled.Text`
-  color: #fff;
+  color: #333;
   font-size: 18px;
   font-weight: bold;
 `
 
 const CallStatusText = styled.Text`
-  color: #aaa;
+  color: #666;
   font-size: 14px;
   margin-top: 2px;
 `
@@ -894,7 +1090,7 @@ const VideoContainer = styled.View`
 
 const RemoteVideoWrapper = styled.View`
   flex: 1;
-  background-color: #000;
+  background-color: #f5f5f5;
 `
 
 const LocalVideoContainer = styled.View`
@@ -905,33 +1101,43 @@ const LocalVideoContainer = styled.View`
   height: 160px;
   border-radius: 12px;
   overflow: hidden;
-  background-color: #333;
+  background-color: #e0e0e0;
   border-width: 2px;
   border-color: #fff;
   z-index: 5;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.25;
+  shadow-radius: 3.84px;
+  elevation: 5;
 `
 
 const PlaceholderView = styled.View`
   flex: 1;
   justify-content: center;
   align-items: center;
-  background-color: #1a1a1a;
+  background-color: #f5f5f5;
 `
 
 const PlaceholderAvatar = styled.Text`
   font-size: 80px;
   color: #fff;
-  background-color: #3498db;
+  background-color: #4caf50;
   width: 120px;
   height: 120px;
   border-radius: 60px;
   text-align: center;
   line-height: 120px;
   margin-bottom: 20px;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4.65px;
+  elevation: 8;
 `
 
 const PlaceholderText = styled.Text`
-  color: #aaa;
+  color: #666;
   font-size: 16px;
   text-align: center;
 `
@@ -940,29 +1146,35 @@ const AudioCallView = styled.View`
   flex: 1;
   justify-content: center;
   align-items: center;
+  background-color: #f5f5f5;
 `
 
 const AvatarLarge = styled.Text`
   font-size: 100px;
   color: #fff;
-  background-color: #3498db;
+  background-color: #4caf50;
   width: 180px;
   height: 180px;
   border-radius: 90px;
   text-align: center;
   line-height: 180px;
   margin-bottom: 30px;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4.65px;
+  elevation: 8;
 `
 
 const CallerName = styled.Text`
-  color: #fff;
+  color: #333;
   font-size: 28px;
   font-weight: bold;
   margin-bottom: 10px;
 `
 
 const CallTimer = styled.Text`
-  color: #aaa;
+  color: #666;
   font-size: 18px;
 `
 
@@ -972,34 +1184,122 @@ const Controls = styled.View`
   align-items: center;
   padding: 20px;
   padding-bottom: ${Platform.OS === 'ios' ? '40px' : '20px'};
-  background-color: rgba(0, 0, 0, 0.8);
+  background-color: rgba(255, 255, 255, 0.95);
+  border-top-width: 1px;
+  border-top-color: #e0e0e0;
 `
 
 const ControlButton = styled.TouchableOpacity`
-  background-color: ${(props) =>
-    props.active ? 'rgba(255, 255, 255, 0.3)' : 'rgba(255, 255, 255, 0.1)'};
+  background-color: ${(props) => (props.active ? '#e0e0e0' : '#fff')};
   width: 60px;
   height: 60px;
   border-radius: 30px;
   justify-content: center;
   align-items: center;
+  border-width: 1px;
+  border-color: #e0e0e0;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 3.84px;
+  elevation: 3;
 `
 
 const EndCallButton = styled.TouchableOpacity`
-  background-color: #e74c3c;
+  background-color: #f44336;
   width: 70px;
   height: 70px;
   border-radius: 35px;
   justify-content: center;
   align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4.65px;
+  elevation: 8;
 `
 
 const LocalVideoPlaceholder = styled.View`
   width: 100%;
   height: 100%;
-  background-color: #333;
+  background-color: #e0e0e0;
   justify-content: center;
   align-items: center;
+`
+
+// Incoming Call Styles
+const IncomingCallView = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background-color: #667eea;
+  padding: 40px;
+`
+
+const IncomingAvatar = styled.Text`
+  font-size: 120px;
+  color: #fff;
+  background-color: rgba(255, 255, 255, 0.2);
+  width: 200px;
+  height: 200px;
+  border-radius: 100px;
+  text-align: center;
+  line-height: 200px;
+  margin-bottom: 30px;
+  border-width: 4px;
+  border-color: rgba(255, 255, 255, 0.3);
+`
+
+const IncomingCallerName = styled.Text`
+  color: #fff;
+  font-size: 32px;
+  font-weight: bold;
+  margin-bottom: 10px;
+  text-align: center;
+`
+
+const IncomingCallType = styled.Text`
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 18px;
+  margin-bottom: 60px;
+  text-align: center;
+`
+
+const IncomingCallActions = styled.View`
+  flex-direction: row;
+  justify-content: space-around;
+  width: 100%;
+  max-width: 300px;
+  margin-top: 40px;
+`
+
+const DeclineButton = styled.TouchableOpacity`
+  background-color: #f44336;
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  justify-content: center;
+  align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4.65px;
+  elevation: 8;
+`
+
+const AcceptButton = styled.TouchableOpacity`
+  background-color: #4caf50;
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  justify-content: center;
+  align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4.65px;
+  elevation: 8;
 `
 
 export default CallScreen

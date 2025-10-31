@@ -1,4 +1,10 @@
-import React, { useState, useRef, useEffect, useContext } from 'react'
+import React, {
+  useState,
+  useRef,
+  useEffect,
+  useContext,
+  useCallback,
+} from 'react'
 import {
   FlatList,
   TouchableOpacity,
@@ -22,6 +28,7 @@ import { Audio } from 'expo-audio'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import LoadingIndicator from '../components/LoadingIndicator'
+import CallLogItem from '../components/CallLogItem'
 import {
   EditMessageModal,
   MessageActionMenu,
@@ -127,6 +134,7 @@ const MessagesContainer = styled.View`
   flex: 1;
   padding: 16px;
 `
+
 const MessageItemWrapper = styled.View`
   flex-direction: ${(props) => (props.isOwn ? 'row-reverse' : 'row')};
   align-items: center;
@@ -138,6 +146,7 @@ const MessageItemWrapper = styled.View`
 const MessageItemContent = styled.View`
   flex: 1;
 `
+
 const MessageBubble = styled.View`
   max-width: ${screenWidth * 0.75}px;
   margin-vertical: 4px;
@@ -336,7 +345,6 @@ const RetryButtonText = styled.Text`
   font-weight: 600;
 `
 
-// Image preview modal components
 const ImagePreviewModal = styled.Modal``
 
 const ImagePreviewContainer = styled.View`
@@ -566,298 +574,279 @@ const findUserByAnyId = (users, targetId) => {
   )
 }
 
-const MessageItem = ({
-  item,
-  previousItem,
-  currentUserId,
-  users,
-  onImagePress,
-  onLongPress,
-  onThreeDotsPress,
-  hoveredMessageId,
-  setHoveredMessageId,
-}) => {
-  const [imageLoading, setImageLoading] = useState(true)
-  const [imageError, setImageError] = useState(false)
-  const [sound, setSound] = useState(null)
-  const [isPlaying, setIsPlaying] = useState(false)
-  const [audioDuration, setAudioDuration] = useState(0)
-  const messageRef = useRef(null)
-  const dotsButtonRef = useRef(null)
+const MessageItem = React.memo(
+  ({
+    item,
+    previousItem,
+    currentUserId,
+    users,
+    onImagePress,
+    onLongPress,
+    onThreeDotsPress,
+    hoveredMessageId,
+    setHoveredMessageId,
+  }) => {
+    const [imageLoading, setImageLoading] = useState(true)
+    const [imageError, setImageError] = useState(false)
+    const [sound, setSound] = useState(null)
+    const [isPlaying, setIsPlaying] = useState(false)
+    const [audioDuration, setAudioDuration] = useState(0)
+    const messageRef = useRef(null)
+    const dotsButtonRef = useRef(null)
 
-  const isOwn = item.senderId === currentUserId
-  const messageId = item._id || item.id
-  const isHovered = Platform.OS === 'web' && hoveredMessageId === messageId
-  const showDate =
-    !previousItem ||
-    formatMessageDate(previousItem.createdAt) !==
-      formatMessageDate(item.createdAt)
-  const sender = findUserByAnyId(users, item.senderId)
-  const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
-  const isEdited =
-    item.updatedAt &&
-    new Date(item.updatedAt).getTime() > new Date(item.createdAt).getTime()
-  const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
+    const isOwn = item.senderId === currentUserId
+    const messageId = item._id || item.id
+    const isHovered = Platform.OS === 'web' && hoveredMessageId === messageId
+    const showDate =
+      !previousItem ||
+      formatMessageDate(previousItem.createdAt) !==
+        formatMessageDate(item.createdAt)
+    const sender = findUserByAnyId(users, item.senderId)
+    const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
+    const isEdited =
+      item.updatedAt &&
+      new Date(item.updatedAt).getTime() > new Date(item.createdAt).getTime()
+    const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
 
-  useEffect(() => {
-    return () => {
-      if (sound) {
-        sound.unloadAsync()
+    useEffect(() => {
+      return () => {
+        if (sound) {
+          sound.unloadAsync()
+        }
       }
+    }, [sound])
+
+    const handleImageLoad = () => setImageLoading(false)
+    const handleImageError = () => {
+      setImageLoading(false)
+      setImageError(true)
     }
-  }, [sound])
 
-  const handleImageLoad = () => setImageLoading(false)
-  const handleImageError = () => {
-    setImageLoading(false)
-    setImageError(true)
-  }
-
-  const playAudio = async (audioUrl) => {
-    try {
-      if (sound && isPlaying) {
-        await sound.stopAsync()
-        await sound.unloadAsync()
-        setSound(null)
-        setIsPlaying(false)
-        return
-      }
-
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: true }
-      )
-
-      setSound(newSound)
-      setIsPlaying(true)
-
-      const status = await newSound.getStatusAsync()
-      if (status.isLoaded && status.durationMillis) {
-        setAudioDuration(Math.floor(status.durationMillis / 1000))
-      }
-
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setIsPlaying(false)
-          newSound.unloadAsync()
+    const playAudio = async (audioUrl) => {
+      try {
+        if (sound && isPlaying) {
+          await sound.stopAsync()
+          await sound.unloadAsync()
           setSound(null)
+          setIsPlaying(false)
+          return
         }
-      })
-    } catch (error) {
-      console.error('Error playing audio:', error)
-      Alert.alert('Error', 'Failed to play audio')
-      setIsPlaying(false)
+
+        const { sound: newSound } = await Audio.Sound.createAsync(
+          { uri: audioUrl },
+          { shouldPlay: true }
+        )
+
+        setSound(newSound)
+        setIsPlaying(true)
+
+        const status = await newSound.getStatusAsync()
+        if (status.isLoaded && status.durationMillis) {
+          setAudioDuration(Math.floor(status.durationMillis / 1000))
+        }
+
+        newSound.setOnPlaybackStatusUpdate((status) => {
+          if (status.didJustFinish) {
+            setIsPlaying(false)
+            newSound.unloadAsync()
+            setSound(null)
+          }
+        })
+      } catch (error) {
+        console.error('Error playing audio:', error)
+        Alert.alert('Error', 'Failed to play audio')
+        setIsPlaying(false)
+      }
     }
-  }
 
-  const formatAudioDuration = (seconds) => {
-    const mins = Math.floor(seconds / 60)
-    const secs = seconds % 60
-    return `${mins}:${secs.toString().padStart(2, '0')}`
-  }
+    const formatAudioDuration = (seconds) => {
+      const mins = Math.floor(seconds / 60)
+      const secs = seconds % 60
+      return `${mins}:${secs.toString().padStart(2, '0')}`
+    }
 
-  const renderFiles = () => {
-    if (!item.files || item.files.length === 0) return null
+    const renderFiles = () => {
+      if (!item.files || item.files.length === 0) return null
 
-    return item.files
-      .map((file, index) => {
-        if (item.type === 'audio' || file.type === 'audio') {
-          return (
-            <MessageAudioPlayer key={`audio-${index}`} isOwn={isOwn}>
-              <PlayButton isOwn={isOwn} onPress={() => playAudio(file.url)}>
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={20}
-                  color="#fff"
-                />
-              </PlayButton>
-              <AudioInfo>
-                <FileText isOwn={isOwn}>
-                  {file.originalname || `Audio ${index + 1}`}
-                </FileText>
-                {audioDuration > 0 && (
-                  <AudioDuration isOwn={isOwn}>
-                    {formatAudioDuration(audioDuration)}
-                  </AudioDuration>
-                )}
-              </AudioInfo>
-            </MessageAudioPlayer>
-          )
-        } else if (item.type === 'image' && file.url) {
-          return (
-            <MessageImageContainer
-              key={`image-${index}`}
-              onPress={() => onImagePress(file.url)}
-            >
-              <MessageImage
-                source={{ uri: file.url }}
-                hasText={!!(item.content && item.content.trim())}
-                onLoad={handleImageLoad}
-                onError={handleImageError}
-              />
-              {imageLoading && (
-                <ImageLoadingOverlay>
-                  <Ionicons name="image-outline" size={24} color="white" />
-                  <LoadingText>Loading</LoadingText>
-                </ImageLoadingOverlay>
-              )}
-              {imageError && (
-                <ImageLoadingOverlay>
+      return item.files
+        .map((file, index) => {
+          if (item.type === 'audio' || file.type === 'audio') {
+            return (
+              <MessageAudioPlayer key={`audio-${index}`} isOwn={isOwn}>
+                <PlayButton isOwn={isOwn} onPress={() => playAudio(file.url)}>
                   <Ionicons
-                    name="alert-circle-outline"
-                    size={24}
-                    color="white"
+                    name={isPlaying ? 'pause' : 'play'}
+                    size={20}
+                    color="#fff"
                   />
-                  <LoadingText>Failed to load</LoadingText>
-                </ImageLoadingOverlay>
-              )}
-            </MessageImageContainer>
-          )
-        } else if (item.type === 'file' && file.url) {
-          return (
-            <MessageFile key={`file-${index}`} isOwn={isOwn}>
-              <FileIcon
-                name="document"
-                size={20}
-                color={isOwn ? '#fff' : '#2c3e50'}
-              />
-              <FileText isOwn={isOwn}>
-                {file.originalname || `File ${index + 1}`}
-              </FileText>
-            </MessageFile>
-          )
-        }
-        return null
-      })
-      .filter(Boolean)
-  }
-
-  const handleThreeDotsPress = () => {
-    console.log('🔘 Three dots clicked for message:', messageId, {
-      isOwn,
-      isHovered,
-    })
-    if (Platform.OS === 'web' && messageRef.current) {
-      console.log('messageRef.current:', messageRef.current)
-      messageRef.current.measure(
-        (fx, fy, width, height, px, py) => {
-          console.log('📍 Measured position:', {
-            fx,
-            fy,
-            width,
-            height,
-            px,
-            py,
-          })
-          const dropdownX = isOwn ? px + width - 160 : px // Align right for isOwn, left for others
-          const dropdownY = py + height + 5 // Below the message
-          onThreeDotsPress(item, { x: dropdownX, y: dropdownY })
-        },
-        (error) => {
-          console.error('⚠️ Measure failed:', error)
-          onThreeDotsPress(item, {
-            x: isOwn ? window.innerWidth - 200 : 10,
-            y: 150,
-          })
-        }
-      )
-    } else {
-      console.warn('⚠️ Three dots press ignored: no ref or not web platform')
-      onThreeDotsPress(item, {
-        x: isOwn ? window.innerWidth - 200 : 10,
-        y: 150,
-      })
-    }
-  }
-
-  return (
-    <View style={{ marginVertical: 4 }}>
-      {showDate && (
-        <DateSeparator>
-          <DateText>{formatMessageDate(item.createdAt)}</DateText>
-        </DateSeparator>
-      )}
-      <MessageItemWrapper
-        isOwn={isOwn}
-        ref={messageRef}
-        onMouseEnter={() => {
-          if (Platform.OS === 'web') {
-            console.log('🐭 Mouse enter:', messageId, {
-              isOwn,
-              currentUserId,
-              senderId: item.senderId,
-            })
-            setHoveredMessageId(messageId)
-          }
-        }}
-        onMouseLeave={() => {
-          if (Platform.OS === 'web') {
-            console.log('🐭 Mouse leave:', messageId)
-            setHoveredMessageId(null)
-          }
-        }}
-        style={{ padding: 4, flexDirection: isOwn ? 'row-reverse' : 'row' }}
-      >
-        <MessageItemContent>
-          <TouchableOpacity
-            onLongPress={() => isOwn && onLongPress(item)}
-            delayLongPress={500}
-            activeOpacity={0.9}
-          >
-            <MessageBubble isOwn={isOwn}>
-              {item.content && item.content.trim().length > 0 && (
-                <MessageText isOwn={isOwn}>{item.content.trim()}</MessageText>
-              )}
-              {renderFiles()}
-              {item.type === 'video' && item.files?.[0]?.url && (
-                <MessageVideo>
-                  <Ionicons name="play-circle" size={40} color="white" />
-                </MessageVideo>
-              )}
-              <View
-                style={{
-                  flexDirection: 'row',
-                  alignItems: 'center',
-                  marginTop: 4,
-                }}
+                </PlayButton>
+                <AudioInfo>
+                  <FileText isOwn={isOwn}>
+                    {file.originalname || `Audio ${index + 1}`}
+                  </FileText>
+                  {audioDuration > 0 && (
+                    <AudioDuration isOwn={isOwn}>
+                      {formatAudioDuration(audioDuration)}
+                    </AudioDuration>
+                  )}
+                </AudioInfo>
+              </MessageAudioPlayer>
+            )
+          } else if (item.type === 'image' && file.url) {
+            return (
+              <MessageImageContainer
+                key={`image-${index}`}
+                onPress={() => onImagePress(file.url)}
               >
-                <MessageTime isOwn={isOwn}>{timeString}</MessageTime>
-                {isEdited && (
-                  <MessageEditedLabel isOwn={isOwn}>
-                    (edited)
-                  </MessageEditedLabel>
+                <MessageImage
+                  source={{ uri: file.url }}
+                  hasText={!!(item.content && item.content.trim())}
+                  onLoad={handleImageLoad}
+                  onError={handleImageError}
+                />
+                {imageLoading && (
+                  <ImageLoadingOverlay>
+                    <Ionicons name="image-outline" size={24} color="white" />
+                    <LoadingText>Loading</LoadingText>
+                  </ImageLoadingOverlay>
                 )}
-              </View>
-              {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
-            </MessageBubble>
-          </TouchableOpacity>
-        </MessageItemContent>
-        {Platform.OS === 'web' && isOwn && (
-          <ThreeDotsButton
-            ref={dotsButtonRef}
-            visible={isHovered}
-            onPress={handleThreeDotsPress}
-            isOwn={isOwn}
-            style={{
-              position: 'absolute',
-              right: isOwn ? 8 : undefined,
-              left: !isOwn ? 8 : undefined,
-              top: 8,
-              opacity: isHovered ? 1 : 0.3, // Faintly visible for debugging
-              pointerEvents: isHovered ? 'auto' : 'none',
-              backgroundColor: isHovered ? '#e9ecef' : 'transparent',
-              padding: 8,
-              borderRadius: 4,
-              zIndex: 10,
-            }}
-          >
-            <Ionicons name="ellipsis-vertical" size={18} color="#2c3e50" />
-          </ThreeDotsButton>
+                {imageError && (
+                  <ImageLoadingOverlay>
+                    <Ionicons
+                      name="alert-circle-outline"
+                      size={24}
+                      color="white"
+                    />
+                    <LoadingText>Failed to load</LoadingText>
+                  </ImageLoadingOverlay>
+                )}
+              </MessageImageContainer>
+            )
+          } else if (item.type === 'file' && file.url) {
+            return (
+              <MessageFile key={`file-${index}`} isOwn={isOwn}>
+                <FileIcon
+                  name="document"
+                  size={20}
+                  color={isOwn ? '#fff' : '#2c3e50'}
+                />
+                <FileText isOwn={isOwn}>
+                  {file.originalname || `File ${index + 1}`}
+                </FileText>
+              </MessageFile>
+            )
+          }
+          return null
+        })
+        .filter(Boolean)
+    }
+
+    const handleThreeDotsPress = () => {
+      if (Platform.OS === 'web' && messageRef.current) {
+        messageRef.current.measure((fx, fy, width, height, px, py) => {
+          const dropdownX = isOwn ? px + width - 160 : px
+          const dropdownY = py + height + 5
+          onThreeDotsPress(item, { x: dropdownX, y: dropdownY })
+        })
+      } else {
+        onThreeDotsPress(item, {
+          x: isOwn ? window.innerWidth - 200 : 10,
+          y: 150,
+        })
+      }
+    }
+
+    return (
+      <View style={{ marginVertical: 4 }}>
+        {showDate && (
+          <DateSeparator>
+            <DateText>{formatMessageDate(item.createdAt)}</DateText>
+          </DateSeparator>
         )}
-      </MessageItemWrapper>
-    </View>
-  )
-}
+        <MessageItemWrapper
+          isOwn={isOwn}
+          ref={messageRef}
+          onMouseEnter={() => {
+            if (Platform.OS === 'web') {
+              setHoveredMessageId(messageId)
+            }
+          }}
+          onMouseLeave={() => {
+            if (Platform.OS === 'web') {
+              setHoveredMessageId(null)
+            }
+          }}
+          style={{ padding: 4, flexDirection: isOwn ? 'row-reverse' : 'row' }}
+        >
+          <MessageItemContent>
+            <TouchableOpacity
+              onLongPress={() => isOwn && onLongPress(item)}
+              delayLongPress={500}
+              activeOpacity={0.9}
+            >
+              <MessageBubble isOwn={isOwn}>
+                {item.content && item.content.trim().length > 0 && (
+                  <MessageText isOwn={isOwn}>{item.content.trim()}</MessageText>
+                )}
+                {renderFiles()}
+                {item.type === 'video' && item.files?.[0]?.url && (
+                  <MessageVideo>
+                    <Ionicons name="play-circle" size={40} color="white" />
+                  </MessageVideo>
+                )}
+                <View
+                  style={{
+                    flexDirection: 'row',
+                    alignItems: 'center',
+                    marginTop: 4,
+                  }}
+                >
+                  <MessageTime isOwn={isOwn}>{timeString}</MessageTime>
+                  {isEdited && (
+                    <MessageEditedLabel isOwn={isOwn}>
+                      (edited)
+                    </MessageEditedLabel>
+                  )}
+                </View>
+                {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
+              </MessageBubble>
+            </TouchableOpacity>
+          </MessageItemContent>
+          {Platform.OS === 'web' && isOwn && (
+            <ThreeDotsButton
+              visible={isHovered}
+              onPress={handleThreeDotsPress}
+              isOwn={isOwn}
+              style={{
+                position: 'absolute',
+                right: isOwn ? 8 : undefined,
+                left: !isOwn ? 8 : undefined,
+                top: 8,
+                opacity: isHovered ? 1 : 0.3,
+                pointerEvents: isHovered ? 'auto' : 'none',
+                backgroundColor: isHovered ? '#e9ecef' : 'transparent',
+                padding: 8,
+                borderRadius: 4,
+                zIndex: 10,
+              }}
+            >
+              <Ionicons name="ellipsis-vertical" size={18} color="#2c3e50" />
+            </ThreeDotsButton>
+          )}
+        </MessageItemWrapper>
+      </View>
+    )
+  },
+  (prevProps, nextProps) => {
+    return (
+      prevProps.item._id !== nextProps.item._id ||
+      prevProps.item.content !== nextProps.item.content ||
+      prevProps.item.updatedAt !== nextProps.item.updatedAt ||
+      prevProps.hoveredMessageId !== nextProps.hoveredMessageId ||
+      prevProps.item.files?.length !== nextProps.item.files?.length
+    )
+  }
+)
 
 const SoundWaveAnimation = () => {
   const [animations] = useState(() =>
@@ -912,6 +901,8 @@ const SoundWaveAnimation = () => {
 export default function ChatDetailScreen({ navigation, route }) {
   const [message, setMessage] = useState('')
   const [messages, setMessages] = useState([])
+  const [callLogs, setCallLogs] = useState([])
+  const [combinedItems, setCombinedItems] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [sending, setSending] = useState(false)
@@ -925,13 +916,14 @@ export default function ChatDetailScreen({ navigation, route }) {
   const [selectedMessage, setSelectedMessage] = useState(null)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [webDropdownVisible, setWebDropdownVisible] = useState(false)
-
   const [hoveredMessageId, setHoveredMessageId] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
-  const recordingIntervalRef = useRef(null)
 
+  const recordingIntervalRef = useRef(null)
   const flatListRef = useRef(null)
+
+  const prevMessageCount = useRef(0)
 
   const { chatId } = route?.params || {}
   const chatsContext = useContext(ChatsContext)
@@ -945,6 +937,7 @@ export default function ChatDetailScreen({ navigation, route }) {
     updateMessage,
     deleteMessage,
     initiateCall,
+    getCallHistory,
   } = chatsContext || {}
 
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
@@ -972,6 +965,40 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const chatInfo = getChatInfo()
 
+  // Combine messages and call logs into a single timeline
+  useEffect(() => {
+    const combined = []
+
+    // Add all messages
+    messages.forEach((msg) => {
+      combined.push({
+        type: 'message',
+        data: msg,
+        timestamp: new Date(msg.createdAt),
+      })
+    })
+
+    // Add all call logs
+    callLogs.forEach((call) => {
+      // Determine direction based on current user
+      const direction = call.callerId === user?.uid ? 'outgoing' : 'incoming'
+
+      combined.push({
+        type: 'call',
+        data: {
+          ...call,
+          direction,
+        },
+        timestamp: new Date(call.createdAt),
+      })
+    })
+
+    // Sort by timestamp
+    combined.sort((a, b) => a.timestamp - b.timestamp)
+
+    setCombinedItems(combined)
+  }, [messages, callLogs, user?.uid])
+
   const handleEditMessage = () => {
     setActionMenuVisible(false)
     setWebDropdownVisible(false)
@@ -995,7 +1022,6 @@ export default function ChatDetailScreen({ navigation, route }) {
             const result = await deleteMessage(messageId, chatId)
 
             if (result.success) {
-              // Remove from local state
               setMessages((prev) =>
                 prev.filter((msg) => (msg._id || msg.id) !== messageId)
               )
@@ -1020,7 +1046,6 @@ export default function ChatDetailScreen({ navigation, route }) {
     setSavingEdit(false)
 
     if (result.success) {
-      // Update local state
       setMessages((prev) =>
         prev.map((msg) =>
           (msg._id || msg.id) === messageId
@@ -1061,30 +1086,17 @@ export default function ChatDetailScreen({ navigation, route }) {
   }
 
   const handleMessageThreeDotsPress = (message, position) => {
-    console.log('🎯 handleMessageThreeDotsPress called:', {
-      messageId: message._id || message.id,
-      position,
-      platform: Platform.OS,
-    })
     if (Platform.OS === 'web') {
       setSelectedMessage(message)
       setDropdownPosition(position || { x: window.innerWidth - 200, y: 150 })
       setWebDropdownVisible(true)
-      console.log('✅ State updated:', {
-        selectedMessage: message._id || message.id,
-        dropdownPosition: position || { x: window.innerWidth - 200, y: 150 },
-        webDropdownVisible: true,
-      })
-      // Force re-render to ensure dropdown appears
       setTimeout(() => {
-        setWebDropdownVisible((prev) => {
-          console.log('🔄 Forcing webDropdownVisible:', prev)
-          return true
-        })
+        setWebDropdownVisible(true)
       }, 0)
     }
   }
-  /* ---------- load messages ---------- */
+
+  /* ---------- load messages and call logs ---------- */
   const loadChatMessages = async () => {
     if (!chatId) return
     try {
@@ -1093,11 +1105,45 @@ export default function ChatDetailScreen({ navigation, route }) {
 
       const messagesData = await loadMessages(chatId)
       setMessages(messagesData || [])
+
+      // Load call history
+      const callHistoryData = await getCallHistory(chatId)
+      setCallLogs(callHistoryData || [])
     } catch (err) {
       console.error('Failed to load messages:', err)
       setError('Failed to load messages')
     } finally {
       setLoading(false)
+    }
+  }
+
+  /* ---------- call callback handler ---------- */
+  const handleCallCallback = async (callLog) => {
+    if (!otherUser || !chatId) {
+      Alert.alert('Error', 'Cannot start call')
+      return
+    }
+
+    try {
+      const result = await initiateCall({
+        chatId,
+        callType: callLog.callType,
+        recipientId: otherUserId,
+      })
+
+      if (result.success) {
+        navigation.navigate('CallScreen', {
+          chatId,
+          remoteUserId: otherUserId,
+          remoteUserName: otherUser.name,
+          callType: callLog.callType,
+        })
+      } else {
+        Alert.alert('Error', 'Failed to start call')
+      }
+    } catch (error) {
+      console.error('Start call error:', error)
+      Alert.alert('Error', 'Failed to start call')
     }
   }
 
@@ -1157,38 +1203,18 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const startRecording = async () => {
     try {
-      console.log(
-        'startRecording: Starting audio recording, platform:',
-        Platform.OS
-      )
       if (Platform.OS === 'web') {
-        console.log('startRecording: Web platform detected, showing alert')
         Alert.alert(
           'Audio Recording Unavailable',
-          'Audio recording is not supported in the web browser. Please use the mobile app to record audio.',
-          [
-            {
-              text: 'OK',
-              onPress: () => console.log('startRecording: Alert dismissed'),
-            },
-          ]
+          'Audio recording is not supported in the web browser. Please use the mobile app to record audio.'
         )
         return
       }
       const { status } = await Audio.Recording.requestPermissionsAsync()
-      console.log('startRecording: Audio permission status:', status)
       if (status !== 'granted') {
-        console.log('startRecording: Permission denied')
         Alert.alert(
           'Permission Denied',
-          'Audio recording permission is required',
-          [
-            {
-              text: 'OK',
-              onPress: () =>
-                console.log('startRecording: Permission alert dismissed'),
-            },
-          ]
+          'Audio recording permission is required'
         )
         return
       }
@@ -1196,30 +1222,20 @@ export default function ChatDetailScreen({ navigation, route }) {
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
       })
-      console.log('startRecording: Audio mode set')
       const newRecording = new Audio.Recording()
       await newRecording.prepareToRecordAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       )
       await newRecording.startAsync()
-      console.log('startRecording: Recording started')
       setRecording(newRecording)
       setShowRecordingUI(true)
       setRecordingDuration(0)
       recordingIntervalRef.current = setInterval(() => {
-        setRecordingDuration((prev) => {
-          console.log('startRecording: Updating duration:', prev + 1)
-          return prev + 1
-        })
+        setRecordingDuration((prev) => prev + 1)
       }, 1000)
     } catch (err) {
-      console.error('startRecording: Error:', err)
-      Alert.alert('Error', 'Failed to start recording: ' + err.message, [
-        {
-          text: 'OK',
-          onPress: () => console.log('startRecording: Error alert dismissed'),
-        },
-      ])
+      console.error('Failed to start recording:', err)
+      Alert.alert('Error', 'Failed to start recording: ' + err.message)
     }
   }
 
@@ -1282,61 +1298,18 @@ export default function ChatDetailScreen({ navigation, route }) {
       },
     ])
   }
-  const playAudio = async (audioUrl) => {
-    try {
-      if (sound && isPlaying) {
-        await sound.pauseAsync()
-        setIsPlaying(false)
-        return
-      }
 
-      if (sound) {
-        await sound.playAsync()
-        setIsPlaying(true)
-        return
-      }
-
-      // Create new sound with expo-audio
-      const { sound: newSound } = await Audio.Sound.createAsync(
-        { uri: audioUrl },
-        { shouldPlay: true }
-      )
-
-      setSound(newSound)
-      setIsPlaying(true)
-
-      // Get duration
-      const status = await newSound.getStatusAsync()
-      if (status.isLoaded && status.durationMillis) {
-        setAudioDuration(Math.floor(status.durationMillis / 1000))
-      }
-
-      // Set up playback status update
-      newSound.setOnPlaybackStatusUpdate((status) => {
-        if (status.didJustFinish) {
-          setIsPlaying(false)
-          newSound.unloadAsync()
-          setSound(null)
-        }
-      })
-    } catch (error) {
-      console.error('Error playing audio:', error)
-      Alert.alert('Error', 'Failed to play audio: ' + error.message)
-      setIsPlaying(false)
-    }
-  }
   const formatRecordingTime = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
     return `${mins}:${secs.toString().padStart(2, '0')}`
   }
 
-  // Enhanced file picker to support multiple files
   const pickMultipleFiles = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: ['image/*', 'video/*', 'audio/*', 'application/pdf'],
-        multiple: true, // Enable multiple selection
+        multiple: true,
       })
 
       if (result.canceled || !result.assets?.length) {
@@ -1367,7 +1340,6 @@ export default function ChatDetailScreen({ navigation, route }) {
     setSelectedFiles([])
   }
 
-  // Update the pickFile function to add to selected files
   const pickFile = async () => {
     try {
       const result = await DocumentPicker.getDocumentAsync({
@@ -1402,7 +1374,6 @@ export default function ChatDetailScreen({ navigation, route }) {
   const handleSendMessage = async (files = []) => {
     const filesToSend = files.length > 0 ? files : selectedFiles
 
-    // Validate input
     if ((!message.trim() && filesToSend.length === 0) || sending || !chatId)
       return
 
@@ -1477,34 +1448,18 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const takePhoto = async () => {
     try {
-      console.log('takePhoto: Starting camera action, platform:', Platform.OS)
       if (Platform.OS === 'web') {
-        console.log('takePhoto: Web platform detected, showing alert')
         Alert.alert(
           'Camera Unavailable',
-          'Taking photos is not supported in the web browser. Please use the mobile app to take photos.',
-          [
-            {
-              text: 'OK',
-              onPress: () => console.log('takePhoto: Alert dismissed'),
-            },
-          ]
+          'Taking photos is not supported in the web browser. Please use the mobile app to take photos.'
         )
         return
       }
       const permissions = await Camera.requestCameraPermissionsAsync()
-      console.log('takePhoto: Camera permission status:', permissions.status)
       if (permissions.status !== 'granted') {
         Alert.alert(
           'Permission Denied',
-          'Camera permission is required to take photos',
-          [
-            {
-              text: 'OK',
-              onPress: () =>
-                console.log('takePhoto: Permission alert dismissed'),
-            },
-          ]
+          'Camera permission is required to take photos'
         )
         return
       }
@@ -1514,9 +1469,7 @@ export default function ChatDetailScreen({ navigation, route }) {
         aspect: [4, 3],
         quality: 0.8,
       })
-      console.log('takePhoto: ImagePicker result:', result)
       if (result.canceled || !result.assets?.[0]) {
-        console.log('takePhoto: User cancelled or no assets returned')
         return
       }
       const asset = result.assets[0]
@@ -1527,15 +1480,9 @@ export default function ChatDetailScreen({ navigation, route }) {
           type: asset.type || 'image/jpeg',
         },
       ])
-      console.log('takePhoto: Photo sent successfully')
     } catch (error) {
-      console.error('takePhoto: Error:', error)
-      Alert.alert('Error', 'Failed to take photo: ' + error.message, [
-        {
-          text: 'OK',
-          onPress: () => console.log('takePhoto: Error alert dismissed'),
-        },
-      ])
+      console.error('Take photo error:', error)
+      Alert.alert('Error', 'Failed to take photo: ' + error.message)
     }
   }
 
@@ -1614,15 +1561,48 @@ export default function ChatDetailScreen({ navigation, route }) {
   }, [chatId])
 
   useEffect(() => {
-    if (messages.length > 0) {
-      setTimeout(
-        () => flatListRef.current?.scrollToEnd({ animated: true }),
-        100
-      )
+    const currentCount = messages.length
+    if (currentCount > prevMessageCount.current && currentCount > 0) {
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false })
+      }, 100)
     }
+    prevMessageCount.current = currentCount
   }, [messages.length])
 
   const handleBack = () => navigation.goBack()
+
+  /* ---------- render item (message or call log) ---------- */
+  const renderItem = useCallback(({ item, index }) => {
+    if (item.type === 'call') {
+      return (
+        <CallLogItem
+          callLog={item.data}
+          onCallback={() => handleCallCallback(item.data)}
+        />
+      )
+    }
+
+    // Render message
+    const previousItem =
+      index > 0 && combinedItems[index - 1].type === 'message'
+        ? combinedItems[index - 1].data
+        : null
+
+    return (
+      <MessageItem
+        item={item.data}
+        previousItem={previousItem}
+        currentUserId={user?.uid}
+        users={users}
+        onImagePress={handleImagePress}
+        onLongPress={handleMessageLongPress}
+        onThreeDotsPress={handleMessageThreeDotsPress}
+        hoveredMessageId={hoveredMessageId}
+        setHoveredMessageId={setHoveredMessageId}
+      />
+    )
+  })
 
   /* ---------- render ---------- */
   if (!chatId) {
@@ -1725,21 +1705,13 @@ export default function ChatDetailScreen({ navigation, route }) {
         <MessagesContainer>
           <FlatList
             ref={flatListRef}
-            data={messages}
-            keyExtractor={(item) => (item._id || item.id).toString()}
-            renderItem={({ item, index }) => (
-              <MessageItem
-                item={item}
-                previousItem={index > 0 ? messages[index - 1] : null}
-                currentUserId={user?.uid}
-                users={users}
-                onImagePress={handleImagePress}
-                onLongPress={handleMessageLongPress}
-                onThreeDotsPress={handleMessageThreeDotsPress}
-                hoveredMessageId={hoveredMessageId}
-                setHoveredMessageId={setHoveredMessageId}
-              />
-            )}
+            data={combinedItems}
+            keyExtractor={(item, index) =>
+              item.type === 'call'
+                ? `call-${item.data._id || item.data.id || index}`
+                : `message-${item.data._id || item.data.id || index}`
+            }
+            renderItem={renderItem}
             showsVerticalScrollIndicator={false}
             onContentSizeChange={() =>
               flatListRef.current?.scrollToEnd({ animated: true })
@@ -1754,7 +1726,6 @@ export default function ChatDetailScreen({ navigation, route }) {
         </MessagesContainer>
 
         <>
-          {/* Selected Files Preview */}
           {selectedFiles.length > 0 && (
             <SelectedFilesContainer>
               {selectedFiles.map((file, index) => (
@@ -1770,7 +1741,6 @@ export default function ChatDetailScreen({ navigation, route }) {
             </SelectedFilesContainer>
           )}
 
-          {/* Regular Input Container */}
           {!showRecordingUI && (
             <InputContainer>
               <CameraButton onPress={showImagePickerOptions}>
@@ -1812,7 +1782,6 @@ export default function ChatDetailScreen({ navigation, route }) {
             </InputContainer>
           )}
 
-          {/* Recording UI */}
           {showRecordingUI && (
             <AudioRecordingContainer>
               <RecordingIndicator>
@@ -1823,7 +1792,6 @@ export default function ChatDetailScreen({ navigation, route }) {
                 </RecordingTime>
               </RecordingIndicator>
 
-              {/* Add the sound wave animation */}
               <SoundWaveAnimation />
 
               <RecordingActions>
@@ -1842,7 +1810,6 @@ export default function ChatDetailScreen({ navigation, route }) {
         </>
       </KeyboardAvoidingView>
 
-      {/* Image Preview Modal */}
       <ImagePreviewModal
         visible={imagePreviewVisible}
         transparent={true}
@@ -1862,7 +1829,7 @@ export default function ChatDetailScreen({ navigation, route }) {
           />
         </ImagePreviewContainer>
       </ImagePreviewModal>
-      {/* Mobile Action Menu */}
+
       <MessageActionMenu
         visible={actionMenuVisible}
         onClose={closeActionMenu}
@@ -1870,7 +1837,6 @@ export default function ChatDetailScreen({ navigation, route }) {
         onDelete={handleDeleteMessage}
       />
 
-      {/* ✅ WEB DROPDOWN - Must have BOTH conditions */}
       {Platform.OS === 'web' && webDropdownVisible && (
         <WebMessageDropdown
           visible={webDropdownVisible}
@@ -1881,7 +1847,6 @@ export default function ChatDetailScreen({ navigation, route }) {
         />
       )}
 
-      {/* Edit Message Modal */}
       <EditMessageModal
         visible={editModalVisible}
         onClose={closeEditModal}

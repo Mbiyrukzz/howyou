@@ -2,6 +2,8 @@ import React from 'react'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
 import PostsScreen from '../screens/PostsScreen'
 import PostDetailScreen from '../screens/PostDetailScreen'
+import StatusViewerScreen from '../screens/StatusViewerScreen'
+import CreatePostScreen from '../screens/CreatePostsScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -12,6 +14,16 @@ export default function PostsStack() {
         name="PostsHome"
         component={PostsScreen}
         options={{ title: 'Posts' }}
+      />
+      <Stack.Screen
+        name="CreatePost"
+        component={CreatePostScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="StatusViewer"
+        component={StatusViewerScreen}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="PostDetail"

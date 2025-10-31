@@ -1,17 +1,24 @@
-import React, { useState, useRef } from 'react'
+// screens/PostsScreen.js
+import React, { useRef, useState } from 'react'
 import {
   FlatList,
-  TouchableOpacity,
   StatusBar,
   Animated,
-  Dimensions,
   RefreshControl,
+  Alert,
+  Image,
+  Dimensions,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
+import * as ImagePicker from 'expo-image-picker'
+import { usePosts } from '../providers/PostsProvider' // ← Single provider
 
-const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
+const { width: screenWidth } = Dimensions.get('window')
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── STYLED COMPONENTS ───────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 const Container = styled.View`
   flex: 1;
   background-color: #f8f9fa;
@@ -160,13 +167,7 @@ const PostImage = styled.View`
   background-color: #ecf0f1;
   margin: 0px 16px 12px 16px;
   border-radius: 12px;
-  justify-content: center;
-  align-items: center;
-`
-
-const PostImagePlaceholder = styled.Text`
-  color: #95a5a6;
-  font-size: 16px;
+  overflow: hidden;
 `
 
 const PostActions = styled.View`
@@ -210,97 +211,54 @@ const FloatingActionButton = styled.TouchableOpacity`
   elevation: 8;
 `
 
-// Mock data
-const mockStories = [
-  { id: '1', name: 'Your Story', color: '#2ecc71', hasStory: false },
-  { id: '2', name: 'Emma', color: '#e74c3c', hasStory: true },
-  { id: '3', name: 'Alex', color: '#f39c12', hasStory: true },
-  { id: '4', name: 'Sarah', color: '#9b59b6', hasStory: true },
-  { id: '5', name: 'Mike', color: '#34495e', hasStory: true },
-  { id: '6', name: 'Lisa', color: '#1abc9c', hasStory: false },
-]
-
-const mockPosts = [
-  {
-    id: '1',
-    username: 'Emma Davis',
-    timestamp: '2 hours ago',
-    content:
-      'Just finished an amazing hike in the mountains! The view was absolutely breathtaking. Nature has a way of putting everything into perspective. 🏔️',
-    avatarColor: '#e74c3c',
-    hasImage: true,
-    likes: 42,
-    comments: 8,
-    shares: 3,
-    isLiked: true,
-  },
-  {
-    id: '2',
-    username: 'Alex Chen',
-    timestamp: '4 hours ago',
-    content:
-      'Working on a new design project and loving every minute of it! Sometimes the best ideas come when you least expect them.',
-    avatarColor: '#f39c12',
-    hasImage: false,
-    likes: 28,
-    comments: 12,
-    shares: 2,
-    isLiked: false,
-  },
-  {
-    id: '3',
-    username: 'Sarah Johnson',
-    timestamp: '6 hours ago',
-    content:
-      "Coffee shop vibes and good conversations make for the perfect afternoon. What's everyone up to today?",
-    avatarColor: '#9b59b6',
-    hasImage: true,
-    likes: 35,
-    comments: 15,
-    shares: 1,
-    isLiked: true,
-  },
-  {
-    id: '4',
-    username: 'Mike Wilson',
-    timestamp: '8 hours ago',
-    content:
-      "Finally launched our new app! It's been months of hard work but seeing it come together is incredibly rewarding. Thanks to everyone who supported us along the way! 🚀",
-    avatarColor: '#34495e',
-    hasImage: false,
-    likes: 67,
-    comments: 23,
-    shares: 8,
-    isLiked: false,
-  },
-]
-
-const getInitials = (name) => {
-  return name
-    .split(' ')
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── UTILS ───────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+const getInitials = (name) =>
+  name
+    ?.split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase()
+    .substring(0, 2)
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── STORY COMPONENT ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+const StoryComponent = ({ item, onPress }) => {
+  const hasStory = !!item.fileUrl
+  return (
+    <StoryItem onPress={() => onPress(item)}>
+      <StoryAvatar
+        color={item.userAvatarColor || '#3498db'}
+        hasStory={hasStory}
+      >
+        <StoryAvatarText>
+          {getInitials(item.userName || item.name)}
+        </StoryAvatarText>
+      </StoryAvatar>
+      <StoryName numberOfLines={1}>{item.userName || item.name}</StoryName>
+    </StoryItem>
+  )
 }
 
-const StoryComponent = ({ item, onPress }) => (
-  <StoryItem onPress={() => onPress(item)}>
-    <StoryAvatar color={item.color} hasStory={item.hasStory}>
-      <StoryAvatarText>{getInitials(item.name)}</StoryAvatarText>
-    </StoryAvatar>
-    <StoryName numberOfLines={1}>{item.name}</StoryName>
-  </StoryItem>
-)
-
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── POST COMPONENT ───────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 const PostComponent = ({ item, onLike, onComment, onShare, onMenuPress }) => (
   <PostCard>
     <PostHeader>
-      <PostAvatar color={item.avatarColor}>
+      <PostAvatar color={item.avatarColor || '#3498db'}>
         <PostAvatarText>{getInitials(item.username)}</PostAvatarText>
       </PostAvatar>
       <PostUserInfo>
         <PostUsername>{item.username}</PostUsername>
-        <PostTimestamp>{item.timestamp}</PostTimestamp>
+        <PostTimestamp>
+          {new Date(item.createdAt).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+          })}
+        </PostTimestamp>
       </PostUserInfo>
       <PostMenuButton onPress={() => onMenuPress(item)}>
         <Ionicons name="ellipsis-horizontal" size={20} color="#7f8c8d" />
@@ -309,15 +267,21 @@ const PostComponent = ({ item, onLike, onComment, onShare, onMenuPress }) => (
 
     <PostContent>{item.content}</PostContent>
 
-    {item.hasImage && (
+    {item.files?.[0] && (
       <PostImage>
-        <Ionicons name="image-outline" size={40} color="#95a5a6" />
-        <PostImagePlaceholder>Photo</PostImagePlaceholder>
+        <Image
+          source={{ uri: item.files[0].url }}
+          style={{ width: '100%', height: '100%' }}
+          resizeMode="cover"
+        />
       </PostImage>
     )}
 
     <PostActions>
-      <ActionButton active={item.isLiked} onPress={() => onLike(item.id)}>
+      <ActionButton
+        active={item.isLiked}
+        onPress={() => onLike(item._id, item.isLiked)}
+      >
         <Ionicons
           name={item.isLiked ? 'heart' : 'heart-outline'}
           size={20}
@@ -326,93 +290,97 @@ const PostComponent = ({ item, onLike, onComment, onShare, onMenuPress }) => (
         <ActionText active={item.isLiked}>{item.likes}</ActionText>
       </ActionButton>
 
-      <ActionButton onPress={() => onComment(item.id)}>
+      <ActionButton onPress={() => onComment(item._id)}>
         <Ionicons name="chatbubble-outline" size={18} color="#7f8c8d" />
-        <ActionText>{item.comments}</ActionText>
+        <ActionText>{item.comments || 0}</ActionText>
       </ActionButton>
 
-      <ActionButton onPress={() => onShare(item.id)}>
+      <ActionButton onPress={() => onShare(item._id)}>
         <Ionicons name="share-outline" size={18} color="#7f8c8d" />
-        <ActionText>{item.shares}</ActionText>
+        <ActionText>{item.shares || 0}</ActionText>
       </ActionButton>
     </PostActions>
   </PostCard>
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 export default function PostsScreen({ navigation }) {
-  const [posts, setPosts] = useState(mockPosts)
+  const {
+    posts,
+    statuses,
+    loading,
+    refetch,
+    toggleLike,
+    deletePost,
+    createPost,
+  } = usePosts()
+
   const [refreshing, setRefreshing] = useState(false)
   const scrollY = useRef(new Animated.Value(0)).current
 
-  const handleStoryPress = (story) => {
-    console.log('Story pressed:', story.name)
+  const yourStory = {
+    _id: 'your-story',
+    userName: 'Your Story',
+    userAvatarColor: '#2ecc71',
   }
 
-  const handleLike = (postId) => {
-    setPosts((prevPosts) =>
-      prevPosts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              isLiked: !post.isLiked,
-              likes: post.isLiked ? post.likes - 1 : post.likes + 1,
-            }
-          : post
-      )
-    )
-  }
+  const stories = [yourStory, ...statuses]
 
-  const handleComment = (postId) => {
-    console.log('Comment on post:', postId)
-    // Navigate to comments screen or show comment modal
-  }
+  const handleStoryPress = async (item) => {
+    if (item._id === 'your-story') {
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+      if (status !== 'granted') {
+        Alert.alert('Permission needed', 'Allow photo access to add status')
+        return
+      }
 
-  const handleShare = (postId) => {
-    console.log('Share post:', postId)
-    // Handle sharing functionality
-  }
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.All,
+        quality: 0.8,
+      })
 
-  const handleMenuPress = (post) => {
-    console.log('Menu pressed for post:', post.id)
-    // Show options menu
-  }
-
-  const handleCreatePost = () => {
-    console.log('Create new post')
-    // Navigate to create post screen
+      if (!result.canceled && result.assets[0]) {
+        try {
+          await createPost(result.assets[0])
+          Alert.alert('Success', 'Status added!')
+        } catch (error) {
+          console.error('Failed to add status:', error)
+          Alert.alert('Error', error.message || 'Failed to add status')
+        }
+      }
+    } else {
+      navigation.navigate('StatusViewer', { status: item })
+    }
   }
 
   const handleRefresh = () => {
     setRefreshing(true)
-    // Simulate refresh
-    setTimeout(() => {
-      setRefreshing(false)
-    }, 1000)
+    Promise.all([refetch()]).finally(() => setRefreshing(false))
   }
 
   const HeaderComponent = () => (
-    <>
-      <Header>
-        <HeaderTop>
-          <HeaderTitle>Posts</HeaderTitle>
-          <HeaderButton>
-            <Ionicons name="notifications-outline" size={24} color="#7f8c8d" />
-          </HeaderButton>
-        </HeaderTop>
+    <Header>
+      <HeaderTop>
+        <HeaderTitle>Posts</HeaderTitle>
+        <HeaderButton>
+          <Ionicons name="notifications-outline" size={24} color="#7f8c8d" />
+        </HeaderButton>
+      </HeaderTop>
 
-        <StoriesContainer>
-          <StoriesList
-            data={mockStories}
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => (
-              <StoryComponent item={item} onPress={handleStoryPress} />
-            )}
-          />
-        </StoriesContainer>
-      </Header>
-    </>
+      <StoriesContainer>
+        <StoriesList
+          data={stories}
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          keyExtractor={(item) => item._id || 'your-story'}
+          renderItem={({ item }) => (
+            <StoryComponent item={item} onPress={handleStoryPress} />
+          )}
+        />
+      </StoriesContainer>
+    </Header>
   )
 
   return (
@@ -421,18 +389,28 @@ export default function PostsScreen({ navigation }) {
 
       <FlatList
         data={posts}
-        keyExtractor={(item) => item.id}
+        keyExtractor={(item) => item._id}
         ListHeaderComponent={HeaderComponent}
         renderItem={({ item }) => (
           <PostComponent
             item={item}
-            onLike={handleLike}
-            onComment={handleComment}
-            onShare={handleShare}
-            onMenuPress={handleMenuPress}
+            onLike={toggleLike}
+            onComment={(id) =>
+              navigation.navigate('PostDetail', { postId: id })
+            }
+            onShare={() => {}}
+            onMenuPress={(post) => {
+              Alert.alert('Delete Post', 'Are you sure?', [
+                { text: 'Cancel' },
+                {
+                  text: 'Delete',
+                  style: 'destructive',
+                  onPress: () => deletePost(post._id),
+                },
+              ])
+            }}
           />
         )}
-        showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
@@ -443,7 +421,7 @@ export default function PostsScreen({ navigation }) {
         )}
       />
 
-      <FloatingActionButton onPress={handleCreatePost}>
+      <FloatingActionButton onPress={() => navigation.navigate('CreatePost')}>
         <Ionicons name="add" size={28} color="#fff" />
       </FloatingActionButton>
     </Container>
