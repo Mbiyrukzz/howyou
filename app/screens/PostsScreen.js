@@ -12,7 +12,7 @@ import {
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
-import { usePosts } from '../providers/PostsProvider' // ← Single provider
+import { usePosts } from '../providers/PostsProvider'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -59,7 +59,7 @@ const HeaderButton = styled.TouchableOpacity`
 `
 
 const StoriesContainer = styled.View`
-  height: 100px;
+  height: 110px;
   margin-bottom: 8px;
 `
 
@@ -73,27 +73,54 @@ const StoryItem = styled.TouchableOpacity`
   width: 70px;
 `
 
+const StoryAvatarContainer = styled.View`
+  position: relative;
+  margin-bottom: 6px;
+`
+
 const StoryAvatar = styled.View`
-  width: 60px;
-  height: 60px;
-  border-radius: 30px;
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
   background-color: ${(props) => props.color || '#3498db'};
   justify-content: center;
   align-items: center;
-  border-width: ${(props) => (props.hasStory ? '3px' : '0px')};
-  border-color: #e74c3c;
-  margin-bottom: 4px;
+  border-width: ${(props) => (props.hasStory ? '3px' : '2.5px')};
+  border-color: ${(props) => (props.hasStory ? '#e74c3c' : '#e9ecef')};
+`
+
+const StoryImageContainer = styled.View`
+  width: 58px;
+  height: 58px;
+  border-radius: 29px;
+  overflow: hidden;
+  background-color: #ecf0f1;
+`
+
+const AddStoryButton = styled.View`
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  width: 22px;
+  height: 22px;
+  border-radius: 11px;
+  background-color: #3498db;
+  justify-content: center;
+  align-items: center;
+  border-width: 2px;
+  border-color: #fff;
 `
 
 const StoryAvatarText = styled.Text`
   color: #fff;
-  font-size: 18px;
+  font-size: 20px;
   font-weight: bold;
 `
 
 const StoryName = styled.Text`
   font-size: 12px;
-  color: #7f8c8d;
+  color: ${(props) => (props.isYou ? '#3498db' : '#7f8c8d')};
+  font-weight: ${(props) => (props.isYou ? '600' : '400')};
   text-align: center;
 `
 
@@ -225,19 +252,66 @@ const getInitials = (name) =>
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── STORY COMPONENT ─────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
-const StoryComponent = ({ item, onPress }) => {
+const StoryComponent = ({ item, onPress, isYourStory, myStatusExists }) => {
   const hasStory = !!item.fileUrl
+
   return (
     <StoryItem onPress={() => onPress(item)}>
-      <StoryAvatar
-        color={item.userAvatarColor || '#3498db'}
-        hasStory={hasStory}
-      >
-        <StoryAvatarText>
-          {getInitials(item.userName || item.name)}
-        </StoryAvatarText>
-      </StoryAvatar>
-      <StoryName numberOfLines={1}>{item.userName || item.name}</StoryName>
+      <StoryAvatarContainer>
+        {isYourStory && myStatusExists && item.fileUrl ? (
+          // Your story with image
+          <StoryAvatar hasStory={true} color={item.userAvatarColor}>
+            <StoryImageContainer>
+              <Image
+                source={{ uri: item.fileUrl }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
+            </StoryImageContainer>
+          </StoryAvatar>
+        ) : isYourStory ? (
+          // Your story placeholder (no status yet)
+          <StoryAvatar
+            color={item.userAvatarColor || '#2ecc71'}
+            hasStory={false}
+          >
+            <StoryAvatarText>
+              {getInitials(item.userName || item.name)}
+            </StoryAvatarText>
+          </StoryAvatar>
+        ) : hasStory ? (
+          // Other user's story with image
+          <StoryAvatar hasStory={true} color={item.userAvatarColor}>
+            <StoryImageContainer>
+              <Image
+                source={{ uri: item.fileUrl }}
+                style={{ width: '100%', height: '100%' }}
+                resizeMode="cover"
+              />
+            </StoryImageContainer>
+          </StoryAvatar>
+        ) : (
+          // Other user's story without image
+          <StoryAvatar
+            color={item.userAvatarColor || '#3498db'}
+            hasStory={hasStory}
+          >
+            <StoryAvatarText>
+              {getInitials(item.userName || item.name)}
+            </StoryAvatarText>
+          </StoryAvatar>
+        )}
+
+        {isYourStory && (
+          <AddStoryButton>
+            <Ionicons name="add" size={14} color="#fff" />
+          </AddStoryButton>
+        )}
+      </StoryAvatarContainer>
+
+      <StoryName isYou={isYourStory} numberOfLines={1}>
+        {isYourStory ? 'Your Story' : item.userName || item.name}
+      </StoryName>
     </StoryItem>
   )
 }
@@ -310,6 +384,7 @@ export default function PostsScreen({ navigation }) {
   const {
     posts,
     statuses,
+    myStatus,
     loading,
     refetch,
     toggleLike,
@@ -320,7 +395,8 @@ export default function PostsScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false)
   const scrollY = useRef(new Animated.Value(0)).current
 
-  const yourStory = {
+  // Prepare stories list with "Your Story" first
+  const yourStory = myStatus || {
     _id: 'your-story',
     userName: 'Your Story',
     userAvatarColor: '#2ecc71',
@@ -329,35 +405,46 @@ export default function PostsScreen({ navigation }) {
   const stories = [yourStory, ...statuses]
 
   const handleStoryPress = async (item) => {
-    if (item._id === 'your-story') {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
-      if (status !== 'granted') {
-        Alert.alert('Permission needed', 'Allow photo access to add status')
-        return
-      }
+    const isYourStory = item._id === 'your-story' || item._id === myStatus?._id
 
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.All,
-        quality: 0.8,
-      })
+    if (isYourStory) {
+      // Check if you already have a status
+      if (myStatus && myStatus.fileUrl) {
+        // View your own status
+        navigation.navigate('StatusViewer', { status: myStatus })
+      } else {
+        // Add new status
+        const { status } =
+          await ImagePicker.requestMediaLibraryPermissionsAsync()
+        if (status !== 'granted') {
+          Alert.alert('Permission needed', 'Allow photo access to add status')
+          return
+        }
 
-      if (!result.canceled && result.assets[0]) {
-        try {
-          await createPost(result.assets[0])
-          Alert.alert('Success', 'Status added!')
-        } catch (error) {
-          console.error('Failed to add status:', error)
-          Alert.alert('Error', error.message || 'Failed to add status')
+        const result = await ImagePicker.launchImageLibraryAsync({
+          mediaTypes: ImagePicker.MediaTypeOptions.All,
+          quality: 0.8,
+        })
+
+        if (!result.canceled && result.assets[0]) {
+          try {
+            await createPost(result.assets[0])
+            Alert.alert('Success', 'Status added!')
+          } catch (error) {
+            console.error('Failed to add status:', error)
+            Alert.alert('Error', error.message || 'Failed to add status')
+          }
         }
       }
     } else {
+      // View someone else's status
       navigation.navigate('StatusViewer', { status: item })
     }
   }
 
   const handleRefresh = () => {
     setRefreshing(true)
-    Promise.all([refetch()]).finally(() => setRefreshing(false))
+    refetch().finally(() => setRefreshing(false))
   }
 
   const HeaderComponent = () => (
@@ -376,7 +463,14 @@ export default function PostsScreen({ navigation }) {
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item._id || 'your-story'}
           renderItem={({ item }) => (
-            <StoryComponent item={item} onPress={handleStoryPress} />
+            <StoryComponent
+              item={item}
+              onPress={handleStoryPress}
+              isYourStory={
+                item._id === 'your-story' || item._id === myStatus?._id
+              }
+              myStatusExists={!!myStatus}
+            />
           )}
         />
       </StoriesContainer>

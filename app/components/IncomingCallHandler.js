@@ -1,9 +1,9 @@
 import React, { useContext, useEffect } from 'react'
 import { useNavigation } from '@react-navigation/native'
 import * as Notifications from 'expo-notifications'
+import { Alert, AppState, Platform } from 'react-native'
 import ChatsContext from '../contexts/ChatsContext'
 import IncomingCallModal from './IncomingCallModal'
-import { Alert, AppState } from 'react-native'
 
 export default function IncomingCallHandler() {
   const navigation = useNavigation()
@@ -18,8 +18,8 @@ export default function IncomingCallHandler() {
         callId: incomingCall.callId,
       })
 
-      // Show notification if app is in background
-      if (AppState.currentState !== 'active') {
+      // Show notification if app is in background (native only)
+      if (Platform.OS !== 'web' && AppState.currentState !== 'active') {
         showCallNotification(incomingCall)
       }
     } else {
@@ -28,27 +28,36 @@ export default function IncomingCallHandler() {
   }, [incomingCall])
 
   const showCallNotification = async (callData) => {
-    await Notifications.scheduleNotificationAsync({
-      content: {
-        title: `Incoming ${
-          callData.callType === 'video' ? 'Video' : 'Voice'
-        } Call`,
-        body: `${callData.callerName || 'Someone'} is calling you`,
-        sound: 'default',
-        priority: Notifications.AndroidNotificationPriority.MAX,
-        vibrate: [0, 250, 250, 250],
-        data: {
-          type: 'incoming_call',
-          callId: callData.callId,
-          chatId: callData.chatId,
-          caller: callData.caller,
-          callerName: callData.callerName,
-          callType: callData.callType,
+    try {
+      if (Platform.OS === 'web') {
+        console.log('ℹ️ Skipping notifications on web')
+        return
+      }
+
+      await Notifications.scheduleNotificationAsync({
+        content: {
+          title: `Incoming ${
+            callData.callType === 'video' ? 'Video' : 'Voice'
+          } Call`,
+          body: `${callData.callerName || 'Someone'} is calling you`,
+          sound: 'default',
+          priority: Notifications.AndroidNotificationPriority.MAX,
+          vibrate: [0, 250, 250, 250],
+          data: {
+            type: 'incoming_call',
+            callId: callData.callId,
+            chatId: callData.chatId,
+            caller: callData.caller,
+            callerName: callData.callerName,
+            callType: callData.callType,
+          },
+          categoryIdentifier: 'INCOMING_CALL',
         },
-        categoryIdentifier: 'INCOMING_CALL',
-      },
-      trigger: null, // Show immediately
-    })
+        trigger: null, // Show immediately
+      })
+    } catch (error) {
+      console.error('❌ Error showing call notification:', error)
+    }
   }
 
   const handleAcceptCall = async () => {
@@ -60,11 +69,14 @@ export default function IncomingCallHandler() {
     console.log('✅ Accepting call:', incomingCall.callId)
 
     try {
-      // Dismiss notification
-      await Notifications.dismissAllNotificationsAsync()
+      // Only dismiss notifications on native platforms
+      if (Platform.OS !== 'web') {
+        await Notifications.dismissAllNotificationsAsync()
+      } else {
+        console.log('ℹ️ Skipping dismissAllNotificationsAsync on web')
+      }
 
       const result = await answerCall(incomingCall.callId, true)
-
       console.log('📞 Answer call result:', result)
 
       if (result.success) {
@@ -96,8 +108,11 @@ export default function IncomingCallHandler() {
     console.log('❌ Rejecting call:', incomingCall.callId)
 
     try {
-      // Dismiss notification
-      await Notifications.dismissAllNotificationsAsync()
+      if (Platform.OS !== 'web') {
+        await Notifications.dismissAllNotificationsAsync()
+      } else {
+        console.log('ℹ️ Skipping dismissAllNotificationsAsync on web')
+      }
 
       await rejectCall(incomingCall.callId)
       console.log('✅ Call rejected successfully')
@@ -106,9 +121,7 @@ export default function IncomingCallHandler() {
     }
   }
 
-  if (!incomingCall) {
-    return null
-  }
+  if (!incomingCall) return null
 
   return (
     <IncomingCallModal

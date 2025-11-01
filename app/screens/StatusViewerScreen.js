@@ -1,3 +1,4 @@
+// screens/StatusViewerScreen.js
 import React, { useState, useEffect, useRef } from 'react'
 import {
   View,
@@ -30,22 +31,32 @@ const VideoContainer = styled.View`
 
 const ProgressBarContainer = styled.View`
   position: absolute;
-  top: 0;
+  top: 50px;
   left: 0;
   right: 0;
   flex-direction: row;
   height: 3px;
-  background-color: rgba(255, 255, 255, 0.3);
+  padding: 0 8px;
+  z-index: 20;
 `
 
-const ProgressBar = styled.View`
-  flex: ${(props) => props.progress || 0};
+const ProgressSegment = styled.View`
+  flex: 1;
+  margin: 0 2px;
+  background-color: rgba(255, 255, 255, 0.3);
+  border-radius: 2px;
+  overflow: hidden;
+`
+
+const ProgressFill = styled.View`
+  height: 100%;
   background-color: #fff;
+  width: ${(props) => props.progress * 100}%;
 `
 
 const Header = styled.View`
   position: absolute;
-  top: 40px;
+  top: 60px;
   left: 0;
   right: 0;
   flex-direction: row;
@@ -78,11 +89,17 @@ const Username = styled.Text`
   color: #fff;
   font-weight: 600;
   font-size: 16px;
+  text-shadow-color: rgba(0, 0, 0, 0.5);
+  text-shadow-offset: 0px 1px;
+  text-shadow-radius: 3px;
 `
 
 const Timestamp = styled.Text`
-  color: rgba(255, 255, 255, 0.7);
+  color: rgba(255, 255, 255, 0.9);
   font-size: 12px;
+  text-shadow-color: rgba(0, 0, 0, 0.5);
+  text-shadow-offset: 0px 1px;
+  text-shadow-radius: 3px;
 `
 
 const CloseButton = styled.TouchableOpacity`
@@ -91,6 +108,7 @@ const CloseButton = styled.TouchableOpacity`
 
 const DeleteButton = styled.TouchableOpacity`
   padding: 8px;
+  margin-left: 8px;
 `
 
 const Caption = styled.Text`
@@ -105,27 +123,53 @@ const Caption = styled.Text`
   border-radius: 8px;
 `
 
+const PauseIndicator = styled.View`
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translateX(-30px) translateY(-30px);
+`
+
 const getInitials = (name) =>
   name
-    .split(' ')
+    ?.split(' ')
     .map((n) => n[0])
     .join('')
     .toUpperCase()
     .substring(0, 2)
 
+const formatTimestamp = (date) => {
+  const now = new Date()
+  const diff = now - new Date(date)
+  const hours = Math.floor(diff / 3600000)
+  const minutes = Math.floor((diff % 3600000) / 60000)
+
+  if (hours < 1) return `${minutes}m ago`
+  if (hours < 24) return `${hours}h ago`
+  return 'Yesterday'
+}
+
 export default function StatusViewerScreen({ route, navigation }) {
   const { status: initialStatus } = route.params
-  const { statuses, deleteStatus } = usePosts()
+  const { statuses, myStatus, deleteStatus } = usePosts()
+
+  // Determine if viewing own status
+  const isViewingOwnStatus = initialStatus._id === myStatus?._id
+
+  // Build the status list
+  const allStatuses = isViewingOwnStatus
+    ? [myStatus].filter(Boolean) // Only show your own status
+    : statuses // Show all other users' statuses
 
   const [currentIndex, setCurrentIndex] = useState(
-    statuses.findIndex((s) => s._id === initialStatus._id)
+    allStatuses.findIndex((s) => s._id === initialStatus._id) || 0
   )
   const [progress, setProgress] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const videoRef = useRef(null)
   const timerRef = useRef(null)
 
-  const currentStatus = statuses[currentIndex]
+  const currentStatus = allStatuses[currentIndex]
 
   const DURATION = 5000 // 5 seconds per status
 
@@ -154,10 +198,10 @@ export default function StatusViewerScreen({ route, navigation }) {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
     }
-  }, [currentIndex, isPaused])
+  }, [currentIndex, isPaused, currentStatus])
 
   const goToNext = () => {
-    if (currentIndex < statuses.length - 1) {
+    if (currentIndex < allStatuses.length - 1) {
       setCurrentIndex(currentIndex + 1)
     } else {
       navigation.goBack()
@@ -167,6 +211,8 @@ export default function StatusViewerScreen({ route, navigation }) {
   const goToPrev = () => {
     if (currentIndex > 0) {
       setCurrentIndex(currentIndex - 1)
+    } else {
+      navigation.goBack()
     }
   }
 
@@ -193,8 +239,13 @@ export default function StatusViewerScreen({ route, navigation }) {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
-            await deleteStatus(currentStatus._id)
-            navigation.goBack()
+            try {
+              await deleteStatus(currentStatus._id)
+              Alert.alert('Success', 'Status deleted')
+              navigation.goBack()
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete status')
+            }
           },
         },
       ]
@@ -218,40 +269,45 @@ export default function StatusViewerScreen({ route, navigation }) {
         onPress={handleTap}
         style={{ flex: 1 }}
       >
-        {/* Progress Bar */}
+        {/* Progress Bars */}
         <ProgressBarContainer>
-          {statuses.map((_, i) => (
-            <ProgressBar
-              key={i}
-              progress={
-                i < currentIndex ? 1 : i === currentIndex ? progress : 0
-              }
-            />
+          {allStatuses.map((_, i) => (
+            <ProgressSegment key={i}>
+              <ProgressFill
+                progress={
+                  i < currentIndex ? 1 : i === currentIndex ? progress : 0
+                }
+              />
+            </ProgressSegment>
           ))}
         </ProgressBarContainer>
 
         {/* Header */}
         <Header>
-          <Avatar color={currentStatus.userAvatarColor}>
-            <AvatarText>{getInitials(currentStatus.userName)}</AvatarText>
+          <Avatar color={currentStatus.userAvatarColor || '#3498db'}>
+            <AvatarText>
+              {getInitials(currentStatus.userName || 'You')}
+            </AvatarText>
           </Avatar>
           <UserInfo>
-            <Username>{currentStatus.userName}</Username>
-            <Timestamp>
-              {new Date(currentStatus.createdAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </Timestamp>
+            <Username>
+              {isViewingOwnStatus
+                ? 'Your Story'
+                : currentStatus.userName || 'Unknown'}
+            </Username>
+            <Timestamp>{formatTimestamp(currentStatus.createdAt)}</Timestamp>
           </UserInfo>
-          <CloseButton onPress={() => navigation.goBack()}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </CloseButton>
-          {currentStatus.userId === initialStatus.userId && (
+
+          {/* Delete button only for own status */}
+          {isViewingOwnStatus && (
             <DeleteButton onPress={handleDelete}>
               <Ionicons name="trash-outline" size={24} color="#fff" />
             </DeleteButton>
           )}
+
+          <CloseButton onPress={() => navigation.goBack()}>
+            <Ionicons name="close" size={28} color="#fff" />
+          </CloseButton>
         </Header>
 
         {/* Media */}
@@ -283,22 +339,13 @@ export default function StatusViewerScreen({ route, navigation }) {
         )}
 
         {/* Caption */}
-        {currentStatus.caption ? (
-          <Caption>{currentStatus.caption}</Caption>
-        ) : null}
+        {currentStatus.caption && <Caption>{currentStatus.caption}</Caption>}
 
         {/* Pause Indicator */}
         {isPaused && (
-          <View
-            style={{
-              position: 'absolute',
-              top: '50%',
-              left: '50%',
-              transform: [{ translateX: -30 }, { translateY: -30 }],
-            }}
-          >
+          <PauseIndicator>
             <Ionicons name="pause" size={60} color="rgba(255,255,255,0.8)" />
-          </View>
+          </PauseIndicator>
         )}
       </TouchableOpacity>
     </Container>
