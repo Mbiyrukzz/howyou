@@ -281,7 +281,8 @@ const CallScreen = () => {
     }
   }, [user?.uid, chatId])
 
-  // Handle WebSocket messages
+  // In CallScreen.js, replace the handleWebSocketMessage function with this:
+
   const handleWebSocketMessage = async (data) => {
     switch (data.type) {
       case 'user-joined':
@@ -291,6 +292,7 @@ const CallScreen = () => {
           await createOffer()
         }
         break
+
       case 'call-answered':
         if (data.from !== user?.uid) {
           stopRingtones()
@@ -298,34 +300,87 @@ const CallScreen = () => {
           setCallStatus('connecting')
         }
         break
+
+      // ✅ NEW: Handle call rejection
+      case 'call_rejected':
+        console.log('📵 Call rejected by recipient')
+        stopRingtones()
+        clearRingTimer()
+        cleanup()
+
+        Alert.alert(
+          'Call Declined',
+          `${data.recipientName || 'The other person'} declined your call`,
+          [{ text: 'OK', onPress: () => navigation.goBack() }],
+          { cancelable: false }
+        )
+
+        // Fallback navigation
+        setTimeout(() => {
+          navigation.goBack()
+        }, 100)
+        break
+
       case 'webrtc-offer':
         if (data.from !== user?.uid) {
           await handleOffer(data.offer)
         }
         break
+
       case 'webrtc-answer':
         if (data.from !== user?.uid) {
           await handleAnswer(data.answer)
         }
         break
+
       case 'webrtc-ice-candidate':
         if (data.from !== user?.uid) {
           await handleNewICECandidate(data.candidate)
         }
         break
+
       case 'user-left':
         if (data.userId === remoteUserId) {
           handleEndCall()
         }
         break
+
+      // ✅ UPDATED: Handle call ended with better message
       case 'call-ended':
-        handleEndCall()
+      case 'call_ended':
+        console.log('📵 Call ended by other user')
+        stopRingtones()
+        clearRingTimer()
+        cleanup()
+
+        const durationText = data.duration
+          ? `Call duration: ${Math.floor(data.duration / 60)}:${(
+              data.duration % 60
+            )
+              .toString()
+              .padStart(2, '0')}`
+          : 'The call has ended'
+
+        Alert.alert(
+          'Call Ended',
+          durationText,
+          [{ text: 'OK', onPress: () => navigation.goBack() }],
+          { cancelable: false }
+        )
+
+        setTimeout(() => {
+          navigation.goBack()
+        }, 100)
         break
+
       case 'screen-sharing':
         if (data.from !== user?.uid) {
           console.log('📺 Remote user toggled screen sharing:', data.enabled)
         }
         break
+
+      default:
+        console.log('Unknown message type:', data.type)
     }
   }
 

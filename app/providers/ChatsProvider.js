@@ -134,7 +134,12 @@ const ChatsProvider = ({ children }) => {
 
       case 'call_rejected':
         console.log('Call rejected by recipient')
-        Alert.alert('Call Declined', 'The other person declined your call')
+        setIncomingCall(null)
+        setCallNotification(null)
+        Alert.alert(
+          'Call Declined',
+          `${data.recipientName || 'The other person'} declined your call`
+        )
         break
 
       case 'new_message':
@@ -146,14 +151,12 @@ const ChatsProvider = ({ children }) => {
         break
 
       case 'ping':
-        // Respond to server ping
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'pong' }))
         }
         break
 
       case 'pong':
-        // Server responded to our ping
         break
 
       case 'error':
@@ -178,31 +181,14 @@ const ChatsProvider = ({ children }) => {
       chatId: callData.chatId,
     })
 
-    // Show alert
-    Alert.alert(
-      `Incoming ${callData.callType === 'video' ? 'Video' : 'Voice'} Call`,
-      `${callData.callerName || 'Someone'} is calling you`,
-      [
-        {
-          text: 'Decline',
-          style: 'cancel',
-          onPress: () => rejectCall(callData.callId),
-        },
-        {
-          text: 'Answer',
-          onPress: () => {
-            // Navigation should be handled by the component consuming this context
-            console.log('User wants to answer call:', callData.callId)
-          },
-        },
-      ]
-    )
-
-    // Auto-dismiss after 30 seconds
+    // Auto-dismiss after 40 seconds (matching backend timeout)
     setTimeout(() => {
-      setCallNotification(null)
-      setIncomingCall(null)
-    }, 30000)
+      if (incomingCall?.callId === callData.callId) {
+        setCallNotification(null)
+        setIncomingCall(null)
+        rejectCall(callData.callId) // Auto-reject on timeout
+      }
+    }, 40000)
   }
 
   const handleCallEnded = (data) => {

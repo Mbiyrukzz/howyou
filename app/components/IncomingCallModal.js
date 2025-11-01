@@ -1,9 +1,21 @@
+// components/IncomingCallModal.js - FIXED for web audio
 import React, { useEffect, useRef } from 'react'
-import { Modal, View, Text, TouchableOpacity, Animated } from 'react-native'
+import {
+  Modal,
+  View,
+  Text,
+  TouchableOpacity,
+  Animated,
+  Platform,
+} from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
-import { Audio } from 'expo-audio'
-import { Video } from 'expo-video'
+
+// Only import Audio for native platforms
+let Audio = null
+if (Platform.OS !== 'web') {
+  Audio = require('expo-av').Audio
+}
 
 export default function IncomingCallModal({
   visible,
@@ -14,6 +26,7 @@ export default function IncomingCallModal({
 }) {
   const pulseAnim = useRef(new Animated.Value(1)).current
   const soundRef = useRef(null)
+  const audioElementRef = useRef(null)
 
   useEffect(() => {
     if (visible) {
@@ -47,26 +60,47 @@ export default function IncomingCallModal({
 
   const playRingtone = async () => {
     try {
-      const { sound } = await Audio.Sound.createAsync(
-        require('../assets/ringtone.mp3'), // Add your ringtone file
-        { isLooping: true, volume: 1.0 }
-      )
-      soundRef.current = sound
-      await sound.playAsync()
+      if (Platform.OS === 'web') {
+        // Use HTML5 Audio for web
+        if (!audioElementRef.current) {
+          audioElementRef.current = new window.Audio('/ringtone.mp3')
+          audioElementRef.current.loop = true
+          audioElementRef.current.volume = 1.0
+        }
+        audioElementRef.current.play().catch((error) => {
+          console.warn('Failed to play ringtone:', error)
+        })
+      } else if (Audio) {
+        // Use Expo Audio for native
+        const { sound } = await Audio.Sound.createAsync(
+          require('../assets/ringtone.mp3'),
+          { isLooping: true, volume: 1.0 }
+        )
+        soundRef.current = sound
+        await sound.playAsync()
+      }
     } catch (error) {
       console.error('Failed to play ringtone:', error)
     }
   }
 
   const stopRingtone = async () => {
-    if (soundRef.current) {
-      try {
+    try {
+      if (Platform.OS === 'web') {
+        // Stop HTML5 Audio
+        if (audioElementRef.current) {
+          audioElementRef.current.pause()
+          audioElementRef.current.currentTime = 0
+          audioElementRef.current = null
+        }
+      } else if (soundRef.current) {
+        // Stop Expo Audio
         await soundRef.current.stopAsync()
         await soundRef.current.unloadAsync()
         soundRef.current = null
-      } catch (error) {
-        console.error('Failed to stop ringtone:', error)
       }
+    } catch (error) {
+      console.error('Failed to stop ringtone:', error)
     }
   }
 
