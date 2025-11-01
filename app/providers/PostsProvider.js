@@ -1,4 +1,4 @@
-// providers/PostsProvider.js - Enhanced with My Status
+// providers/PostsProvider.js - Enhanced with grouped statuses
 import React, { useEffect, useState, useCallback, useContext } from 'react'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import PostsContext from '../contexts/PostsContext'
@@ -10,7 +10,7 @@ export const PostsProvider = ({ children }) => {
 
   const [posts, setPosts] = useState([])
   const [statuses, setStatuses] = useState([])
-  const [myStatus, setMyStatus] = useState(null) // Your own status
+  const [myStatus, setMyStatus] = useState(null) // Array of your statuses
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
 
@@ -25,27 +25,29 @@ export const PostsProvider = ({ children }) => {
     }
   }, [isReady, get])
 
-  // ─── Fetch all statuses (excluding yours) ────────────────────────────────
+  // ─── Fetch all statuses (grouped by user, excluding yours) ────────────────
   const fetchStatuses = useCallback(async () => {
     if (!isReady) return
     try {
       const data = await get(`${API_URL}/statuses`)
+      // Backend already returns grouped statuses
       setStatuses(data.statuses || [])
     } catch (e) {
       console.error('Fetch statuses error:', e)
     }
   }, [isReady, get])
 
-  // ─── Fetch your status ────────────────────────────────
+  // ─── Fetch your statuses (all of them) ────────────────────────────────
   const fetchMyStatus = useCallback(async () => {
     if (!isReady) return
     try {
       const data = await get(`${API_URL}/status/my`)
-      setMyStatus(data.status || null)
-      console.log('My status:', data.status ? 'exists' : 'none')
+      // Backend returns { statuses: [...] }
+      setMyStatus(data.statuses || [])
+      console.log('My statuses:', data.statuses?.length || 0)
     } catch (e) {
       console.error('Fetch my status error:', e)
-      setMyStatus(null)
+      setMyStatus([])
     }
   }, [isReady, get])
 
@@ -129,12 +131,8 @@ export const PostsProvider = ({ children }) => {
 
       console.log('Status created successfully:', data.status._id)
 
-      // Update myStatus and add to statuses list
-      setMyStatus(data.status)
-
-      // If it's a new status, it might replace an old one
-      // Refresh to get the latest list
-      await fetchMyStatus()
+      // Add to myStatus array
+      setMyStatus((prev) => [data.status, ...(prev || [])])
 
       return data.status
     }
@@ -240,11 +238,10 @@ export const PostsProvider = ({ children }) => {
     if (!isReady) return
     await del(`${API_URL}/status/${statusId}`)
 
-    // If deleting your own status
-    if (myStatus?._id === statusId) {
-      setMyStatus(null)
-    }
+    // Remove from myStatus array
+    setMyStatus((prev) => (prev || []).filter((x) => x._id !== statusId))
 
+    // Remove from statuses list (in case it's in other users' view)
     setStatuses((p) => p.filter((x) => x._id !== statusId))
   }
 
@@ -256,7 +253,7 @@ export const PostsProvider = ({ children }) => {
   const value = {
     posts,
     statuses,
-    myStatus, // Your own status
+    myStatus, // Array of your statuses
     loading,
     error,
     createPost, // Unified: handles both posts and statuses

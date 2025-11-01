@@ -8,6 +8,8 @@ import {
   Alert,
   Image,
   Dimensions,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -124,6 +126,27 @@ const StoryName = styled.Text`
   text-align: center;
 `
 
+const StatusBadge = styled.View`
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  background-color: #e74c3c;
+  border-radius: 10px;
+  min-width: 20px;
+  height: 20px;
+  justify-content: center;
+  align-items: center;
+  padding: 0 6px;
+  border-width: 2px;
+  border-color: #fff;
+`
+
+const StatusBadgeText = styled.Text`
+  color: #fff;
+  font-size: 11px;
+  font-weight: bold;
+`
+
 const PostCard = styled.View`
   background-color: #fff;
   margin: 8px 20px;
@@ -238,6 +261,70 @@ const FloatingActionButton = styled.TouchableOpacity`
   elevation: 8;
 `
 
+// ─── Modal Components ────────────────────────────────
+const ModalOverlay = styled.View`
+  flex: 1;
+  background-color: rgba(0, 0, 0, 0.5);
+  justify-content: center;
+  align-items: center;
+`
+
+const ModalContent = styled.View`
+  background-color: #fff;
+  border-radius: 20px;
+  width: 85%;
+  max-width: 350px;
+  padding: 24px;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 8px;
+  elevation: 10;
+`
+
+const ModalTitle = styled.Text`
+  font-size: 20px;
+  font-weight: bold;
+  color: #2c3e50;
+  text-align: center;
+  margin-bottom: 8px;
+`
+
+const ModalSubtitle = styled.Text`
+  font-size: 14px;
+  color: #7f8c8d;
+  text-align: center;
+  margin-bottom: 24px;
+`
+
+const ModalButton = styled.TouchableOpacity`
+  flex-direction: row;
+  align-items: center;
+  padding: 16px;
+  border-radius: 12px;
+  background-color: ${(props) => props.bgColor || '#f8f9fa'};
+  margin-bottom: 12px;
+`
+
+const ModalButtonText = styled.Text`
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: ${(props) => props.color || '#2c3e50'};
+  margin-left: 12px;
+`
+
+const ModalCancelButton = styled.TouchableOpacity`
+  padding: 16px;
+  align-items: center;
+`
+
+const ModalCancelText = styled.Text`
+  font-size: 16px;
+  font-weight: 600;
+  color: #7f8c8d;
+`
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -252,35 +339,13 @@ const getInitials = (name) =>
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── STORY COMPONENT ─────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
-const StoryComponent = ({ item, onPress, isYourStory, myStatusExists }) => {
-  const hasStory = !!item.fileUrl
+const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
+  const hasStory = statusCount > 0
 
   return (
     <StoryItem onPress={() => onPress(item)}>
       <StoryAvatarContainer>
-        {isYourStory && myStatusExists && item.fileUrl ? (
-          // Your story with image
-          <StoryAvatar hasStory={true} color={item.userAvatarColor}>
-            <StoryImageContainer>
-              <Image
-                source={{ uri: item.fileUrl }}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="cover"
-              />
-            </StoryImageContainer>
-          </StoryAvatar>
-        ) : isYourStory ? (
-          // Your story placeholder (no status yet)
-          <StoryAvatar
-            color={item.userAvatarColor || '#2ecc71'}
-            hasStory={false}
-          >
-            <StoryAvatarText>
-              {getInitials(item.userName || item.name)}
-            </StoryAvatarText>
-          </StoryAvatar>
-        ) : hasStory ? (
-          // Other user's story with image
+        {hasStory && item.fileUrl ? (
           <StoryAvatar hasStory={true} color={item.userAvatarColor}>
             <StoryImageContainer>
               <Image
@@ -291,10 +356,9 @@ const StoryComponent = ({ item, onPress, isYourStory, myStatusExists }) => {
             </StoryImageContainer>
           </StoryAvatar>
         ) : (
-          // Other user's story without image
           <StoryAvatar
-            color={item.userAvatarColor || '#3498db'}
-            hasStory={hasStory}
+            color={item.userAvatarColor || '#2ecc71'}
+            hasStory={false}
           >
             <StoryAvatarText>
               {getInitials(item.userName || item.name)}
@@ -306,6 +370,12 @@ const StoryComponent = ({ item, onPress, isYourStory, myStatusExists }) => {
           <AddStoryButton>
             <Ionicons name="add" size={14} color="#fff" />
           </AddStoryButton>
+        )}
+
+        {statusCount > 1 && (
+          <StatusBadge>
+            <StatusBadgeText>{statusCount}</StatusBadgeText>
+          </StatusBadge>
         )}
       </StoryAvatarContainer>
 
@@ -378,6 +448,52 @@ const PostComponent = ({ item, onLike, onComment, onShare, onMenuPress }) => (
 )
 
 // ─────────────────────────────────────────────────────────────────────────────
+// ─── STATUS ACTION MODAL ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+const StatusActionModal = ({
+  visible,
+  onClose,
+  onAdd,
+  onView,
+  statusCount,
+}) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="fade"
+    onRequestClose={onClose}
+  >
+    <TouchableWithoutFeedback onPress={onClose}>
+      <ModalOverlay>
+        <TouchableWithoutFeedback>
+          <ModalContent>
+            <ModalTitle>Your Status</ModalTitle>
+            <ModalSubtitle>
+              You have {statusCount} active{' '}
+              {statusCount === 1 ? 'status' : 'statuses'}
+            </ModalSubtitle>
+
+            <ModalButton bgColor="#e3f2fd" onPress={onView}>
+              <Ionicons name="eye-outline" size={24} color="#2196f3" />
+              <ModalButtonText color="#2196f3">View Status</ModalButtonText>
+            </ModalButton>
+
+            <ModalButton bgColor="#f0f4ff" onPress={onAdd}>
+              <Ionicons name="add-circle-outline" size={24} color="#5e72e4" />
+              <ModalButtonText color="#5e72e4">Add New Status</ModalButtonText>
+            </ModalButton>
+
+            <ModalCancelButton onPress={onClose}>
+              <ModalCancelText>Cancel</ModalCancelText>
+            </ModalCancelButton>
+          </ModalContent>
+        </TouchableWithoutFeedback>
+      </ModalOverlay>
+    </TouchableWithoutFeedback>
+  </Modal>
+)
+
+// ─────────────────────────────────────────────────────────────────────────────
 // ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 export default function PostsScreen({ navigation }) {
@@ -393,52 +509,83 @@ export default function PostsScreen({ navigation }) {
   } = usePosts()
 
   const [refreshing, setRefreshing] = useState(false)
+  const [modalVisible, setModalVisible] = useState(false)
   const scrollY = useRef(new Animated.Value(0)).current
 
   // Prepare stories list with "Your Story" first
-  const yourStory = myStatus || {
+  const yourStory = {
     _id: 'your-story',
     userName: 'Your Story',
     userAvatarColor: '#2ecc71',
+    fileUrl: myStatus?.length > 0 ? myStatus[0].fileUrl : null,
+    statusCount: myStatus?.length || 0,
   }
 
   const stories = [yourStory, ...statuses]
 
-  const handleStoryPress = async (item) => {
-    const isYourStory = item._id === 'your-story' || item._id === myStatus?._id
+  const handleAddStatus = async () => {
+    setModalVisible(false)
 
-    if (isYourStory) {
-      // Check if you already have a status
-      if (myStatus && myStatus.fileUrl) {
-        // View your own status
-        navigation.navigate('StatusViewer', { status: myStatus })
-      } else {
-        // Add new status
-        const { status } =
-          await ImagePicker.requestMediaLibraryPermissionsAsync()
-        if (status !== 'granted') {
-          Alert.alert('Permission needed', 'Allow photo access to add status')
-          return
-        }
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo access to add status')
+      return
+    }
 
-        const result = await ImagePicker.launchImageLibraryAsync({
-          mediaTypes: ImagePicker.MediaTypeOptions.All,
-          quality: 0.8,
-        })
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.8,
+    })
 
-        if (!result.canceled && result.assets[0]) {
-          try {
-            await createPost(result.assets[0])
-            Alert.alert('Success', 'Status added!')
-          } catch (error) {
-            console.error('Failed to add status:', error)
-            Alert.alert('Error', error.message || 'Failed to add status')
-          }
+    if (!result.canceled && result.assets[0]) {
+      try {
+        await createPost(result.assets[0])
+        Alert.alert('Success', 'Status added!')
+      } catch (error) {
+        console.error('Failed to add status:', error)
+
+        // Handle 429 rate limit error
+        if (error.status === 429 || error.message?.includes('Daily limit')) {
+          Alert.alert(
+            'Daily Limit Reached',
+            'You can only post 5 statuses per day. Try again tomorrow!',
+            [{ text: 'OK' }]
+          )
+        } else {
+          Alert.alert('Error', error.message || 'Failed to add status')
         }
       }
+    }
+  }
+
+  const handleViewStatus = () => {
+    setModalVisible(false)
+    if (myStatus && myStatus.length > 0) {
+      // Navigate to status viewer with all your statuses
+      navigation.navigate('StatusViewer', {
+        statuses: myStatus,
+        userName: 'Your Story',
+      })
+    }
+  }
+
+  const handleStoryPress = async (item) => {
+    const isYourStory = item._id === 'your-story'
+
+    if (isYourStory) {
+      if (item.statusCount > 0) {
+        // Show modal with Add/View/Cancel options
+        setModalVisible(true)
+      } else {
+        // No status yet, directly add
+        handleAddStatus()
+      }
     } else {
-      // View someone else's status
-      navigation.navigate('StatusViewer', { status: item })
+      // View someone else's statuses (all of them grouped)
+      navigation.navigate('StatusViewer', {
+        statuses: item.statuses || [item],
+        userName: item.userName,
+      })
     }
   }
 
@@ -466,10 +613,8 @@ export default function PostsScreen({ navigation }) {
             <StoryComponent
               item={item}
               onPress={handleStoryPress}
-              isYourStory={
-                item._id === 'your-story' || item._id === myStatus?._id
-              }
-              myStatusExists={!!myStatus}
+              isYourStory={item._id === 'your-story'}
+              statusCount={item.statusCount || 0}
             />
           )}
         />
@@ -518,6 +663,14 @@ export default function PostsScreen({ navigation }) {
       <FloatingActionButton onPress={() => navigation.navigate('CreatePost')}>
         <Ionicons name="add" size={28} color="#fff" />
       </FloatingActionButton>
+
+      <StatusActionModal
+        visible={modalVisible}
+        onClose={() => setModalVisible(false)}
+        onAdd={handleAddStatus}
+        onView={handleViewStatus}
+        statusCount={yourStory.statusCount}
+      />
     </Container>
   )
 }

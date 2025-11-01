@@ -130,6 +130,16 @@ const PauseIndicator = styled.View`
   transform: translateX(-30px) translateY(-30px);
 `
 
+const StatusCounter = styled.Text`
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 14px;
+  font-weight: 600;
+  text-shadow-color: rgba(0, 0, 0, 0.5);
+  text-shadow-offset: 0px 1px;
+  text-shadow-radius: 3px;
+  margin-left: 8px;
+`
+
 const getInitials = (name) =>
   name
     ?.split(' ')
@@ -150,26 +160,63 @@ const formatTimestamp = (date) => {
 }
 
 export default function StatusViewerScreen({ route, navigation }) {
-  const { status: initialStatus } = route.params
+  // Get params - can receive either single status or array of statuses
+  const { status, statuses: passedStatuses, userName } = route.params
   const { statuses, myStatus, deleteStatus } = usePosts()
 
-  // Determine if viewing own status
-  const isViewingOwnStatus = initialStatus._id === myStatus?._id
+  console.log('StatusViewer params:', { status, passedStatuses, userName })
+  console.log('myStatus from provider:', myStatus)
 
-  // Build the status list
-  const allStatuses = isViewingOwnStatus
-    ? [myStatus].filter(Boolean) // Only show your own status
-    : statuses // Show all other users' statuses
+  // Determine the list of statuses to show
+  let statusList = []
+  let isViewingOwnStatus = false
+
+  if (passedStatuses && passedStatuses.length > 0) {
+    // Passed an array of statuses (new approach)
+    statusList = passedStatuses
+
+    // Check if these are your own statuses
+    isViewingOwnStatus =
+      myStatus &&
+      myStatus.length > 0 &&
+      passedStatuses[0]?.userId === myStatus[0]?.userId
+  } else if (status) {
+    // Passed a single status (old approach - for backwards compatibility)
+    const statusUserId = status.userId
+
+    // Check if this is your own status
+    isViewingOwnStatus =
+      myStatus &&
+      myStatus.length > 0 &&
+      myStatus.some((s) => s._id === status._id || s.userId === statusUserId)
+
+    if (isViewingOwnStatus) {
+      // Show all your statuses
+      statusList = myStatus || []
+    } else {
+      // Find all statuses from this user
+      const userStatuses = statuses.find((s) => s.userId === statusUserId)
+      statusList = userStatuses?.statuses || [status]
+    }
+  }
+
+  console.log('Final statusList length:', statusList.length)
+  console.log('isViewingOwnStatus:', isViewingOwnStatus)
+
+  // Find initial index
+  const initialIndex = status
+    ? statusList.findIndex((s) => s._id === status._id)
+    : 0
 
   const [currentIndex, setCurrentIndex] = useState(
-    allStatuses.findIndex((s) => s._id === initialStatus._id) || 0
+    initialIndex >= 0 ? initialIndex : 0
   )
   const [progress, setProgress] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
   const videoRef = useRef(null)
   const timerRef = useRef(null)
 
-  const currentStatus = allStatuses[currentIndex]
+  const currentStatus = statusList[currentIndex]
 
   const DURATION = 5000 // 5 seconds per status
 
@@ -201,7 +248,7 @@ export default function StatusViewerScreen({ route, navigation }) {
   }, [currentIndex, isPaused, currentStatus])
 
   const goToNext = () => {
-    if (currentIndex < allStatuses.length - 1) {
+    if (currentIndex < statusList.length - 1) {
       setCurrentIndex(currentIndex + 1)
     } else {
       navigation.goBack()
@@ -232,7 +279,7 @@ export default function StatusViewerScreen({ route, navigation }) {
   const handleDelete = () => {
     Alert.alert(
       'Delete Status',
-      'Are you sure you want to delete your status?',
+      'Are you sure you want to delete this status?',
       [
         { text: 'Cancel', style: 'cancel' },
         {
@@ -242,8 +289,19 @@ export default function StatusViewerScreen({ route, navigation }) {
             try {
               await deleteStatus(currentStatus._id)
               Alert.alert('Success', 'Status deleted')
-              navigation.goBack()
+
+              // If this was the last status, go back
+              if (statusList.length <= 1) {
+                navigation.goBack()
+              } else {
+                // Remove from local list and adjust index
+                const newList = statusList.filter((_, i) => i !== currentIndex)
+                if (currentIndex >= newList.length) {
+                  setCurrentIndex(newList.length - 1)
+                }
+              }
             } catch (error) {
+              console.error('Delete status error:', error)
               Alert.alert('Error', 'Failed to delete status')
             }
           },
@@ -252,9 +310,9 @@ export default function StatusViewerScreen({ route, navigation }) {
     )
   }
 
-  if (!currentStatus) {
+  if (!currentStatus || statusList.length === 0) {
     return (
-      <Container>
+      <Container style={{ justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#fff" />
       </Container>
     )
@@ -271,7 +329,7 @@ export default function StatusViewerScreen({ route, navigation }) {
       >
         {/* Progress Bars */}
         <ProgressBarContainer>
-          {allStatuses.map((_, i) => (
+          {statusList.map((_, i) => (
             <ProgressSegment key={i}>
               <ProgressFill
                 progress={
@@ -286,17 +344,24 @@ export default function StatusViewerScreen({ route, navigation }) {
         <Header>
           <Avatar color={currentStatus.userAvatarColor || '#3498db'}>
             <AvatarText>
-              {getInitials(currentStatus.userName || 'You')}
+              {getInitials(currentStatus.userName || userName || 'You')}
             </AvatarText>
           </Avatar>
           <UserInfo>
             <Username>
               {isViewingOwnStatus
                 ? 'Your Story'
-                : currentStatus.userName || 'Unknown'}
+                : currentStatus.userName || userName || 'Unknown'}
             </Username>
             <Timestamp>{formatTimestamp(currentStatus.createdAt)}</Timestamp>
           </UserInfo>
+
+          {/* Status counter if multiple */}
+          {statusList.length > 1 && (
+            <StatusCounter>
+              {currentIndex + 1}/{statusList.length}
+            </StatusCounter>
+          )}
 
           {/* Delete button only for own status */}
           {isViewingOwnStatus && (
