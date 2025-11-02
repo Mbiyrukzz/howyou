@@ -8,13 +8,17 @@ import {
   Dimensions,
   Alert,
   View,
+  Modal,
+  TouchableWithoutFeedback,
 } from 'react-native'
 
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
+import * as ImagePicker from 'expo-image-picker'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
+import { usePosts } from '../providers/PostsProvider'
 import LoadingIndicator from '../components/LoadingIndicator'
 
 const { width: screenWidth } = Dimensions.get('window')
@@ -317,6 +321,109 @@ const RetryButtonText = styled.Text`
   font-weight: 700;
 `
 
+// ─── Camera Modal Components ────────────────────────────────
+const ModalOverlay = styled.View`
+  flex: 1;
+  background-color: rgba(0, 0, 0, 0.5);
+  justify-content: center;
+  align-items: center;
+`
+
+const ModalContent = styled.View`
+  background-color: #fff;
+  border-radius: 20px;
+  width: 85%;
+  max-width: 350px;
+  padding: 24px;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 8px;
+  elevation: 10;
+`
+
+const ModalTitle = styled.Text`
+  font-size: 20px;
+  font-weight: bold;
+  color: #2c3e50;
+  text-align: center;
+  margin-bottom: 8px;
+`
+
+const ModalSubtitle = styled.Text`
+  font-size: 14px;
+  color: #7f8c8d;
+  text-align: center;
+  margin-bottom: 24px;
+`
+
+const ModalButton = styled.TouchableOpacity`
+  flex-direction: row;
+  align-items: center;
+  padding: 16px;
+  border-radius: 12px;
+  background-color: ${(props) => props.bgColor || '#f8f9fa'};
+  margin-bottom: 12px;
+`
+
+const ModalButtonText = styled.Text`
+  flex: 1;
+  font-size: 16px;
+  font-weight: 600;
+  color: ${(props) => props.color || '#2c3e50'};
+  margin-left: 12px;
+`
+
+const ModalCancelButton = styled.TouchableOpacity`
+  padding: 16px;
+  align-items: center;
+`
+
+const ModalCancelText = styled.Text`
+  font-size: 16px;
+  font-weight: 600;
+  color: #7f8c8d;
+`
+
+// ─── Camera Action Modal Component ────────────────────────────────
+const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="fade"
+    onRequestClose={onClose}
+  >
+    <TouchableWithoutFeedback onPress={onClose}>
+      <ModalOverlay>
+        <TouchableWithoutFeedback>
+          <ModalContent>
+            <ModalTitle>Upload Status</ModalTitle>
+            <ModalSubtitle>
+              Choose how you want to add your status
+            </ModalSubtitle>
+
+            <ModalButton bgColor="#e3f2fd" onPress={onCamera}>
+              <Ionicons name="camera" size={24} color="#2196f3" />
+              <ModalButtonText color="#2196f3">Take Photo</ModalButtonText>
+            </ModalButton>
+
+            <ModalButton bgColor="#f0f4ff" onPress={onGallery}>
+              <Ionicons name="images" size={24} color="#5e72e4" />
+              <ModalButtonText color="#5e72e4">
+                Choose from Gallery
+              </ModalButtonText>
+            </ModalButton>
+
+            <ModalCancelButton onPress={onClose}>
+              <ModalCancelText>Cancel</ModalCancelText>
+            </ModalCancelButton>
+          </ModalContent>
+        </TouchableWithoutFeedback>
+      </ModalOverlay>
+    </TouchableWithoutFeedback>
+  </Modal>
+)
+
 // Helper functions
 const getLastMessageText = (lastMessage) => {
   if (!lastMessage) return null
@@ -392,28 +499,11 @@ const ChatItemComponent = ({
 
   const isWeb = Platform.OS === 'web'
 
-  console.log('📱 Rendering chat item:', {
-    chatId: item._id || item.id,
-    chatName,
-    isWeb,
-    showDropdown,
-  })
-
   return (
     <ChatItemContainer>
       <ChatItem
-        onPress={() => {
-          console.log('👆 Chat item pressed:', item._id || item.id)
-          onPress(item)
-        }}
-        onLongPress={
-          !isWeb
-            ? () => {
-                console.log('👆👆 Chat item long pressed:', item._id || item.id)
-                onLongPress(item)
-              }
-            : undefined
-        }
+        onPress={() => onPress(item)}
+        onLongPress={!isWeb ? () => onLongPress(item) : undefined}
         delayLongPress={500}
       >
         <ChatAvatar color={avatarColor}>
@@ -426,7 +516,6 @@ const ChatItemComponent = ({
         {isWeb && (
           <OptionsButton
             onPress={(e) => {
-              console.log('🔘 Options button clicked')
               e.stopPropagation()
               onOptionsPress(item)
             }}
@@ -437,13 +526,7 @@ const ChatItemComponent = ({
       </ChatItem>
       {isWeb && showDropdown && (
         <DropdownMenu>
-          <DropdownItem
-            danger
-            onPress={() => {
-              console.log('🗑️ Delete button in dropdown clicked')
-              onDeletePress()
-            }}
-          >
+          <DropdownItem danger onPress={onDeletePress}>
             <Ionicons name="trash-outline" size={20} color="#dc2626" />
             <DropdownItemText danger>Delete Chat</DropdownItemText>
           </DropdownItem>
@@ -463,9 +546,12 @@ export default function ChatsScreen({ navigation }) {
   const [searchText, setSearchText] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState(null)
+  const [cameraModalVisible, setCameraModalVisible] = useState(false)
+  const [uploading, setUploading] = useState(false)
 
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
+  const { createPost } = usePosts()
 
   const {
     chats = [],
@@ -498,13 +584,7 @@ export default function ChatsScreen({ navigation }) {
   })
 
   const handleChatPress = (chat) => {
-    // Close dropdown if open
     setActiveDropdown(null)
-
-    console.log(
-      'handleChatPress: Navigating to ChatDetail, chatId:',
-      chat._id || chat.id
-    )
     navigation.navigate('ChatDetail', {
       chatId: chat._id || chat.id,
     })
@@ -514,8 +594,101 @@ export default function ChatsScreen({ navigation }) {
     navigation.navigate('NewChats')
   }
 
-  const handleStoryUpload = () => {
-    console.log('Opening camera for story upload...')
+  const handleCameraPress = () => {
+    setCameraModalVisible(true)
+  }
+
+  const handleTakePhoto = async () => {
+    setCameraModalVisible(false)
+
+    // Check if we're on web
+    if (Platform.OS === 'web') {
+      // For web, use a file input with capture attribute
+      const input = document.createElement('input')
+      input.type = 'file'
+      input.accept = 'image/*,video/*'
+      input.capture = 'environment' // This hints to use camera
+
+      input.onchange = async (e) => {
+        const file = e.target.files[0]
+        if (file) {
+          // Create a blob URL for the captured image
+          const uri = URL.createObjectURL(file)
+          const asset = {
+            uri,
+            type: file.type,
+            fileName: file.name,
+          }
+          await uploadStatus(asset)
+        }
+      }
+
+      input.click()
+      return
+    }
+
+    // For native platforms
+    const { status } = await ImagePicker.requestCameraPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow camera access to take photos')
+      return
+    }
+
+    // Launch camera
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.8,
+      allowsEditing: true,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadStatus(result.assets[0])
+    }
+  }
+
+  const handleChooseFromGallery = async () => {
+    setCameraModalVisible(false)
+
+    // Request media library permissions
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo access to choose images')
+      return
+    }
+
+    // Launch image picker
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      quality: 0.8,
+      allowsEditing: true,
+    })
+
+    if (!result.canceled && result.assets[0]) {
+      await uploadStatus(result.assets[0])
+    }
+  }
+
+  const uploadStatus = async (asset) => {
+    setUploading(true)
+    try {
+      await createPost(asset)
+      Alert.alert('Success', 'Status uploaded successfully!')
+    } catch (error) {
+      console.error('Failed to upload status:', error)
+
+      // Handle 429 rate limit error
+      if (error.status === 429 || error.message?.includes('Daily limit')) {
+        Alert.alert(
+          'Daily Limit Reached',
+          'You can only post 5 statuses per day. Try again tomorrow!',
+          [{ text: 'OK' }]
+        )
+      } else {
+        Alert.alert('Error', error.message || 'Failed to upload status')
+      }
+    } finally {
+      setUploading(false)
+    }
   }
 
   const handleRefresh = async () => {
@@ -527,24 +700,15 @@ export default function ChatsScreen({ navigation }) {
   }
 
   const handleDeleteChat = async (chatId, chatName) => {
-    console.log('🎯 handleDeleteChat called')
-    console.log('  Chat ID:', chatId)
-    console.log('  Chat Name:', chatName)
-    console.log('  deleteChat function exists?', !!deleteChat)
-
     if (!deleteChat) {
-      console.error('❌ deleteChat function not available from context')
       Alert.alert('Error', 'Delete function not available')
       return
     }
 
-    // Close dropdown
     setActiveDropdown(null)
 
     try {
-      console.log('🚀 Calling deleteChat...')
       const result = await deleteChat(chatId)
-      console.log('✅ deleteChat returned:', result)
 
       if (result.success) {
         Alert.alert('Success', 'Chat deleted successfully')
@@ -552,21 +716,14 @@ export default function ChatsScreen({ navigation }) {
         Alert.alert('Error', result.error || 'Failed to delete chat')
       }
     } catch (error) {
-      console.error('❌ Delete chat error:', error)
+      console.error('Delete chat error:', error)
       Alert.alert('Error', 'Failed to delete chat: ' + error.message)
     }
   }
 
   const handleOptionsPress = (chat) => {
     const chatId = chat._id || chat.id
-    console.log('🔘 Options button pressed for chat:', chatId)
-    console.log('  Current activeDropdown:', activeDropdown)
-    // Toggle dropdown
     setActiveDropdown(activeDropdown === chatId ? null : chatId)
-    console.log(
-      '  New activeDropdown:',
-      activeDropdown === chatId ? null : chatId
-    )
   }
 
   const handleChatLongPress = (chat) => {
@@ -577,8 +734,6 @@ export default function ChatsScreen({ navigation }) {
       ? findUserByAnyId(users, otherParticipants[0])
       : null
     const chatName = otherUser?.name || 'Unknown'
-
-    console.log('Long press detected for chat:', chatId)
 
     Alert.alert(
       'Chat Options',
@@ -599,25 +754,15 @@ export default function ChatsScreen({ navigation }) {
   }
 
   const confirmDeleteChat = (chatId, chatName) => {
-    console.log('⚠️ confirmDeleteChat called')
-    console.log('  Chat ID:', chatId)
-    console.log('  Chat Name:', chatName)
-    console.log('  Platform:', Platform.OS)
-
     if (Platform.OS === 'web') {
-      // For web, use window.confirm
       const confirmed = window.confirm(
         `Are you sure you want to delete your chat with ${chatName}? This will delete all messages and cannot be undone.`
       )
 
       if (confirmed) {
-        console.log('✅ User confirmed delete (web)')
         handleDeleteChat(chatId, chatName)
-      } else {
-        console.log('❌ User cancelled delete (web)')
       }
     } else {
-      // For mobile, use Alert.alert
       Alert.alert(
         'Delete Chat',
         `Are you sure you want to delete your chat with ${chatName}? This will delete all messages and cannot be undone.`,
@@ -625,15 +770,11 @@ export default function ChatsScreen({ navigation }) {
           {
             text: 'Cancel',
             style: 'cancel',
-            onPress: () => console.log('❌ User cancelled delete'),
           },
           {
             text: 'Delete',
             style: 'destructive',
-            onPress: () => {
-              console.log('✅ User confirmed delete (mobile)')
-              handleDeleteChat(chatId, chatName)
-            },
+            onPress: () => handleDeleteChat(chatId, chatName),
           },
         ]
       )
@@ -737,8 +878,16 @@ export default function ChatsScreen({ navigation }) {
       <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
       <Header>
         <HeaderTitle>PeepGram</HeaderTitle>
-        <CameraButton onPress={handleStoryUpload} activeOpacity={0.7}>
-          <Ionicons name="camera-outline" size={24} color="#3396d3" />
+        <CameraButton
+          onPress={handleCameraPress}
+          activeOpacity={0.7}
+          disabled={uploading}
+        >
+          <Ionicons
+            name="camera-outline"
+            size={24}
+            color={uploading ? '#94a3b8' : '#3396d3'}
+          />
         </CameraButton>
       </Header>
       <SearchContainer>
@@ -795,6 +944,36 @@ export default function ChatsScreen({ navigation }) {
           <Ionicons name="add" size={28} color="white" />
         </FABGradient>
       </FloatingActionButton>
+
+      <CameraActionModal
+        visible={cameraModalVisible}
+        onClose={() => setCameraModalVisible(false)}
+        onCamera={handleTakePhoto}
+        onGallery={handleChooseFromGallery}
+      />
+
+      {uploading && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            backgroundColor: 'rgba(0,0,0,0.5)',
+            justifyContent: 'center',
+            alignItems: 'center',
+          }}
+        >
+          <LoadingIndicator
+            type="pulse"
+            size="large"
+            showText={true}
+            text="Uploading status..."
+            showCard={true}
+          />
+        </View>
+      )}
     </Container>
   )
 }

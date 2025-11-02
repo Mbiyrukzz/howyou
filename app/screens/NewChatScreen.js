@@ -1,54 +1,62 @@
 import React, { useState, useContext } from 'react'
 import styled from 'styled-components/native'
-import { FlatList, Modal, Alert } from 'react-native'
+import { FlatList, Modal, Alert, TouchableWithoutFeedback } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
+import { Ionicons } from '@expo/vector-icons'
 import ContactsContext from '../contexts/ContactsContext'
 import ChatsContext from '../contexts/ChatsContext'
-import { useUser } from '../hooks/useUser' // Add this import
+import { useUser } from '../hooks/useUser'
 
 const Container = styled.View`
   flex: 1;
-  background-color: #1a1a2e;
+  background-color: #f8fafc;
 `
 
 const Header = styled.View`
+  background-color: #fff;
+  padding-top: 50px;
+  padding-bottom: 16px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 8px;
+  elevation: 4;
+`
+
+const HeaderContent = styled.View`
   flex-direction: row;
   align-items: center;
-  padding: 60px 20px 20px 20px;
-  background-color: rgba(255, 255, 255, 0.05);
-  border-bottom-width: 1px;
-  border-bottom-color: rgba(255, 255, 255, 0.1);
+  padding: 0 20px;
 `
 
 const BackButton = styled.TouchableOpacity`
   width: 40px;
   height: 40px;
   border-radius: 20px;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f1f5f9;
   align-items: center;
   justify-content: center;
   margin-right: 16px;
 `
 
-const BackButtonText = styled.Text`
-  color: white;
-  font-size: 18px;
-  font-weight: 600;
-`
-
 const HeaderTitle = styled.Text`
-  font-size: 24px;
-  font-weight: 700;
-  color: white;
+  font-size: 20px;
+  font-weight: 800;
+  color: #1e293b;
   flex: 1;
 `
 
 const TabContainer = styled.View`
   flex-direction: row;
   margin: 20px;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: #fff;
   border-radius: 12px;
   padding: 4px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 4px;
+  elevation: 2;
 `
 
 const Tab = styled.TouchableOpacity`
@@ -56,11 +64,11 @@ const Tab = styled.TouchableOpacity`
   padding: 12px;
   border-radius: 8px;
   align-items: center;
-  background-color: ${(props) => (props.active ? '#3396D3' : 'transparent')};
+  background-color: ${(props) => (props.active ? '#3498db' : 'transparent')};
 `
 
 const TabText = styled.Text`
-  color: ${(props) => (props.active ? 'white' : 'rgba(255, 255, 255, 0.6)')};
+  color: ${(props) => (props.active ? '#fff' : '#64748b')};
   font-weight: ${(props) => (props.active ? '700' : '500')};
   font-size: 14px;
 `
@@ -69,14 +77,26 @@ const SearchContainer = styled.View`
   margin: 0 20px 20px 20px;
 `
 
+const SearchInputWrapper = styled.View`
+  background-color: #fff;
+  border-radius: 12px;
+  flex-direction: row;
+  align-items: center;
+  padding: 14px 16px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 4px;
+  elevation: 2;
+`
+
 const SearchInput = styled.TextInput`
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 16px 20px;
-  border-radius: 25px;
+  flex: 1;
   font-size: 16px;
-  color: white;
-  border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.2);
+  color: #1e293b;
+  margin-left: 12px;
+  border-width: 0;
+  outline-width: 0;
 `
 
 const ContentContainer = styled.View`
@@ -87,63 +107,52 @@ const ContentContainer = styled.View`
 const SectionTitle = styled.Text`
   font-size: 18px;
   font-weight: 700;
-  color: white;
+  color: #1e293b;
   margin-bottom: 16px;
-  margin-left: 4px;
-`
-
-const DebugContainer = styled.View`
-  background-color: rgba(255, 0, 0, 0.1);
-  border: 1px solid rgba(255, 0, 0, 0.3);
-  border-radius: 8px;
-  padding: 12px;
-  margin: 10px 20px;
-`
-
-const DebugText = styled.Text`
-  color: #ff6b6b;
-  font-size: 12px;
-  font-family: monospace;
 `
 
 // Create Room Components
 const CreateRoomCard = styled.TouchableOpacity`
-  background-color: rgba(102, 126, 234, 0.1);
+  background-color: #fff;
   border-radius: 16px;
-  padding: 20px;
+  padding: 24px;
   margin-bottom: 20px;
   border-width: 2px;
-  border-color: rgba(102, 126, 234, 0.3);
+  border-color: #e0f2fe;
   border-style: dashed;
   align-items: center;
+  shadow-color: #3498db;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 8px;
+  elevation: 3;
 `
 
 const CreateIcon = styled.View`
-  width: 60px;
-  height: 60px;
-  border-radius: 30px;
-  background-color: #3396d3;
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  background-color: #3498db;
   align-items: center;
   justify-content: center;
-  margin-bottom: 12px;
-`
-
-const CreateIconText = styled.Text`
-  color: white;
-  font-size: 28px;
-  font-weight: 300;
+  margin-bottom: 16px;
+  shadow-color: #3498db;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 6px;
+  elevation: 4;
 `
 
 const CreateTitle = styled.Text`
   font-size: 18px;
   font-weight: 700;
-  color: white;
-  margin-bottom: 6px;
+  color: #1e293b;
+  margin-bottom: 8px;
 `
 
 const CreateSubtitle = styled.Text`
   font-size: 14px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
   text-align: center;
   line-height: 20px;
 `
@@ -152,19 +161,22 @@ const CreateSubtitle = styled.Text`
 const UserCard = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
-  background-color: rgba(255, 255, 255, 0.08);
-  border-radius: 12px;
+  background-color: #fff;
+  border-radius: 16px;
   padding: 16px;
   margin-bottom: 12px;
-  border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.1);
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 4px;
+  elevation: 2;
 `
 
 const UserAvatar = styled.View`
-  width: 48px;
-  height: 48px;
-  border-radius: 24px;
-  background-color: ${(props) => props.color || '#3396D3'};
+  width: 52px;
+  height: 52px;
+  border-radius: 26px;
+  background-color: ${(props) => props.color || '#3498db'};
   align-items: center;
   justify-content: center;
   margin-right: 16px;
@@ -172,21 +184,21 @@ const UserAvatar = styled.View`
 `
 
 const UserAvatarText = styled.Text`
-  color: white;
+  color: #fff;
   font-size: 18px;
   font-weight: 700;
 `
 
 const OnlineIndicator = styled.View`
   position: absolute;
-  bottom: 2px;
-  right: 2px;
-  width: 14px;
-  height: 14px;
-  border-radius: 7px;
-  background-color: ${(props) => (props.online ? '#4ade80' : '#6b7280')};
-  border-width: 2px;
-  border-color: #1a1a2e;
+  bottom: 0;
+  right: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background-color: ${(props) => (props.online ? '#10b981' : '#94a3b8')};
+  border-width: 3px;
+  border-color: #fff;
 `
 
 const UserInfo = styled.View`
@@ -195,14 +207,27 @@ const UserInfo = styled.View`
 
 const UserName = styled.Text`
   font-size: 16px;
-  font-weight: 600;
-  color: white;
+  font-weight: 700;
+  color: #1e293b;
   margin-bottom: 4px;
 `
 
 const UserStatus = styled.Text`
   font-size: 13px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
+`
+
+const UserBadge = styled.View`
+  background-color: #fef3c7;
+  padding: 2px 8px;
+  border-radius: 8px;
+  margin-left: 8px;
+`
+
+const UserBadgeText = styled.Text`
+  color: #f59e0b;
+  font-size: 11px;
+  font-weight: 700;
 `
 
 const UserActions = styled.View`
@@ -211,23 +236,18 @@ const UserActions = styled.View`
 `
 
 const ActionBtn = styled.TouchableOpacity`
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  background-color: rgba(255, 255, 255, 0.1);
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #f1f5f9;
   align-items: center;
   justify-content: center;
-`
-
-const ActionBtnText = styled.Text`
-  color: white;
-  font-size: 16px;
 `
 
 // Modal Components
 const ModalOverlay = styled.View`
   flex: 1;
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: rgba(0, 0, 0, 0.5);
   justify-content: center;
   align-items: center;
 `
@@ -235,17 +255,20 @@ const ModalOverlay = styled.View`
 const ModalContainer = styled.View`
   width: 90%;
   max-width: 400px;
-  background-color: #16213e;
+  background-color: #fff;
   border-radius: 20px;
   padding: 24px;
-  border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.1);
+  shadow-color: #000;
+  shadow-offset: 0px 8px;
+  shadow-opacity: 0.3;
+  shadow-radius: 16px;
+  elevation: 10;
 `
 
 const ModalTitle = styled.Text`
   font-size: 22px;
   font-weight: 700;
-  color: white;
+  color: #1e293b;
   margin-bottom: 20px;
   text-align: center;
 `
@@ -257,28 +280,28 @@ const InputGroup = styled.View`
 const InputLabel = styled.Text`
   font-size: 14px;
   font-weight: 600;
-  color: rgba(255, 255, 255, 0.8);
+  color: #64748b;
   margin-bottom: 8px;
 `
 
 const Input = styled.TextInput`
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f8fafc;
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px 16px;
   font-size: 16px;
-  color: white;
+  color: #1e293b;
   border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: #e2e8f0;
 `
 
 const TextArea = styled.TextInput`
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f8fafc;
   border-radius: 12px;
-  padding: 16px;
+  padding: 14px 16px;
   font-size: 16px;
-  color: white;
+  color: #1e293b;
   border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.2);
+  border-color: #e2e8f0;
   height: 100px;
   text-align-vertical: top;
 `
@@ -293,13 +316,17 @@ const ModalButton = styled.TouchableOpacity`
   padding: 16px;
   border-radius: 12px;
   align-items: center;
-  background-color: ${(props) =>
-    props.primary ? '#3396D3' : 'rgba(255, 255, 255, 0.1)'};
+  background-color: ${(props) => (props.primary ? '#3498db' : '#f1f5f9')};
+  shadow-color: ${(props) => (props.primary ? '#3498db' : 'transparent')};
+  shadow-offset: 0px 4px;
+  shadow-opacity: ${(props) => (props.primary ? 0.3 : 0)};
+  shadow-radius: 6px;
+  elevation: ${(props) => (props.primary ? 4 : 0)};
 `
 
 const ModalButtonText = styled.Text`
-  color: white;
-  font-weight: 600;
+  color: ${(props) => (props.primary ? '#fff' : '#64748b')};
+  font-weight: 700;
   font-size: 16px;
 `
 
@@ -311,18 +338,16 @@ const CategoryContainer = styled.View`
 `
 
 const CategoryChip = styled.TouchableOpacity`
-  background-color: ${(props) =>
-    props.selected ? '#3396D3' : 'rgba(255, 255, 255, 0.1)'};
-  padding: 8px 16px;
+  background-color: ${(props) => (props.selected ? '#e0f2fe' : '#f8fafc')};
+  padding: 10px 16px;
   border-radius: 20px;
   border-width: 1px;
-  border-color: ${(props) =>
-    props.selected ? '#3396D3' : 'rgba(255, 255, 255, 0.2)'};
+  border-color: ${(props) => (props.selected ? '#3498db' : '#e2e8f0')};
 `
 
 const CategoryText = styled.Text`
-  color: white;
-  font-size: 12px;
+  color: ${(props) => (props.selected ? '#3498db' : '#64748b')};
+  font-size: 13px;
   font-weight: 600;
 `
 
@@ -330,11 +355,26 @@ const LoadingContainer = styled.View`
   flex: 1;
   justify-content: center;
   align-items: center;
+  background-color: #f8fafc;
+`
+
+const LoadingCard = styled.View`
+  background-color: #fff;
+  padding: 32px;
+  border-radius: 20px;
+  align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.1;
+  shadow-radius: 8px;
+  elevation: 4;
 `
 
 const LoadingText = styled.Text`
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
   font-size: 16px;
+  margin-top: 12px;
+  font-weight: 600;
 `
 
 const EmptyContainer = styled.View`
@@ -344,16 +384,32 @@ const EmptyContainer = styled.View`
   padding: 40px;
 `
 
+const EmptyIcon = styled.View`
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #f1f5f9;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 16px;
+`
+
 const EmptyText = styled.Text`
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
   font-size: 16px;
   text-align: center;
+  line-height: 24px;
+`
+
+const UserNameContainer = styled.View`
+  flex-direction: row;
+  align-items: center;
 `
 
 // Helper function to generate consistent user colors
 const getUserColor = (userId) => {
   const colors = [
-    '#3396D3',
+    '#3498db',
     '#f59e0b',
     '#10b981',
     '#8b5cf6',
@@ -364,7 +420,6 @@ const getUserColor = (userId) => {
     '#ec4899',
     '#6366f1',
     '#14b8a6',
-    '#f59e0b',
   ]
   const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0
   return colors[index]
@@ -378,17 +433,14 @@ export default function NewChatScreen({ navigation }) {
   const [roomDescription, setRoomDescription] = useState('')
   const [selectedCategories, setSelectedCategories] = useState([])
 
-  // Get contexts with error handling
   const contactsContext = useContext(ContactsContext)
   const chatsContext = useContext(ChatsContext)
-  const { user } = useUser() // Add this to get user data
+  const { user } = useUser()
   const nav = useNavigation()
 
-  // Handle case where contexts might not be available
   const contacts = contactsContext?.contacts || []
   const contactsLoading = contactsContext?.loading || false
 
-  // Get users from ChatsContext
   const users = chatsContext?.users || []
   const usersLoading = chatsContext?.loading || false
 
@@ -405,7 +457,6 @@ export default function NewChatScreen({ navigation }) {
       .map((u) => ({
         ...u,
         type: 'user',
-        // Ensure consistent data structure
         name: u.name || u.username || 'Unknown User',
         status: u.status || 'User',
         online: u.online || false,
@@ -417,7 +468,6 @@ export default function NewChatScreen({ navigation }) {
 
   const loading = contactsLoading || usersLoading
 
-  // Categories for room creation
   const categories = [
     'Technology',
     'Business',
@@ -439,10 +489,6 @@ export default function NewChatScreen({ navigation }) {
   )
 
   const startDirectChat = async (person) => {
-    // Debug user state
-    console.log('Current user:', user)
-    console.log('User UID:', user?.uid)
-
     if (!user?.uid) {
       Alert.alert(
         'Authentication Error',
@@ -468,13 +514,8 @@ export default function NewChatScreen({ navigation }) {
         return
       }
 
-      // Otherwise create new chat
-      console.log('Creating chat with:', person)
-      // Use firebaseUid for Firebase users, _id for other users
       const participantId = person.firebaseUid || person._id || person.id
-      console.log('Using participant ID:', participantId)
       const data = await createChat([participantId], person.name)
-      console.log('Create chat response:', data)
 
       if (data.success && data.chat) {
         nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
@@ -555,10 +596,14 @@ export default function NewChatScreen({ navigation }) {
         <OnlineIndicator online={item.online} />
       </UserAvatar>
       <UserInfo>
-        <UserName>
-          {item.name}
-          {item.type === 'contact' && ' ★'}
-        </UserName>
+        <UserNameContainer>
+          <UserName>{item.name}</UserName>
+          {item.type === 'contact' && (
+            <UserBadge>
+              <UserBadgeText>Contact</UserBadgeText>
+            </UserBadge>
+          )}
+        </UserNameContainer>
         <UserStatus>
           {item.type === 'contact'
             ? item.status || 'Contact'
@@ -567,10 +612,10 @@ export default function NewChatScreen({ navigation }) {
       </UserInfo>
       <UserActions>
         <ActionBtn onPress={() => startDirectChat(item)}>
-          <ActionBtnText>💬</ActionBtnText>
+          <Ionicons name="chatbubble" size={18} color="#3498db" />
         </ActionBtn>
         <ActionBtn>
-          <ActionBtnText>📞</ActionBtnText>
+          <Ionicons name="call" size={18} color="#64748b" />
         </ActionBtn>
       </UserActions>
     </UserCard>
@@ -578,6 +623,9 @@ export default function NewChatScreen({ navigation }) {
 
   const renderEmptyPeople = () => (
     <EmptyContainer>
+      <EmptyIcon>
+        <Ionicons name="people-outline" size={40} color="#94a3b8" />
+      </EmptyIcon>
       <EmptyText>
         {searchText
           ? `No people found matching "${searchText}"`
@@ -590,13 +638,18 @@ export default function NewChatScreen({ navigation }) {
     return (
       <Container>
         <Header>
-          <BackButton onPress={() => nav?.goBack()}>
-            <BackButtonText>←</BackButtonText>
-          </BackButton>
-          <HeaderTitle>New Chat</HeaderTitle>
+          <HeaderContent>
+            <BackButton onPress={() => nav?.goBack()}>
+              <Ionicons name="arrow-back" size={20} color="#64748b" />
+            </BackButton>
+            <HeaderTitle>New Chat</HeaderTitle>
+          </HeaderContent>
         </Header>
         <LoadingContainer>
-          <LoadingText>Loading people...</LoadingText>
+          <LoadingCard>
+            <Ionicons name="people" size={40} color="#3498db" />
+            <LoadingText>Loading people...</LoadingText>
+          </LoadingCard>
         </LoadingContainer>
       </Container>
     )
@@ -605,24 +658,13 @@ export default function NewChatScreen({ navigation }) {
   return (
     <Container>
       <Header>
-        <BackButton onPress={() => nav?.goBack()}>
-          <BackButtonText>←</BackButtonText>
-        </BackButton>
-        <HeaderTitle>New Chat</HeaderTitle>
+        <HeaderContent>
+          <BackButton onPress={() => nav?.goBack()}>
+            <Ionicons name="arrow-back" size={20} color="#64748b" />
+          </BackButton>
+          <HeaderTitle>New Chat</HeaderTitle>
+        </HeaderContent>
       </Header>
-
-      {/* Debug Panel - Remove in production */}
-      <DebugContainer>
-        <DebugText>
-          Debug: User:{' '}
-          {user
-            ? `${user.displayName || 'No name'} (${user.uid})`
-            : 'Not logged in'}
-        </DebugText>
-        <DebugText>
-          Users loaded: {users.length} | Contacts: {contacts.length}
-        </DebugText>
-      </DebugContainer>
 
       <TabContainer>
         <Tab
@@ -640,16 +682,19 @@ export default function NewChatScreen({ navigation }) {
       </TabContainer>
 
       <SearchContainer>
-        <SearchInput
-          placeholder={
-            activeTab === 'contacts'
-              ? 'Search people...'
-              : 'Search public rooms...'
-          }
-          value={searchText}
-          onChangeText={setSearchText}
-          placeholderTextColor="rgba(255, 255, 255, 0.5)"
-        />
+        <SearchInputWrapper>
+          <Ionicons name="search" size={20} color="#94a3b8" />
+          <SearchInput
+            placeholder={
+              activeTab === 'contacts'
+                ? 'Search people...'
+                : 'Search public rooms...'
+            }
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholderTextColor="#94a3b8"
+          />
+        </SearchInputWrapper>
       </SearchContainer>
 
       <ContentContainer>
@@ -672,7 +717,7 @@ export default function NewChatScreen({ navigation }) {
           <>
             <CreateRoomCard onPress={() => setShowCreateModal(true)}>
               <CreateIcon>
-                <CreateIconText>+</CreateIconText>
+                <Ionicons name="add" size={32} color="#fff" />
               </CreateIcon>
               <CreateTitle>Create New Room</CreateTitle>
               <CreateSubtitle>
@@ -715,7 +760,7 @@ export default function NewChatScreen({ navigation }) {
                   </UserInfo>
                   <UserActions>
                     <ActionBtn>
-                      <ActionBtnText>+</ActionBtnText>
+                      <Ionicons name="add" size={20} color="#3498db" />
                     </ActionBtn>
                   </UserActions>
                 </UserCard>
@@ -729,56 +774,64 @@ export default function NewChatScreen({ navigation }) {
       </ContentContainer>
 
       <Modal visible={showCreateModal} transparent animationType="fade">
-        <ModalOverlay>
-          <ModalContainer>
-            <ModalTitle>Create New Room</ModalTitle>
+        <TouchableWithoutFeedback onPress={() => setShowCreateModal(false)}>
+          <ModalOverlay>
+            <TouchableWithoutFeedback>
+              <ModalContainer>
+                <ModalTitle>Create New Room</ModalTitle>
 
-            <InputGroup>
-              <InputLabel>Room Name</InputLabel>
-              <Input
-                placeholder="Enter room name..."
-                value={roomName}
-                onChangeText={setRoomName}
-                placeholderTextColor="rgba(255, 255, 255, 0.4)"
-              />
-            </InputGroup>
+                <InputGroup>
+                  <InputLabel>Room Name</InputLabel>
+                  <Input
+                    placeholder="Enter room name..."
+                    value={roomName}
+                    onChangeText={setRoomName}
+                    placeholderTextColor="#94a3b8"
+                  />
+                </InputGroup>
 
-            <InputGroup>
-              <InputLabel>Description</InputLabel>
-              <TextArea
-                placeholder="What's this room about?..."
-                value={roomDescription}
-                onChangeText={setRoomDescription}
-                placeholderTextColor="rgba(255, 255, 255, 0.4)"
-                multiline
-              />
-            </InputGroup>
+                <InputGroup>
+                  <InputLabel>Description (Optional)</InputLabel>
+                  <TextArea
+                    placeholder="What's this room about?..."
+                    value={roomDescription}
+                    onChangeText={setRoomDescription}
+                    placeholderTextColor="#94a3b8"
+                    multiline
+                  />
+                </InputGroup>
 
-            <InputGroup>
-              <InputLabel>Categories</InputLabel>
-              <CategoryContainer>
-                {categories.map((category) => (
-                  <CategoryChip
-                    key={category}
-                    selected={selectedCategories.includes(category)}
-                    onPress={() => toggleCategory(category)}
-                  >
-                    <CategoryText>{category}</CategoryText>
-                  </CategoryChip>
-                ))}
-              </CategoryContainer>
-            </InputGroup>
+                <InputGroup>
+                  <InputLabel>Categories</InputLabel>
+                  <CategoryContainer>
+                    {categories.map((category) => (
+                      <CategoryChip
+                        key={category}
+                        selected={selectedCategories.includes(category)}
+                        onPress={() => toggleCategory(category)}
+                      >
+                        <CategoryText
+                          selected={selectedCategories.includes(category)}
+                        >
+                          {category}
+                        </CategoryText>
+                      </CategoryChip>
+                    ))}
+                  </CategoryContainer>
+                </InputGroup>
 
-            <ModalActions>
-              <ModalButton onPress={() => setShowCreateModal(false)}>
-                <ModalButtonText>Cancel</ModalButtonText>
-              </ModalButton>
-              <ModalButton primary onPress={createRoom}>
-                <ModalButtonText>Create Room</ModalButtonText>
-              </ModalButton>
-            </ModalActions>
-          </ModalContainer>
-        </ModalOverlay>
+                <ModalActions>
+                  <ModalButton onPress={() => setShowCreateModal(false)}>
+                    <ModalButtonText>Cancel</ModalButtonText>
+                  </ModalButton>
+                  <ModalButton primary onPress={createRoom}>
+                    <ModalButtonText primary>Create Room</ModalButtonText>
+                  </ModalButton>
+                </ModalActions>
+              </ModalContainer>
+            </TouchableWithoutFeedback>
+          </ModalOverlay>
+        </TouchableWithoutFeedback>
       </Modal>
     </Container>
   )
