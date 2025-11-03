@@ -1,4 +1,4 @@
-// components/MessageActions.js - FIXED VERSION
+// components/MessageActions.js - FIXED VERSION WITH DEBUGGING
 import React, { useState, useEffect } from 'react'
 import { Modal, TouchableOpacity, Platform, View } from 'react-native'
 import styled from 'styled-components/native'
@@ -30,7 +30,7 @@ const ActionMenuItem = styled.TouchableOpacity`
   align-items: center;
   padding: 16px 20px;
   border-bottom-width: 1px;
-  border-bottom-color: #14af90ff;
+  border-bottom-color: #e9ecef;
   background-color: ${(props) => (props.destructive ? '#fff5f5' : '#fff')};
 `
 
@@ -55,54 +55,51 @@ const ActionMenuCancelText = styled.Text`
 
 /* =================== Web Dropdown Styles =================== */
 const DropdownOverlay = styled.View`
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
   z-index: 999999;
+  pointer-events: auto;
 `
 
 const DropdownBackdrop = styled.TouchableOpacity`
-  position: absolute;
+  position: fixed;
   top: 0;
   left: 0;
   right: 0;
   bottom: 0;
+  background-color: transparent;
 `
 
 const DropdownMenu = styled.View`
-  position: absolute;
+  position: fixed;
   background-color: white;
-  border-radius: 12px;
+  border-radius: 8px;
   min-width: 160px;
   overflow: hidden;
   border: 1px solid #e5e7eb;
-
-  ${Platform.OS === 'web'
-    ? `
-      filter: drop-shadow(0px 8px 20px rgba(0,0,0,0.15));
-    `
-    : `
-      shadow-color: #000;
-      shadow-offset: 0px 4px;
-      shadow-opacity: 0.25;
-      shadow-radius: 8px;
-      elevation: 5;
-    `}
+  box-shadow: 0px 8px 20px rgba(0, 0, 0, 0.15);
+  z-index: 1000000;
 `
 
 const DropdownItem = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
-  padding: 14px 16px;
+  padding: 12px 16px;
+  gap: 10px;
   border-bottom-width: ${(props) => (props.destructive ? 0 : 1)}px;
   border-bottom-color: #f3f4f6;
   background-color: ${(props) => (props.destructive ? '#fef2f2' : 'white')};
+
+  &:hover {
+    background-color: ${(props) => (props.destructive ? '#fee2e2' : '#f9fafb')};
+  }
 `
 
 const DropdownText = styled.Text`
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 500;
   color: ${(props) => (props.destructive ? '#dc2626' : '#374151')};
 `
@@ -181,7 +178,7 @@ export const ThreeDotsButton = styled.TouchableOpacity`
   border-radius: 4px;
   background-color: ${(props) => (props.visible ? '#e9ecef' : 'transparent')};
   opacity: ${(props) => (props.visible ? 1 : 0.3)};
-  z-index: 10;
+  z-index: 10000;
 `
 
 export const MessageEditedLabel = styled.Text`
@@ -229,40 +226,95 @@ export const WebMessageDropdown = ({
   onEdit,
   onDelete,
 }) => {
-  if (!visible || Platform.OS !== 'web') return null
+  // ✅ DEBUGGING: Log everything
+  console.log('🔍 WebMessageDropdown RENDER CALLED:', {
+    visible,
+    position,
+    platform: Platform.OS,
+    timestamp: new Date().toISOString(),
+  })
 
+  useEffect(() => {
+    console.log('🔍 WebMessageDropdown State Changed:', {
+      visible,
+      position,
+      platform: Platform.OS,
+      windowWidth: typeof window !== 'undefined' ? window.innerWidth : 'N/A',
+      windowHeight: typeof window !== 'undefined' ? window.innerHeight : 'N/A',
+    })
+  }, [visible, position])
+
+  if (Platform.OS !== 'web') {
+    console.log('❌ Not rendering: Platform is not web', Platform.OS)
+    return null
+  }
+
+  if (!visible) {
+    console.log('❌ Not rendering: visible is', visible)
+    return null
+  }
+
+  console.log('✅✅✅ RENDERING DROPDOWN NOW!')
+
+  // Calculate safe position
   const menuWidth = 160
   const menuHeight = 100
+  const padding = 10
+
+  const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 800
+  const windowHeight = typeof window !== 'undefined' ? window.innerHeight : 600
+
+  const rawX = position?.x || 0
+  const rawY = position?.y || 0
 
   const safeX = Math.max(
-    10,
-    Math.min(position?.x || 0, window.innerWidth - menuWidth - 10)
+    padding,
+    Math.min(rawX, windowWidth - menuWidth - padding)
   )
   const safeY = Math.max(
-    10,
-    Math.min(position?.y || 0, window.innerHeight - menuHeight - 10)
+    padding,
+    Math.min(rawY, windowHeight - menuHeight - padding)
   )
+
+  console.log('✅ Rendering dropdown at:', {
+    rawX,
+    rawY,
+    safeX,
+    safeY,
+    menuWidth,
+    menuHeight,
+  })
+
+  const handleEdit = () => {
+    console.log('📝 Edit clicked')
+    onEdit()
+  }
+
+  const handleDelete = () => {
+    console.log('🗑️ Delete clicked')
+    onDelete()
+  }
+
+  const handleBackdropPress = () => {
+    console.log('🔙 Backdrop clicked - closing dropdown')
+    onClose()
+  }
 
   return (
     <DropdownOverlay pointerEvents="auto">
-      <DropdownBackdrop onPress={onClose} />
+      <DropdownBackdrop onPress={handleBackdropPress} activeOpacity={1} />
       <DropdownMenu
         style={{
           left: safeX,
           top: safeY,
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 4 },
-          shadowOpacity: 0.25,
-          shadowRadius: 8,
-          elevation: 5,
         }}
       >
-        <DropdownItem onPress={onEdit}>
-          <Ionicons name="create-outline" size={20} color="#3498db" />
+        <DropdownItem onPress={handleEdit}>
+          <Ionicons name="create-outline" size={18} color="#3498db" />
           <DropdownText>Edit</DropdownText>
         </DropdownItem>
-        <DropdownItem destructive onPress={onDelete}>
-          <Ionicons name="trash-outline" size={20} color="#ef4444" />
+        <DropdownItem destructive onPress={handleDelete}>
+          <Ionicons name="trash-outline" size={18} color="#ef4444" />
           <DropdownText destructive>Delete</DropdownText>
         </DropdownItem>
       </DropdownMenu>
@@ -278,11 +330,10 @@ export const EditMessageModal = ({
   onSave,
   saving,
 }) => {
-  // ✅ FIXED: useState is now at the TOP of the component
   const [editedContent, setEditedContent] = useState(initialContent || '')
 
-  // ✅ FIXED: useEffect is now AFTER useState
   useEffect(() => {
+    console.log('📝 EditMessageModal:', { visible, initialContent })
     if (visible) {
       setEditedContent(initialContent || '')
     }
@@ -290,6 +341,12 @@ export const EditMessageModal = ({
 
   const handleSave = () => {
     const trimmed = editedContent.trim()
+    console.log('💾 Saving edit:', {
+      original: initialContent,
+      edited: trimmed,
+      changed: trimmed !== (initialContent || '').trim(),
+    })
+
     if (trimmed && trimmed !== (initialContent || '').trim()) {
       onSave(trimmed)
     } else {

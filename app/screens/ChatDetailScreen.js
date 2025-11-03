@@ -17,6 +17,7 @@ import {
   Alert,
   ActionSheetIOS,
   Animated,
+  Text,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -741,18 +742,30 @@ const MessageItem = React.memo(
         .filter(Boolean)
     }
 
-    const handleThreeDotsPress = () => {
-      if (Platform.OS === 'web' && messageRef.current) {
-        messageRef.current.measure((fx, fy, width, height, px, py) => {
-          const dropdownX = isOwn ? px + width - 160 : px
-          const dropdownY = py + height + 5
-          onThreeDotsPress(item, { x: dropdownX, y: dropdownY })
-        })
+    const handleThreeDotsPress = (e) => {
+      console.log('🔘 ThreeDotsButton clicked!', {
+        platform: Platform.OS,
+        messageId: item._id || item.id,
+        isOwn,
+      })
+
+      if (Platform.OS === 'web') {
+        // Prevent event bubbling
+        if (e && e.stopPropagation) {
+          e.stopPropagation()
+        }
+
+        // Get click position directly from event
+        const clickX =
+          e?.nativeEvent?.pageX || e?.pageX || window.innerWidth - 200
+        const clickY = e?.nativeEvent?.pageY || e?.pageY || 150
+
+        console.log('📍 Click position:', { clickX, clickY })
+
+        // Call parent handler with position
+        onThreeDotsPress(item, { x: clickX, y: clickY })
       } else {
-        onThreeDotsPress(item, {
-          x: isOwn ? window.innerWidth - 200 : 10,
-          y: 150,
-        })
+        onThreeDotsPress(item, null)
       }
     }
 
@@ -813,25 +826,36 @@ const MessageItem = React.memo(
             </TouchableOpacity>
           </MessageItemContent>
           {Platform.OS === 'web' && isOwn && (
-            <ThreeDotsButton
-              visible={isHovered}
-              onPress={handleThreeDotsPress}
-              isOwn={isOwn}
+            <View
               style={{
                 position: 'absolute',
-                right: isOwn ? 8 : undefined,
-                left: !isOwn ? 8 : undefined,
+                right: 8,
                 top: 8,
-                opacity: isHovered ? 1 : 0.3,
-                pointerEvents: isHovered ? 'auto' : 'none',
-                backgroundColor: isHovered ? '#e9ecef' : 'transparent',
-                padding: 8,
-                borderRadius: 4,
+                opacity: isHovered ? 1 : 0.3, // ✅ Always visible, just more transparent
+                transition: 'opacity 0.2s ease', // Smooth fade
+                pointerEvents: 'auto',
                 zIndex: 10,
               }}
             >
-              <Ionicons name="ellipsis-vertical" size={18} color="#2c3e50" />
-            </ThreeDotsButton>
+              <TouchableOpacity
+                onPress={handleThreeDotsPress}
+                style={{
+                  backgroundColor: isHovered
+                    ? '#e9ecef'
+                    : 'rgba(255, 255, 255, 1)',
+                  padding: 8,
+                  borderRadius: 4,
+                  cursor: 'pointer',
+                  transition: 'background-color 0.2s ease', // Smooth background change
+                }}
+              >
+                <Ionicons
+                  name="ellipsis-vertical"
+                  size={18}
+                  color={isHovered ? '#2c3e50' : '#95a5a6'}
+                />
+              </TouchableOpacity>
+            </View>
           )}
         </MessageItemWrapper>
       </View>
@@ -919,6 +943,12 @@ export default function ChatDetailScreen({ navigation, route }) {
   const [hoveredMessageId, setHoveredMessageId] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
+
+  console.log('🚀 ChatDetailScreen mounted, initial states:', {
+    webDropdownVisible,
+    selectedMessage,
+    dropdownPosition,
+  })
 
   const recordingIntervalRef = useRef(null)
   const flatListRef = useRef(null)
@@ -1067,6 +1097,7 @@ export default function ChatDetailScreen({ navigation, route }) {
   }
 
   const closeWebDropdown = () => {
+    console.log('🔙 Closing web dropdown')
     setWebDropdownVisible(false)
     setSelectedMessage(null)
   }
@@ -1086,13 +1117,35 @@ export default function ChatDetailScreen({ navigation, route }) {
   }
 
   const handleMessageThreeDotsPress = (message, position) => {
+    console.log('🖱️ Three dots pressed START:', {
+      platform: Platform.OS,
+      messageId: message._id || message.id,
+      position,
+      currentWebDropdownVisible: webDropdownVisible,
+    })
+
     if (Platform.OS === 'web') {
+      console.log('🌐 Web platform - executing dropdown logic')
+
+      // Set selected message first
+      console.log('1️⃣ Setting selected message...')
       setSelectedMessage(message)
-      setDropdownPosition(position || { x: window.innerWidth - 200, y: 150 })
+
+      // Calculate position
+      const dropdownX = position?.x || window.innerWidth - 200
+      const dropdownY = position?.y || 150
+
+      console.log('2️⃣ Setting dropdown position:', {
+        x: dropdownX,
+        y: dropdownY,
+      })
+      setDropdownPosition({ x: dropdownX, y: dropdownY })
+
+      // Set visibility
+      console.log('3️⃣ Setting webDropdownVisible to TRUE')
       setWebDropdownVisible(true)
-      setTimeout(() => {
-        setWebDropdownVisible(true)
-      }, 0)
+
+      console.log('✅ All states updated')
     }
   }
 
@@ -1830,6 +1883,30 @@ export default function ChatDetailScreen({ navigation, route }) {
         </ImagePreviewContainer>
       </ImagePreviewModal>
 
+      {/* {Platform.OS === 'web' && (
+        <View
+          style={{
+            position: 'absolute',
+            top: 100,
+            left: 10,
+            zIndex: 999999,
+            backgroundColor: 'yellow',
+            padding: 10,
+          }}
+        >
+          <Text style={{ color: 'black' }}>
+            Dropdown Visible: {webDropdownVisible ? 'TRUE' : 'FALSE'}
+          </Text>
+          <Text style={{ color: 'black' }}>
+            Selected: {selectedMessage ? 'YES' : 'NO'}
+          </Text>
+          <Text style={{ color: 'black' }}>
+            Position: {dropdownPosition.x}, {dropdownPosition.y}
+          </Text>
+        </View>
+      )} */}
+
+      {/* Mobile Action Menu */}
       <MessageActionMenu
         visible={actionMenuVisible}
         onClose={closeActionMenu}
@@ -1837,9 +1914,10 @@ export default function ChatDetailScreen({ navigation, route }) {
         onDelete={handleDeleteMessage}
       />
 
+      {/* Web Dropdown - MUST be outside any overflow:hidden containers */}
       {Platform.OS === 'web' && webDropdownVisible && (
         <WebMessageDropdown
-          visible={webDropdownVisible}
+          visible={true} // Force true since we're conditionally rendering
           onClose={closeWebDropdown}
           position={dropdownPosition}
           onEdit={handleEditMessage}
@@ -1847,6 +1925,7 @@ export default function ChatDetailScreen({ navigation, route }) {
         />
       )}
 
+      {/* Edit Modal */}
       <EditMessageModal
         visible={editModalVisible}
         onClose={closeEditModal}
