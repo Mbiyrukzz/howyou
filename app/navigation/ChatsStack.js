@@ -4,6 +4,7 @@ import ChatsScreen from '../screens/ChatsScreen'
 import ChatDetailScreen from '../screens/ChatDetailScreen'
 import NewChatScreen from '../screens/NewChatScreen'
 import CallScreen from '../screens/CallScreen'
+import ViewProfileScreen from '../screens/ViewProfileScreen'
 
 const Stack = createNativeStackNavigator()
 
@@ -18,8 +19,16 @@ export default function ChatsStack() {
       <Stack.Screen
         name="ChatDetail"
         component={ChatDetailScreen}
-        options={{ title: 'Chat Detail' }}
+        options={{
+          headerShown: false,
+        }}
       />
+      <Stack.Screen
+        name="ViewProfile"
+        component={ViewProfileScreen}
+        options={{ headerShown: false }}
+      />
+
       <Stack.Screen
         name="NewChats"
         component={NewChatScreen}

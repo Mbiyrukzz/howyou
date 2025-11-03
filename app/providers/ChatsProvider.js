@@ -11,20 +11,24 @@ const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
   const [loading, setLoading] = useState(true)
   const [users, setUsers] = useState([])
+  const [onlineUsers, setOnlineUsers] = useState(new Set())
   const [messages, setMessages] = useState({})
   const [calls, setCalls] = useState({})
   const [incomingCall, setIncomingCall] = useState(null)
   const [callNotification, setCallNotification] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
+  const [typingUsers, setTypingUsers] = useState({}) // { chatId: [userId1, userId2] }
+  const [userStatuses, setUserStatuses] = useState({}) // { userId: { status, customMessage } }
 
   const { isReady, get, put, post, del } = useAuthedRequest()
   const { user } = useUser()
   const wsRef = useRef(null)
   const reconnectTimeoutRef = useRef(null)
   const reconnectAttemptsRef = useRef(0)
+  const typingTimeoutRef = useRef({})
   const maxReconnectAttempts = 5
 
-  // WebSocket connection for real-time notifications
+  // WebSocket connection
   useEffect(() => {
     if (user?.uid && isReady) {
       initializeWebSocket()
@@ -36,23 +40,24 @@ const ChatsProvider = ({ children }) => {
       if (wsRef.current) {
         wsRef.current.close()
       }
+      // Clear all typing timeouts
+      Object.values(typingTimeoutRef.current).forEach(clearTimeout)
     }
   }, [user?.uid, isReady])
 
   const initializeWebSocket = () => {
     try {
-      // Close existing connection if any
       if (wsRef.current) {
         wsRef.current.close()
       }
 
       const wsUrl = `${WS_URL}/notifications?userId=${user.uid}`
-      console.log('Connecting to WebSocket:', wsUrl)
+      console.log('🔌 Connecting to WebSocket:', wsUrl)
 
       wsRef.current = new WebSocket(wsUrl)
 
       wsRef.current.onopen = () => {
-        console.log('WebSocket connected successfully')
+        console.log('✅ WebSocket connected successfully')
         setWsConnected(true)
         reconnectAttemptsRef.current = 0
       }
@@ -62,31 +67,31 @@ const ChatsProvider = ({ children }) => {
           const data = JSON.parse(event.data)
           handleWebSocketMessage(data)
         } catch (error) {
-          console.error('WebSocket message parse error:', error)
+          console.error('❌ WebSocket message parse error:', error)
         }
       }
 
       wsRef.current.onerror = (error) => {
-        console.error('WebSocket error:', error)
+        console.error('❌ WebSocket error:', error)
         setWsConnected(false)
       }
 
       wsRef.current.onclose = (event) => {
-        console.log('WebSocket disconnected:', {
+        console.log('❌ WebSocket disconnected:', {
           code: event.code,
           reason: event.reason,
           clean: event.wasClean,
         })
         setWsConnected(false)
 
-        // Attempt to reconnect with exponential backoff
+        // Attempt to reconnect
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           const delay = Math.min(
             1000 * Math.pow(2, reconnectAttemptsRef.current),
             30000
           )
           console.log(
-            `Reconnecting in ${delay}ms (attempt ${
+            `⏳ Reconnecting in ${delay}ms (attempt ${
               reconnectAttemptsRef.current + 1
             }/${maxReconnectAttempts})`
           )
@@ -98,7 +103,7 @@ const ChatsProvider = ({ children }) => {
             }
           }, delay)
         } else {
-          console.error('Max reconnection attempts reached')
+          console.error('❌ Max reconnection attempts reached')
           Alert.alert(
             'Connection Lost',
             'Unable to connect to server. Please check your internet connection and restart the app.',
@@ -107,19 +112,23 @@ const ChatsProvider = ({ children }) => {
         }
       }
     } catch (error) {
-      console.error('WebSocket initialization error:', error)
+      console.error('❌ WebSocket initialization error:', error)
       setWsConnected(false)
     }
   }
 
   const handleWebSocketMessage = (data) => {
-    console.log('WebSocket message received:', data.type)
+    console.log('📨 WebSocket message received:', data.type)
 
     switch (data.type) {
       case 'connected':
-        console.log('WebSocket connection confirmed')
+        console.log('✅ WebSocket connection confirmed')
+        if (data.onlineUsers) {
+          setOnlineUsers(new Set(data.onlineUsers))
+        }
         break
 
+      // ===== CALL EVENTS =====
       case 'incoming_call':
         handleIncomingCall(data)
         break
@@ -129,11 +138,11 @@ const ChatsProvider = ({ children }) => {
         break
 
       case 'call_accepted':
-        console.log('Call accepted by recipient')
+        console.log('📞 Call accepted by recipient')
         break
 
       case 'call_rejected':
-        console.log('Call rejected by recipient')
+        console.log('📞 Call rejected by recipient')
         setIncomingCall(null)
         setCallNotification(null)
         Alert.alert(
@@ -142,14 +151,42 @@ const ChatsProvider = ({ children }) => {
         )
         break
 
+      // ===== MESSAGE EVENTS =====
       case 'new_message':
         handleNewMessage(data)
         break
 
-      case 'typing':
-        handleTyping(data)
+      case 'message-delivered':
+        handleMessageDelivered(data)
         break
 
+      case 'message-read':
+        handleMessageRead(data)
+        break
+
+      // ===== TYPING EVENTS =====
+      case 'typing':
+        handleTypingIndicator(data)
+        break
+
+      case 'typing-stopped':
+        handleTypingStopped(data)
+        break
+
+      // ===== PRESENCE EVENTS =====
+      case 'user-online':
+        handleUserOnline(data)
+        break
+
+      case 'user-offline':
+        handleUserOffline(data)
+        break
+
+      case 'user-status-updated':
+        handleUserStatusUpdate(data)
+        break
+
+      // ===== KEEP-ALIVE =====
       case 'ping':
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'pong' }))
@@ -160,16 +197,17 @@ const ChatsProvider = ({ children }) => {
         break
 
       case 'error':
-        console.error('Server error:', data.message)
+        console.error('❌ Server error:', data.message)
         break
 
       default:
-        console.log('Unknown WebSocket message type:', data.type)
+        console.log('⚠️ Unknown WebSocket message type:', data.type)
     }
   }
 
+  // ===== CALL HANDLERS =====
   const handleIncomingCall = (callData) => {
-    console.log('Incoming call notification:', callData)
+    console.log('📞 Incoming call notification:', callData)
 
     setIncomingCall(callData)
     setCallNotification({
@@ -181,38 +219,223 @@ const ChatsProvider = ({ children }) => {
       chatId: callData.chatId,
     })
 
-    // Auto-dismiss after 40 seconds (matching backend timeout)
+    // Auto-dismiss after 40 seconds
     setTimeout(() => {
       if (incomingCall?.callId === callData.callId) {
         setCallNotification(null)
         setIncomingCall(null)
-        rejectCall(callData.callId) // Auto-reject on timeout
+        rejectCall(callData.callId)
       }
     }, 40000)
   }
 
   const handleCallEnded = (data) => {
-    console.log('Call ended notification:', data)
+    console.log('📞 Call ended notification:', data)
     setIncomingCall(null)
     setCallNotification(null)
 
     Alert.alert('Call Ended', `Call ended after ${data.duration || 0} seconds`)
   }
 
+  // ===== MESSAGE HANDLERS =====
   const handleNewMessage = (messageData) => {
-    console.log('New message received:', messageData)
+    console.log('💬 New message received:', messageData)
     const { chatId, message } = messageData
+
     setMessages((prev) => ({
       ...prev,
       [chatId]: [...(prev[chatId] || []), message],
     }))
+
+    // Update chat's last message
+    setChats((prev) =>
+      prev.map((chat) =>
+        (chat._id || chat.id) === chatId
+          ? {
+              ...chat,
+              lastMessage: message.content || 'Sent an attachment',
+              lastActivity: message.createdAt,
+            }
+          : chat
+      )
+    )
+
+    // Clear typing indicator for sender
+    setTypingUsers((prev) => {
+      const chatTyping = prev[chatId] || []
+      return {
+        ...prev,
+        [chatId]: chatTyping.filter((uid) => uid !== messageData.senderId),
+      }
+    })
   }
 
-  const handleTyping = (typingData) => {
-    console.log('User typing:', typingData)
+  const handleMessageDelivered = (data) => {
+    console.log('✓ Message delivered:', data.messageId)
+    const { chatId, messageId } = data
+
+    setMessages((prev) => ({
+      ...prev,
+      [chatId]: (prev[chatId] || []).map((msg) =>
+        (msg._id || msg.id) === messageId
+          ? { ...msg, delivered: true, deliveredAt: data.timestamp }
+          : msg
+      ),
+    }))
   }
 
-  /** ──────────────── CHATS ──────────────── **/
+  const handleMessageRead = (data) => {
+    console.log('✓✓ Message read:', data.messageId)
+    const { chatId, messageId } = data
+
+    setMessages((prev) => ({
+      ...prev,
+      [chatId]: (prev[chatId] || []).map((msg) =>
+        (msg._id || msg.id) === messageId
+          ? { ...msg, read: true, readAt: data.timestamp }
+          : msg
+      ),
+    }))
+  }
+
+  // ===== TYPING HANDLERS =====
+  const handleTypingIndicator = (data) => {
+    const { userId, chatId, isTyping } = data
+
+    if (isTyping) {
+      console.log(`⌨️ User ${userId} is typing in chat ${chatId}`)
+      setTypingUsers((prev) => {
+        const chatTyping = prev[chatId] || []
+        if (!chatTyping.includes(userId)) {
+          return { ...prev, [chatId]: [...chatTyping, userId] }
+        }
+        return prev
+      })
+    } else {
+      console.log(`⌨️ User ${userId} stopped typing in chat ${chatId}`)
+      setTypingUsers((prev) => ({
+        ...prev,
+        [chatId]: (prev[chatId] || []).filter((uid) => uid !== userId),
+      }))
+    }
+  }
+
+  const handleTypingStopped = (data) => {
+    const { userId, chatId } = data
+    setTypingUsers((prev) => ({
+      ...prev,
+      [chatId]: (prev[chatId] || []).filter((uid) => uid !== userId),
+    }))
+  }
+
+  // ===== PRESENCE HANDLERS =====
+  const handleUserOnline = (data) => {
+    console.log(`🟢 User ${data.userId} is online`)
+    setOnlineUsers((prev) => new Set([...prev, data.userId]))
+
+    // Update user list
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.firebaseUid === data.userId || u._id === data.userId
+          ? { ...u, online: true }
+          : u
+      )
+    )
+  }
+
+  const handleUserOffline = (data) => {
+    console.log(`🔴 User ${data.userId} is offline`)
+    setOnlineUsers((prev) => {
+      const updated = new Set(prev)
+      updated.delete(data.userId)
+      return updated
+    })
+
+    // Update user list
+    setUsers((prev) =>
+      prev.map((u) =>
+        u.firebaseUid === data.userId || u._id === data.userId
+          ? { ...u, online: false }
+          : u
+      )
+    )
+  }
+
+  const handleUserStatusUpdate = (data) => {
+    console.log(`📍 User ${data.userId} status updated:`, data.status)
+    setUserStatuses((prev) => ({
+      ...prev,
+      [data.userId]: {
+        status: data.status,
+        customMessage: data.customMessage,
+        timestamp: data.timestamp,
+      },
+    }))
+  }
+
+  // ===== TYPING FUNCTIONS =====
+  const sendTypingIndicator = useCallback(
+    (chatId, isTyping) => {
+      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+        return
+      }
+
+      const chat = chats.find((c) => (c._id || c.id) === chatId)
+      if (!chat) return
+
+      const message = {
+        type: isTyping ? 'typing-start' : 'typing-stop',
+        chatId,
+        participants: chat.participants,
+      }
+
+      wsRef.current.send(JSON.stringify(message))
+
+      // Auto-stop typing after 5 seconds
+      if (isTyping) {
+        if (typingTimeoutRef.current[chatId]) {
+          clearTimeout(typingTimeoutRef.current[chatId])
+        }
+
+        typingTimeoutRef.current[chatId] = setTimeout(() => {
+          sendTypingIndicator(chatId, false)
+        }, 5000)
+      }
+    },
+    [chats]
+  )
+
+  const getTypingUsersForChat = useCallback(
+    (chatId) => {
+      const typingUserIds = typingUsers[chatId] || []
+      return typingUserIds.map((userId) => findUserById(userId)).filter(Boolean)
+    },
+    [typingUsers, users]
+  )
+
+  // ===== STATUS FUNCTIONS =====
+  const updateUserStatus = useCallback((status, customMessage = '') => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      return
+    }
+
+    wsRef.current.send(
+      JSON.stringify({
+        type: 'update-status',
+        status,
+        customMessage,
+      })
+    )
+  }, [])
+
+  const getUserStatus = useCallback(
+    (userId) => {
+      return userStatuses[userId] || { status: 'offline', customMessage: '' }
+    },
+    [userStatuses]
+  )
+
+  // ===== EXISTING FUNCTIONS (CHAT, MESSAGES, CALLS) =====
   const loadChats = useCallback(async () => {
     if (!isReady) return
     try {
@@ -263,30 +486,20 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('Deleting chat:', chatId)
-
-        // Use the del method from useAuthedRequest
         const data = await del(`${API_URL}/delete-chat/${chatId}`)
 
         if (data.success) {
-          // Remove chat from local state
           setChats((prev) => prev.filter((c) => (c._id || c.id) !== chatId))
-
-          // Remove messages for this chat
           setMessages((prev) => {
             const updated = { ...prev }
             delete updated[chatId]
             return updated
           })
-
-          // Remove calls for this chat
           setCalls((prev) => {
             const updated = { ...prev }
             delete updated[chatId]
             return updated
           })
-
-          console.log('✅ Chat deleted successfully')
         }
 
         return data
@@ -300,7 +513,7 @@ const ChatsProvider = ({ children }) => {
     },
     [isReady, del, user?.uid]
   )
-  /** ──────────────── MESSAGES ──────────────── **/
+
   const loadMessages = useCallback(
     async (chatId) => {
       if (!isReady || !chatId) return []
@@ -329,11 +542,9 @@ const ChatsProvider = ({ children }) => {
         let data
 
         if (files.length > 0) {
-          // Use FormData for file uploads
           const formData = new FormData()
           formData.append('chatId', chatId)
 
-          // Determine message type from first file if not provided
           const firstFileType = files[0].type || files[0].mimeType || ''
           let determinedType = messageType
 
@@ -355,12 +566,10 @@ const ChatsProvider = ({ children }) => {
             formData.append('content', content.trim())
           }
 
-          // Process files - handle both React Native and Web
           for (let i = 0; i < files.length; i++) {
             const file = files[i]
 
             if (Platform.OS === 'web' && file.uri.startsWith('blob:')) {
-              // For web, we need to fetch the blob and convert it to a File
               try {
                 const response = await fetch(file.uri)
                 const blob = await response.blob()
@@ -370,44 +579,26 @@ const ChatsProvider = ({ children }) => {
                   { type: file.type || file.mimeType || 'image/jpeg' }
                 )
                 formData.append('files', webFile)
-                console.log(`Appending web file ${i}:`, {
-                  name: webFile.name,
-                  type: webFile.type,
-                  size: webFile.size,
-                })
               } catch (blobError) {
                 console.error('Failed to convert blob:', blobError)
                 throw new Error('Failed to process image file')
               }
             } else {
-              // For React Native mobile
               const fileObject = {
                 uri: file.uri,
                 name: file.name || `file_${Date.now()}_${i}.jpg`,
                 type: file.type || file.mimeType || 'image/jpeg',
               }
               formData.append('files', fileObject)
-              console.log(`Appending mobile file ${i}:`, fileObject)
             }
           }
 
-          console.log('Sending message with files:', {
-            chatId,
-            messageType: determinedType,
-            filesCount: files.length,
-            hasContent: !!(content && content.trim()),
-            platform: Platform.OS,
-          })
-
-          // Get auth token
           const token = await user.getIdToken()
 
-          // Make the request with FormData using fetch
           const response = await fetch(`${API_URL}/send-message`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
-              // DO NOT set Content-Type - let the browser set it with boundary
             },
             body: formData,
           })
@@ -419,7 +610,6 @@ const ChatsProvider = ({ children }) => {
 
           data = await response.json()
         } else {
-          // Text-only message
           if (!content || !content.trim()) {
             return {
               success: false,
@@ -440,16 +630,21 @@ const ChatsProvider = ({ children }) => {
             [chatId]: [...(prev[chatId] || []), data.message],
           }))
 
-          // Notify via WebSocket if connected
+          // Notify via WebSocket
           if (wsRef.current?.readyState === WebSocket.OPEN) {
+            const chat = chats.find((c) => (c._id || c.id) === chatId)
             wsRef.current.send(
               JSON.stringify({
-                type: 'message_sent',
+                type: 'new-message',
                 chatId,
                 message: data.message,
+                participants: chat?.participants || [],
               })
             )
           }
+
+          // Stop typing indicator
+          sendTypingIndicator(chatId, false)
         }
 
         return data
@@ -461,7 +656,7 @@ const ChatsProvider = ({ children }) => {
         }
       }
     },
-    [isReady, post, user]
+    [isReady, post, user, chats, sendTypingIndicator]
   )
 
   const deleteMessage = useCallback(
@@ -471,20 +666,15 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('Deleting message:', messageId)
-
         const data = await del(`${API_URL}/delete-message/${messageId}`)
 
         if (data.success) {
-          // Remove message from local state
           setMessages((prev) => ({
             ...prev,
             [chatId]: (prev[chatId] || []).filter(
               (msg) => (msg._id || msg.id) !== messageId
             ),
           }))
-
-          console.log('✅ Message deleted successfully')
         }
 
         return data
@@ -510,14 +700,11 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('Updating message:', messageId)
-
         const data = await put(`${API_URL}/update-message/${messageId}`, {
           content: content.trim(),
         })
 
         if (data.success) {
-          // Update message in local state
           setMessages((prev) => ({
             ...prev,
             [chatId]: (prev[chatId] || []).map((msg) =>
@@ -526,8 +713,6 @@ const ChatsProvider = ({ children }) => {
                 : msg
             ),
           }))
-
-          console.log('✅ Message updated successfully')
         }
 
         return data
@@ -547,7 +732,6 @@ const ChatsProvider = ({ children }) => {
     [messages]
   )
 
-  /** ──────────────── CALLS ──────────────── **/
   const initiateCall = useCallback(
     async ({ chatId, callType, recipientId }) => {
       if (!isReady || !user?.uid) {
@@ -563,14 +747,12 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('Initiating call:', { chatId, callType, recipientId })
         const data = await post(`${API_URL}/initiate-call`, {
           chatId,
           callType,
           recipientId,
         })
 
-        console.log('Call initiation result:', data)
         return data
       } catch (error) {
         console.error('initiateCall error:', error)
@@ -590,7 +772,6 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('Answering call:', { callId, accepted })
         const data = await post(`${API_URL}/answer-call/${callId}`, {
           accepted,
         })
@@ -629,7 +810,6 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        console.log('Ending call:', callId)
         const data = await post(`${API_URL}/end-call/${callId}`)
 
         setIncomingCall(null)
@@ -666,7 +846,6 @@ const ChatsProvider = ({ children }) => {
     setCallNotification(null)
   }, [])
 
-  /** ──────────────── UTILITY FUNCTIONS ──────────────── **/
   const findUserById = useCallback(
     (userId) => {
       return users.find(
@@ -701,7 +880,13 @@ const ChatsProvider = ({ children }) => {
     [messages, user?.uid]
   )
 
-  /** ──────────────── INIT ──────────────── **/
+  const isUserOnline = useCallback(
+    (userId) => {
+      return onlineUsers.has(userId)
+    },
+    [onlineUsers]
+  )
+
   useEffect(() => {
     if (isReady) {
       loadChats()
@@ -719,6 +904,9 @@ const ChatsProvider = ({ children }) => {
     incomingCall,
     callNotification,
     wsConnected,
+    typingUsers,
+    onlineUsers,
+    userStatuses,
 
     // Chat functions
     reloadChats: loadChats,
@@ -741,10 +929,19 @@ const ChatsProvider = ({ children }) => {
     getCallHistory,
     dismissCallNotification,
 
+    // Typing functions
+    sendTypingIndicator,
+    getTypingUsersForChat,
+
+    // Status functions
+    updateUserStatus,
+    getUserStatus,
+
     // Utility functions
     findUserById,
     getChatParticipants,
     getUnreadMessageCount,
+    isUserOnline,
   }
 
   return (

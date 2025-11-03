@@ -13,7 +13,9 @@ export default function PostsStack() {
       <Stack.Screen
         name="PostsHome"
         component={PostsScreen}
-        options={{ title: 'Posts' }}
+        options={{
+          headerShown: false,
+        }}
       />
       <Stack.Screen
         name="CreatePost"

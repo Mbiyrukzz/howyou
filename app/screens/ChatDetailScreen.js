@@ -37,6 +37,7 @@ import {
   ThreeDotsButton,
   WebMessageDropdown,
 } from '../components/MessageActions'
+import useChatHelpers from '../hooks/useChatHelpers'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -960,6 +961,18 @@ export default function ChatDetailScreen({ navigation, route }) {
   const { user } = useUser()
 
   const {
+    handleTypingInput,
+    stopTyping,
+    typingUsers,
+    getTypingText,
+    isTyping,
+    checkUserOnline,
+    getStatusText,
+    getOtherUser,
+    wsConnected,
+  } = useChatHelpers(chatId)
+
+  const {
     chats = [],
     users = [],
     loadMessages,
@@ -974,7 +987,8 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   // Get the other user in the chat (not the current user)
   const otherUserId = currentChat?.participants?.find((id) => id !== user?.uid)
-  const otherUser = findUserByAnyId(users, otherUserId)
+
+  const otherUser = getOtherUser(user?.uid)
 
   // Get chat info - simplified for direct messages only
   const getChatInfo = () => {
@@ -986,14 +1000,29 @@ export default function ChatDetailScreen({ navigation, route }) {
       }
     }
 
+    const isOnline = checkUserOnline(otherUser.firebaseUid || otherUser._id)
+    const statusText = getStatusText(otherUser.firebaseUid || otherUser._id)
+
     return {
       name: otherUser.name || 'Unknown User',
-      status: otherUser.online ? 'Online now' : 'Last seen recently',
+      status: isOnline ? statusText : 'Offline',
       color: getUserColor(otherUser._id || otherUser.id),
+      isOnline,
     }
   }
 
   const chatInfo = getChatInfo()
+
+  // Update the text input to use typing indicators
+  const handleMessageChange = (text) => {
+    handleTypingInput(text, setMessage)
+  }
+
+  // Update handleSendMessage to stop typing indicator
+  const handleSendMessageWithTyping = async (files = []) => {
+    stopTyping() // Stop typing indicator when sending
+    await handleSendMessage(files)
+  }
 
   // Combine messages and call logs into a single timeline
   useEffect(() => {
@@ -1735,13 +1764,41 @@ export default function ChatDetailScreen({ navigation, route }) {
           <Ionicons name="arrow-back" size={24} color="#2c3e50" />
         </BackButton>
         <HeaderAvatar color={chatInfo.color}>
+          {/* Add online indicator */}
+          {chatInfo.isOnline && (
+            <View
+              style={{
+                position: 'absolute',
+                bottom: 0,
+                right: 0,
+                width: 12,
+                height: 12,
+                borderRadius: 6,
+                backgroundColor: '#27ae60',
+                borderWidth: 2,
+                borderColor: '#fff',
+              }}
+            />
+          )}
           <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
         </HeaderAvatar>
         <HeaderInfo>
           <HeaderName>{chatInfo.name}</HeaderName>
-          <HeaderStatus>{chatInfo.status}</HeaderStatus>
+          <HeaderStatus
+            style={{ color: chatInfo.isOnline ? '#27ae60' : '#95a5a6' }}
+          >
+            {chatInfo.status}
+          </HeaderStatus>
         </HeaderInfo>
         <HeaderActions>
+          {/* Show connection indicator */}
+          <View style={{ marginRight: 8 }}>
+            <Ionicons
+              name={wsConnected ? 'wifi' : 'wifi-off'}
+              size={16}
+              color={wsConnected ? '#27ae60' : '#e74c3c'}
+            />
+          </View>
           <HeaderActionButton onPress={startVideoCall} bgColor="#e8f5e8">
             <Ionicons name="videocam" size={24} color="#27ae60" />
           </HeaderActionButton>
@@ -1776,6 +1833,22 @@ export default function ChatDetailScreen({ navigation, route }) {
               </ErrorContainer>
             )}
           />
+
+          {/* Typing indicator at bottom of messages */}
+          {isTyping && (
+            <View
+              style={{
+                paddingHorizontal: 16,
+                paddingVertical: 8,
+              }}
+            >
+              <Text
+                style={{ color: '#7f8c8d', fontSize: 14, fontStyle: 'italic' }}
+              >
+                {getTypingText()}
+              </Text>
+            </View>
+          )}
         </MessagesContainer>
 
         <>
@@ -1808,7 +1881,8 @@ export default function ChatDetailScreen({ navigation, route }) {
               <InputWrapper>
                 <TextInput
                   value={message}
-                  onChangeText={setMessage}
+                  onChangeText={handleMessageChange} // Use the new handler
+                  onBlur={stopTyping} // Stop typing on blur
                   placeholder="Type a message..."
                   placeholderTextColor="#bdc3c7"
                   multiline
@@ -1820,10 +1894,11 @@ export default function ChatDetailScreen({ navigation, route }) {
                 disabled={
                   (!message.trim() && selectedFiles.length === 0) || sending
                 }
-                onPress={() =>
-                  selectedFiles.length > 0
-                    ? sendSelectedFiles()
-                    : handleSendMessage()
+                onPress={
+                  () =>
+                    selectedFiles.length > 0
+                      ? sendSelectedFiles()
+                      : handleSendMessageWithTyping() // Use the new handler
                 }
               >
                 <Ionicons
