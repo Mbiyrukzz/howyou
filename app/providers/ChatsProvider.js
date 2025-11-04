@@ -157,6 +157,16 @@ const ChatsProvider = ({ children }) => {
         handleNewMessage(data)
         break
 
+      case 'message-updated':
+        console.log('✏️ Message update received via WebSocket:', data)
+        handleMessageUpdated(data)
+        break
+
+      case 'message-deleted':
+        console.log('🗑️ Message deletion received via WebSocket:', data)
+        handleMessageDeleted(data)
+        break
+
       case 'message-delivered':
         handleMessageDelivered(data)
         break
@@ -292,6 +302,108 @@ const ChatsProvider = ({ children }) => {
         [chatId]: chatTyping.filter((uid) => uid !== senderId),
       }
     })
+  }
+
+  const handleMessageUpdated = (data) => {
+    console.log('✏️ Message updated via WebSocket:', data)
+    const { chatId, messageId, message } = data
+
+    // Update messages in state
+    setMessages((prevMessages) => {
+      const chatMessages = prevMessages[chatId] || []
+
+      const updatedMessages = chatMessages.map((msg) => {
+        const msgId = msg._id || msg.id
+        if (msgId === messageId || msgId === message._id) {
+          console.log('✅ Updating message in state:', msgId)
+          return {
+            ...msg,
+            content: message.content,
+            updatedAt: message.updatedAt || new Date(),
+          }
+        }
+        return msg
+      })
+
+      return {
+        ...prevMessages,
+        [chatId]: updatedMessages,
+      }
+    })
+
+    // Update chat's last message if needed
+    setChats((prevChats) =>
+      prevChats.map((chat) => {
+        if ((chat._id || chat.id) === chatId) {
+          // Get the latest message in this chat
+          const chatMessages = prevChats[chatId] || []
+          if (chatMessages.length > 0) {
+            const lastMsg = chatMessages[chatMessages.length - 1]
+            const lastMsgId = lastMsg._id || lastMsg.id
+
+            // Only update if this is the last message
+            if (lastMsgId === messageId) {
+              return {
+                ...chat,
+                lastMessage: message.content.substring(0, 50),
+                lastActivity: message.updatedAt || new Date(),
+              }
+            }
+          }
+        }
+        return chat
+      })
+    )
+  }
+
+  const handleMessageDeleted = (data) => {
+    console.log('🗑️ Message deleted via WebSocket:', data)
+    const { chatId, messageId } = data
+
+    // Remove message from state
+    setMessages((prevMessages) => {
+      const chatMessages = prevMessages[chatId] || []
+
+      const updatedMessages = chatMessages.filter((msg) => {
+        const msgId = msg._id || msg.id
+        return msgId !== messageId
+      })
+
+      console.log(`✅ Removed message ${messageId} from chat ${chatId}`)
+
+      return {
+        ...prevMessages,
+        [chatId]: updatedMessages,
+      }
+    })
+
+    // Update chat's last message
+    setChats((prevChats) =>
+      prevChats.map((chat) => {
+        if ((chat._id || chat.id) === chatId) {
+          // Get remaining messages for this chat
+          const remainingMessages = (prevMessages[chatId] || []).filter(
+            (msg) => (msg._id || msg.id) !== messageId
+          )
+
+          if (remainingMessages.length > 0) {
+            const lastMsg = remainingMessages[remainingMessages.length - 1]
+            return {
+              ...chat,
+              lastMessage: lastMsg.content || 'Sent an attachment',
+              lastActivity: lastMsg.createdAt,
+            }
+          } else {
+            return {
+              ...chat,
+              lastMessage: '',
+              lastActivity: new Date(),
+            }
+          }
+        }
+        return chat
+      })
+    )
   }
 
   const handleMessageDelivered = (data) => {
