@@ -960,6 +960,7 @@ export default function ChatDetailScreen({ navigation, route }) {
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
 
+  // Update the destructuring from useChatHelpers to include getLastSeenText
   const {
     handleTypingInput,
     stopTyping,
@@ -970,6 +971,9 @@ export default function ChatDetailScreen({ navigation, route }) {
     getStatusText,
     getOtherUser,
     wsConnected,
+    updateLastSeen,
+    getLastSeen,
+    getLastSeenText, // ✅ Add this
   } = useChatHelpers(chatId)
 
   const {
@@ -983,6 +987,15 @@ export default function ChatDetailScreen({ navigation, route }) {
     getCallHistory,
   } = chatsContext || {}
 
+  // Add this effect to monitor real-time message updates
+  useEffect(() => {
+    console.log('📊 Messages state updated:', {
+      chatId,
+      messageCount: messages.length,
+      lastMessage: messages[messages.length - 1]?.content || 'none',
+    })
+  }, [messages, chatId])
+
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
 
   // Get the other user in the chat (not the current user)
@@ -990,28 +1003,53 @@ export default function ChatDetailScreen({ navigation, route }) {
 
   const otherUser = getOtherUser(user?.uid)
 
-  // Get chat info - simplified for direct messages only
   const getChatInfo = () => {
     if (!otherUser) {
       return {
         name: 'Unknown User',
-        status: 'Offline',
+        status: 'Last seen recently',
         color: '#95a5a6',
+        isOnline: false,
       }
     }
 
-    const isOnline = checkUserOnline(otherUser.firebaseUid || otherUser._id)
-    const statusText = getStatusText(otherUser.firebaseUid || otherUser._id)
+    const userId = otherUser.firebaseUid || otherUser._id
+    const isOnline = checkUserOnline(userId)
+
+    let statusText
+    if (isOnline) {
+      statusText = getStatusText(userId)
+    } else {
+      // ✅ Only show last seen, never show "Offline"
+      const lastSeenText = getLastSeenText(userId)
+      statusText =
+        lastSeenText !== 'Unknown'
+          ? `Last seen ${lastSeenText}`
+          : 'Last seen recently' // ✅ Fallback instead of "Offline"
+    }
 
     return {
       name: otherUser.name || 'Unknown User',
-      status: isOnline ? statusText : 'Offline',
+      status: statusText,
       color: getUserColor(otherUser._id || otherUser.id),
       isOnline,
     }
   }
-
   const chatInfo = getChatInfo()
+
+  // Add this effect after getChatInfo
+  useEffect(() => {
+    if (otherUser) {
+      const userId = otherUser.firebaseUid || otherUser._id
+      const lastSeenTimestamp = getLastSeen(userId)
+      console.log('👁️ Debug last seen:', {
+        userId,
+        lastSeenTimestamp,
+        isOnline: checkUserOnline(userId),
+        lastSeenText: getLastSeenText(userId),
+      })
+    }
+  }, [otherUser, getLastSeen, getLastSeenText, checkUserOnline])
 
   // Update the text input to use typing indicators
   const handleMessageChange = (text) => {
@@ -1199,6 +1237,20 @@ export default function ChatDetailScreen({ navigation, route }) {
     }
   }
 
+  // Add this effect after the loadChatMessages function
+  useEffect(() => {
+    if (chatId && !loading) {
+      // Update last seen when opening chat
+      updateLastSeen(chatId)
+
+      // Update last seen periodically while viewing (every 30 seconds)
+      const interval = setInterval(() => {
+        updateLastSeen(chatId)
+      }, 30000)
+
+      return () => clearInterval(interval)
+    }
+  }, [chatId, loading, updateLastSeen])
   /* ---------- call callback handler ---------- */
   const handleCallCallback = async (callLog) => {
     if (!otherUser || !chatId) {

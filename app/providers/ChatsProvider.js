@@ -17,8 +17,9 @@ const ChatsProvider = ({ children }) => {
   const [incomingCall, setIncomingCall] = useState(null)
   const [callNotification, setCallNotification] = useState(null)
   const [wsConnected, setWsConnected] = useState(false)
-  const [typingUsers, setTypingUsers] = useState({}) // { chatId: [userId1, userId2] }
-  const [userStatuses, setUserStatuses] = useState({}) // { userId: { status, customMessage } }
+  const [typingUsers, setTypingUsers] = useState({})
+  const [userStatuses, setUserStatuses] = useState({})
+  const [lastSeen, setLastSeen] = useState({})
 
   const { isReady, get, put, post, del } = useAuthedRequest()
   const { user } = useUser()
@@ -40,7 +41,6 @@ const ChatsProvider = ({ children }) => {
       if (wsRef.current) {
         wsRef.current.close()
       }
-      // Clear all typing timeouts
       Object.values(typingTimeoutRef.current).forEach(clearTimeout)
     }
   }, [user?.uid, isReady])
@@ -84,7 +84,6 @@ const ChatsProvider = ({ children }) => {
         })
         setWsConnected(false)
 
-        // Attempt to reconnect
         if (reconnectAttemptsRef.current < maxReconnectAttempts) {
           const delay = Math.min(
             1000 * Math.pow(2, reconnectAttemptsRef.current),
@@ -128,7 +127,11 @@ const ChatsProvider = ({ children }) => {
         }
         break
 
-      // ===== CALL EVENTS =====
+      case 'new-message':
+        console.log('💬 New message received via WebSocket:', data)
+        handleNewMessage(data)
+        break
+
       case 'incoming_call':
         handleIncomingCall(data)
         break
@@ -151,8 +154,11 @@ const ChatsProvider = ({ children }) => {
         )
         break
 
-      // ===== MESSAGE EVENTS =====
-      case 'new_message':
+      case 'user-last-seen':
+        handleLastSeenUpdate(data)
+        break
+
+      case 'new-message':
         handleNewMessage(data)
         break
 
@@ -164,7 +170,6 @@ const ChatsProvider = ({ children }) => {
         handleMessageRead(data)
         break
 
-      // ===== TYPING EVENTS =====
       case 'typing':
         handleTypingIndicator(data)
         break
@@ -173,7 +178,6 @@ const ChatsProvider = ({ children }) => {
         handleTypingStopped(data)
         break
 
-      // ===== PRESENCE EVENTS =====
       case 'user-online':
         handleUserOnline(data)
         break
@@ -186,7 +190,6 @@ const ChatsProvider = ({ children }) => {
         handleUserStatusUpdate(data)
         break
 
-      // ===== KEEP-ALIVE =====
       case 'ping':
         if (wsRef.current?.readyState === WebSocket.OPEN) {
           wsRef.current.send(JSON.stringify({ type: 'pong' }))
@@ -205,7 +208,6 @@ const ChatsProvider = ({ children }) => {
     }
   }
 
-  // ===== CALL HANDLERS =====
   const handleIncomingCall = (callData) => {
     console.log('📞 Incoming call notification:', callData)
 
@@ -219,7 +221,6 @@ const ChatsProvider = ({ children }) => {
       chatId: callData.chatId,
     })
 
-    // Auto-dismiss after 40 seconds
     setTimeout(() => {
       if (incomingCall?.callId === callData.callId) {
         setCallNotification(null)
@@ -237,17 +238,24 @@ const ChatsProvider = ({ children }) => {
     Alert.alert('Call Ended', `Call ended after ${data.duration || 0} seconds`)
   }
 
-  // ===== MESSAGE HANDLERS =====
   const handleNewMessage = (messageData) => {
     console.log('💬 New message received:', messageData)
     const { chatId, message } = messageData
 
-    setMessages((prev) => ({
-      ...prev,
-      [chatId]: [...(prev[chatId] || []), message],
-    }))
+    // Add more logging
+    console.log('💬 Processing message for chatId:', chatId)
+    console.log('💬 Message content:', message.content)
+    console.log('💬 Current messages for chat:', messages[chatId]?.length || 0)
 
-    // Update chat's last message
+    setMessages((prev) => {
+      const updated = {
+        ...prev,
+        [chatId]: [...(prev[chatId] || []), message],
+      }
+      console.log('💬 Updated messages count:', updated[chatId].length)
+      return updated
+    })
+
     setChats((prev) =>
       prev.map((chat) =>
         (chat._id || chat.id) === chatId
@@ -260,7 +268,6 @@ const ChatsProvider = ({ children }) => {
       )
     )
 
-    // Clear typing indicator for sender
     setTypingUsers((prev) => {
       const chatTyping = prev[chatId] || []
       return {
@@ -298,7 +305,14 @@ const ChatsProvider = ({ children }) => {
     }))
   }
 
-  // ===== TYPING HANDLERS =====
+  const handleLastSeenUpdate = (data) => {
+    console.log(`👁️ User ${data.userId} last seen updated`)
+    setLastSeen((prev) => ({
+      ...prev,
+      [data.userId]: data.timestamp,
+    }))
+  }
+
   const handleTypingIndicator = (data) => {
     const { userId, chatId, isTyping } = data
 
@@ -328,12 +342,10 @@ const ChatsProvider = ({ children }) => {
     }))
   }
 
-  // ===== PRESENCE HANDLERS =====
   const handleUserOnline = (data) => {
     console.log(`🟢 User ${data.userId} is online`)
     setOnlineUsers((prev) => new Set([...prev, data.userId]))
 
-    // Update user list
     setUsers((prev) =>
       prev.map((u) =>
         u.firebaseUid === data.userId || u._id === data.userId
@@ -351,7 +363,6 @@ const ChatsProvider = ({ children }) => {
       return updated
     })
 
-    // Update user list
     setUsers((prev) =>
       prev.map((u) =>
         u.firebaseUid === data.userId || u._id === data.userId
@@ -373,7 +384,6 @@ const ChatsProvider = ({ children }) => {
     }))
   }
 
-  // ===== TYPING FUNCTIONS =====
   const sendTypingIndicator = useCallback(
     (chatId, isTyping) => {
       if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
@@ -391,7 +401,6 @@ const ChatsProvider = ({ children }) => {
 
       wsRef.current.send(JSON.stringify(message))
 
-      // Auto-stop typing after 5 seconds
       if (isTyping) {
         if (typingTimeoutRef.current[chatId]) {
           clearTimeout(typingTimeoutRef.current[chatId])
@@ -413,7 +422,6 @@ const ChatsProvider = ({ children }) => {
     [typingUsers, users]
   )
 
-  // ===== STATUS FUNCTIONS =====
   const updateUserStatus = useCallback((status, customMessage = '') => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
       return
@@ -435,7 +443,6 @@ const ChatsProvider = ({ children }) => {
     [userStatuses]
   )
 
-  // ===== EXISTING FUNCTIONS (CHAT, MESSAGES, CALLS) =====
   const loadChats = useCallback(async () => {
     if (!isReady) return
     try {
@@ -530,6 +537,37 @@ const ChatsProvider = ({ children }) => {
       }
     },
     [get, isReady]
+  )
+
+  const updateLastSeen = useCallback(
+    async (chatId) => {
+      if (!isReady || !user?.uid) return
+
+      try {
+        await post(`${API_URL}/update-last-seen/${chatId}`)
+
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          const chat = chats.find((c) => (c._id || c.id) === chatId)
+          wsRef.current.send(
+            JSON.stringify({
+              type: 'update-last-seen',
+              chatId,
+              participants: chat?.participants || [],
+            })
+          )
+        }
+      } catch (error) {
+        console.error('Failed to update last seen:', error)
+      }
+    },
+    [isReady, post, user?.uid, chats]
+  )
+
+  const getLastSeen = useCallback(
+    (userId) => {
+      return lastSeen[userId] || null
+    },
+    [lastSeen]
   )
 
   const sendMessage = useCallback(
@@ -630,7 +668,6 @@ const ChatsProvider = ({ children }) => {
             [chatId]: [...(prev[chatId] || []), data.message],
           }))
 
-          // Notify via WebSocket
           if (wsRef.current?.readyState === WebSocket.OPEN) {
             const chat = chats.find((c) => (c._id || c.id) === chatId)
             wsRef.current.send(
@@ -643,8 +680,10 @@ const ChatsProvider = ({ children }) => {
             )
           }
 
-          // Stop typing indicator
           sendTypingIndicator(chatId, false)
+
+          // Update last seen after sending message
+          await updateLastSeen(chatId)
         }
 
         return data
@@ -656,39 +695,8 @@ const ChatsProvider = ({ children }) => {
         }
       }
     },
-    [isReady, post, user, chats, sendTypingIndicator]
+    [isReady, post, user, chats, sendTypingIndicator, updateLastSeen]
   )
-
-  const deleteMessage = useCallback(
-    async (messageId, chatId) => {
-      if (!isReady || !user?.uid) {
-        return { success: false, error: 'Auth not ready' }
-      }
-
-      try {
-        const data = await del(`${API_URL}/delete-message/${messageId}`)
-
-        if (data.success) {
-          setMessages((prev) => ({
-            ...prev,
-            [chatId]: (prev[chatId] || []).filter(
-              (msg) => (msg._id || msg.id) !== messageId
-            ),
-          }))
-        }
-
-        return data
-      } catch (error) {
-        console.error('deleteMessage error:', error)
-        return {
-          success: false,
-          error: error.message || 'Failed to delete message',
-        }
-      }
-    },
-    [isReady, del, user?.uid]
-  )
-
   const updateMessage = useCallback(
     async (messageId, chatId, content) => {
       if (!isReady || !user?.uid) {
@@ -725,6 +733,36 @@ const ChatsProvider = ({ children }) => {
       }
     },
     [isReady, put, user?.uid]
+  )
+
+  const deleteMessage = useCallback(
+    async (messageId, chatId) => {
+      if (!isReady || !user?.uid) {
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      try {
+        const data = await del(`${API_URL}/delete-message/${messageId}`)
+
+        if (data.success) {
+          setMessages((prev) => ({
+            ...prev,
+            [chatId]: (prev[chatId] || []).filter(
+              (msg) => (msg._id || msg.id) !== messageId
+            ),
+          }))
+        }
+
+        return data
+      } catch (error) {
+        console.error('deleteMessage error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to delete message',
+        }
+      }
+    },
+    [isReady, del, user?.uid]
   )
 
   const getMessagesForChat = useCallback(
@@ -895,7 +933,6 @@ const ChatsProvider = ({ children }) => {
   }, [isReady, loadChats, loadUsers])
 
   const contextValue = {
-    // State
     chats,
     loading,
     users,
@@ -907,21 +944,22 @@ const ChatsProvider = ({ children }) => {
     typingUsers,
     onlineUsers,
     userStatuses,
+    lastSeen,
 
-    // Chat functions
     reloadChats: loadChats,
     loadUsers,
     createChat,
     deleteChat,
 
-    // Message functions
     loadMessages,
     sendMessage,
     updateMessage,
     deleteMessage,
     getMessagesForChat,
 
-    // Call functions
+    updateLastSeen,
+    getLastSeen,
+
     initiateCall,
     answerCall,
     rejectCall,
@@ -929,15 +967,12 @@ const ChatsProvider = ({ children }) => {
     getCallHistory,
     dismissCallNotification,
 
-    // Typing functions
     sendTypingIndicator,
     getTypingUsersForChat,
 
-    // Status functions
     updateUserStatus,
     getUserStatus,
 
-    // Utility functions
     findUserById,
     getChatParticipants,
     getUnreadMessageCount,

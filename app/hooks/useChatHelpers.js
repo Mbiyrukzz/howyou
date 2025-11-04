@@ -19,6 +19,7 @@ export const useChatHelpers = (chatId = null) => {
     wsConnected,
   } = context
 
+  const { getLastSeen, updateLastSeen } = context
   /**
    * Handle input change with automatic typing indicator
    * Call this in your TextInput's onChangeText
@@ -192,11 +193,67 @@ export const useChatHelpers = (chatId = null) => {
     participants,
     getOtherUser,
 
+    getLastSeen,
+    updateLastSeen,
     // Connection
     wsConnected,
 
     // Utilities
     findUserById,
+
+    getLastSeenText: useCallback(
+      (userId) => {
+        const timestamp = getLastSeen(userId)
+        if (!timestamp) return 'recently'
+
+        const date = new Date(timestamp)
+        const now = new Date()
+        const diffMs = now - date
+        const diffMins = Math.floor(diffMs / 60000)
+        const diffHours = Math.floor(diffMs / 3600000)
+
+        // Format time as "2:45 PM"
+        const timeString = date.toLocaleTimeString([], {
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+        })
+
+        // Less than 1 minute
+        if (diffMins < 1) return 'just now'
+
+        // Less than 1 hour - show relative time
+        if (diffMins < 60) return `${diffMins} min ago`
+
+        // Today - show "today at 2:45 PM"
+        const today = new Date()
+        if (date.toDateString() === today.toDateString()) {
+          return `today at ${timeString}`
+        }
+
+        // Yesterday - show "yesterday at 2:45 PM"
+        const yesterday = new Date(today)
+        yesterday.setDate(yesterday.getDate() - 1)
+        if (date.toDateString() === yesterday.toDateString()) {
+          return `yesterday at ${timeString}`
+        }
+
+        // This week - show "Monday at 2:45 PM"
+        const daysAgo = Math.floor(diffMs / 86400000)
+        if (daysAgo < 7) {
+          const dayName = date.toLocaleDateString([], { weekday: 'long' })
+          return `${dayName} at ${timeString}`
+        }
+
+        // Older - show "Jan 15 at 2:45 PM"
+        const dateString = date.toLocaleDateString([], {
+          month: 'short',
+          day: 'numeric',
+        })
+        return `${dateString} at ${timeString}`
+      },
+      [getLastSeen]
+    ),
   }
 }
 
