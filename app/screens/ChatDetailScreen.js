@@ -925,7 +925,7 @@ const SoundWaveAnimation = () => {
 /* =================== main screen =================== */
 export default function ChatDetailScreen({ navigation, route }) {
   const [message, setMessage] = useState('')
-  const [messages, setMessages] = useState([])
+  // const [messages, setMessages] = useState([])
   const [callLogs, setCallLogs] = useState([])
   const [combinedItems, setCombinedItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -985,16 +985,11 @@ export default function ChatDetailScreen({ navigation, route }) {
     deleteMessage,
     initiateCall,
     getCallHistory,
+    getMessagesForChat, // ✅ This gets messages from context
+    loadLastSeenData, // ✅ Add this
   } = chatsContext || {}
 
-  // Add this effect to monitor real-time message updates
-  useEffect(() => {
-    console.log('📊 Messages state updated:', {
-      chatId,
-      messageCount: messages.length,
-      lastMessage: messages[messages.length - 1]?.content || 'none',
-    })
-  }, [messages, chatId])
+  const messages = getMessagesForChat(chatId) || []
 
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
 
@@ -1119,9 +1114,7 @@ export default function ChatDetailScreen({ navigation, route }) {
             const result = await deleteMessage(messageId, chatId)
 
             if (result.success) {
-              setMessages((prev) =>
-                prev.filter((msg) => (msg._id || msg.id) !== messageId)
-              )
+              // ✅ Context already updated via deleteMessage
               Alert.alert('Success', 'Message deleted successfully')
             } else {
               Alert.alert('Error', result.error || 'Failed to delete message')
@@ -1143,13 +1136,7 @@ export default function ChatDetailScreen({ navigation, route }) {
     setSavingEdit(false)
 
     if (result.success) {
-      setMessages((prev) =>
-        prev.map((msg) =>
-          (msg._id || msg.id) === messageId
-            ? { ...msg, content: newContent, updatedAt: new Date() }
-            : msg
-        )
-      )
+      // ✅ Context already updated via updateMessage
       Alert.alert('Success', 'Message updated successfully')
       setEditModalVisible(false)
       setSelectedMessage(null)
@@ -1157,7 +1144,6 @@ export default function ChatDetailScreen({ navigation, route }) {
       Alert.alert('Error', result.error || 'Failed to update message')
     }
   }
-
   const closeActionMenu = () => {
     setActionMenuVisible(false)
     setSelectedMessage(null)
@@ -1223,8 +1209,8 @@ export default function ChatDetailScreen({ navigation, route }) {
       setLoading(true)
       setError(null)
 
-      const messagesData = await loadMessages(chatId)
-      setMessages(messagesData || [])
+      // ✅ This updates context state, no need to setMessages locally
+      await loadMessages(chatId)
 
       // Load call history
       const callHistoryData = await getCallHistory(chatId)
@@ -1236,7 +1222,6 @@ export default function ChatDetailScreen({ navigation, route }) {
       setLoading(false)
     }
   }
-
   // Add this effect after the loadChatMessages function
   useEffect(() => {
     if (chatId && !loading) {
@@ -1531,7 +1516,7 @@ export default function ChatDetailScreen({ navigation, route }) {
       })
 
       if (result.success) {
-        setMessages((prev) => [...prev, result.message])
+        // ✅ Context already updated via sendMessage, just clear inputs
         setMessage('')
         setSelectedFiles([])
         setTimeout(

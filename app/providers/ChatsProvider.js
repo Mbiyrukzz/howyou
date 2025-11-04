@@ -127,11 +127,6 @@ const ChatsProvider = ({ children }) => {
         }
         break
 
-      case 'new-message':
-        console.log('💬 New message received via WebSocket:', data)
-        handleNewMessage(data)
-        break
-
       case 'incoming_call':
         handleIncomingCall(data)
         break
@@ -239,25 +234,46 @@ const ChatsProvider = ({ children }) => {
   }
 
   const handleNewMessage = (messageData) => {
-    console.log('💬 New message received:', messageData)
-    const { chatId, message } = messageData
+    console.log('💬 New message received via WebSocket:', messageData)
+    const { chatId, message, senderId } = messageData
 
-    // Add more logging
+    // Skip if this is our own message (already added when sending)
+    if (senderId === user?.uid) {
+      console.log('⏭️ Skipping own message (already in state)')
+      return
+    }
+
     console.log('💬 Processing message for chatId:', chatId)
     console.log('💬 Message content:', message.content)
-    console.log('💬 Current messages for chat:', messages[chatId]?.length || 0)
 
-    setMessages((prev) => {
-      const updated = {
-        ...prev,
-        [chatId]: [...(prev[chatId] || []), message],
+    // ✅ Use functional update to avoid stale state
+    setMessages((prevMessages) => {
+      const existingMessages = prevMessages[chatId] || []
+
+      // Check if message already exists (prevent duplicates)
+      const messageId = message._id || message.id
+      const isDuplicate = existingMessages.some(
+        (msg) => (msg._id || msg.id) === messageId
+      )
+
+      if (isDuplicate) {
+        console.log('⚠️ Duplicate message detected, skipping')
+        return prevMessages
       }
+
+      console.log('✅ Adding new message to state')
+      const updated = {
+        ...prevMessages,
+        [chatId]: [...existingMessages, message],
+      }
+
       console.log('💬 Updated messages count:', updated[chatId].length)
       return updated
     })
 
-    setChats((prev) =>
-      prev.map((chat) =>
+    // Update chat's last message
+    setChats((prevChats) =>
+      prevChats.map((chat) =>
         (chat._id || chat.id) === chatId
           ? {
               ...chat,
@@ -268,11 +284,12 @@ const ChatsProvider = ({ children }) => {
       )
     )
 
+    // Stop typing indicator for sender
     setTypingUsers((prev) => {
       const chatTyping = prev[chatId] || []
       return {
         ...prev,
-        [chatId]: chatTyping.filter((uid) => uid !== messageData.senderId),
+        [chatId]: chatTyping.filter((uid) => uid !== senderId),
       }
     })
   }
@@ -476,15 +493,64 @@ const ChatsProvider = ({ children }) => {
     [isReady, post, user?.uid]
   )
 
+  const loadLastSeenData = useCallback(async () => {
+    if (!isReady) return
+
+    try {
+      const data = await get(`${API_URL}/list-users`)
+
+      // Extract last seen from users
+      const lastSeenData = {}
+      data.forEach((user) => {
+        if (user.lastSeen) {
+          lastSeenData[user.firebaseUid || user._id] = user.lastSeen
+        }
+      })
+
+      setLastSeen(lastSeenData)
+      console.log(
+        '👁️ Loaded last seen data for',
+        Object.keys(lastSeenData).length,
+        'users'
+      )
+    } catch (error) {
+      console.error('Failed to load last seen:', error)
+    }
+  }, [get, isReady])
+
+  // 2. Update loadUsers to also load last seen
   const loadUsers = useCallback(async () => {
     if (!isReady) return
     try {
       const data = await get(`${API_URL}/list-users`)
       setUsers(data)
+
+      // ✅ Also extract and set last seen
+      const lastSeenData = {}
+      data.forEach((user) => {
+        if (user.lastSeen) {
+          lastSeenData[user.firebaseUid || user._id] = user.lastSeen
+        }
+      })
+      setLastSeen(lastSeenData)
+
+      console.log(
+        '👁️ Loaded last seen for',
+        Object.keys(lastSeenData).length,
+        'users'
+      )
     } catch (error) {
       console.error('Failed to load users:', error)
     }
   }, [get, isReady])
+
+  // Make sure this runs on mount
+  useEffect(() => {
+    if (isReady) {
+      loadChats()
+      loadUsers() // This now also loads last seen
+    }
+  }, [isReady, loadChats, loadUsers])
 
   const deleteChat = useCallback(
     async (chatId) => {
@@ -959,6 +1025,7 @@ const ChatsProvider = ({ children }) => {
 
     updateLastSeen,
     getLastSeen,
+    loadLastSeenData,
 
     initiateCall,
     answerCall,
