@@ -863,13 +863,20 @@ const MessageItem = React.memo(
     )
   },
   (prevProps, nextProps) => {
-    return (
-      prevProps.item._id !== nextProps.item._id ||
-      prevProps.item.content !== nextProps.item.content ||
-      prevProps.item.updatedAt !== nextProps.item.updatedAt ||
-      prevProps.hoveredMessageId !== nextProps.hoveredMessageId ||
-      prevProps.item.files?.length !== nextProps.item.files?.length
-    )
+    const prevItem = prevProps.item
+    const nextItem = nextProps.item
+
+    // Re-render if content or updatedAt changed
+    if (prevItem.content !== nextItem.content) return false
+    if (prevItem.updatedAt !== nextItem.updatedAt) return false
+    if ((prevItem._id || prevItem.id) !== (nextItem._id || nextItem.id))
+      return false
+
+    // Optional: re-render if files changed
+    if ((prevItem.files?.length || 0) !== (nextItem.files?.length || 0))
+      return false
+
+    return true // Block render
   }
 )
 

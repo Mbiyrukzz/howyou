@@ -118,6 +118,7 @@ const ChatsProvider = ({ children }) => {
 
   const handleWebSocketMessage = (data) => {
     console.log('📨 WebSocket message received:', data.type)
+    console.log('📦 Full payload:', JSON.stringify(data, null, 2))
 
     switch (data.type) {
       case 'connected':
@@ -158,12 +159,17 @@ const ChatsProvider = ({ children }) => {
         break
 
       case 'message-updated':
-        console.log('✏️ Message update received via WebSocket:', data)
+        console.log('✏️ Handling message-updated event')
+        console.log('  - chatId:', data.chatId)
+        console.log('  - messageId:', data.messageId)
+        console.log('  - message:', data.message)
         handleMessageUpdated(data)
         break
 
       case 'message-deleted':
-        console.log('🗑️ Message deletion received via WebSocket:', data)
+        console.log('🗑️ Handling message-deleted event')
+        console.log('  - chatId:', data.chatId)
+        console.log('  - messageId:', data.messageId)
         handleMessageDeleted(data)
         break
 
@@ -308,14 +314,26 @@ const ChatsProvider = ({ children }) => {
     console.log('✏️ Message updated via WebSocket:', data)
     const { chatId, messageId, message } = data
 
+    if (!chatId || !messageId || !message) {
+      console.error('❌ Missing required fields:', {
+        chatId,
+        messageId,
+        message,
+      })
+      return
+    }
+
+    console.log('🔄 Updating message in state...')
+
     // Update messages in state
     setMessages((prevMessages) => {
       const chatMessages = prevMessages[chatId] || []
+      console.log(`  - Current messages in chat: ${chatMessages.length}`)
 
       const updatedMessages = chatMessages.map((msg) => {
         const msgId = msg._id || msg.id
         if (msgId === messageId || msgId === message._id) {
-          console.log('✅ Updating message in state:', msgId)
+          console.log(`  ✅ Found and updating message: ${msgId}`)
           return {
             ...msg,
             content: message.content,
@@ -324,6 +342,12 @@ const ChatsProvider = ({ children }) => {
         }
         return msg
       })
+
+      const wasUpdated = updatedMessages.some(
+        (msg) =>
+          (msg._id || msg.id) === messageId && msg.content === message.content
+      )
+      console.log(`  - Update successful: ${wasUpdated}`)
 
       return {
         ...prevMessages,
@@ -335,14 +359,13 @@ const ChatsProvider = ({ children }) => {
     setChats((prevChats) =>
       prevChats.map((chat) => {
         if ((chat._id || chat.id) === chatId) {
-          // Get the latest message in this chat
-          const chatMessages = prevChats[chatId] || []
+          const chatMessages = messages[chatId] || []
           if (chatMessages.length > 0) {
             const lastMsg = chatMessages[chatMessages.length - 1]
             const lastMsgId = lastMsg._id || lastMsg.id
 
-            // Only update if this is the last message
             if (lastMsgId === messageId) {
+              console.log(`  ✅ Updating last message in chat list`)
               return {
                 ...chat,
                 lastMessage: message.content.substring(0, 50),
@@ -360,20 +383,34 @@ const ChatsProvider = ({ children }) => {
     console.log('🗑️ Message deleted via WebSocket:', data)
     const { chatId, messageId } = data
 
+    if (!chatId || !messageId) {
+      console.error('❌ Missing required fields:', { chatId, messageId })
+      return
+    }
+
+    console.log('🔄 Removing message from state...')
+
     // Remove message from state
     setMessages((prevMessages) => {
       const chatMessages = prevMessages[chatId] || []
 
-      const updatedMessages = chatMessages.filter((msg) => {
+      const updatedMessages = chatMessages.map((msg) => {
         const msgId = msg._id || msg.id
-        return msgId !== messageId
+        if (msgId === messageId || msgId === message._id) {
+          // Create NEW object with NEW content
+          return {
+            ...msg,
+            content: message.content,
+            updatedAt: message.updatedAt || new Date().toISOString(),
+          }
+        }
+        return msg
       })
 
-      console.log(`✅ Removed message ${messageId} from chat ${chatId}`)
-
+      // Return NEW object with NEW array
       return {
         ...prevMessages,
-        [chatId]: updatedMessages,
+        [chatId]: [...updatedMessages], // NEW array reference
       }
     })
 
@@ -381,9 +418,13 @@ const ChatsProvider = ({ children }) => {
     setChats((prevChats) =>
       prevChats.map((chat) => {
         if ((chat._id || chat.id) === chatId) {
-          // Get remaining messages for this chat
-          const remainingMessages = (prevMessages[chatId] || []).filter(
-            (msg) => (msg._id || msg.id) !== messageId
+          const remainingMessages =
+            messages[chatId]?.filter(
+              (msg) => (msg._id || msg.id) !== messageId
+            ) || []
+
+          console.log(
+            `  - Remaining messages for last message update: ${remainingMessages.length}`
           )
 
           if (remainingMessages.length > 0) {
