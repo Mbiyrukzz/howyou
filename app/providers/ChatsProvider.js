@@ -380,66 +380,37 @@ const ChatsProvider = ({ children }) => {
   }
 
   const handleMessageDeleted = (data) => {
-    console.log('🗑️ Message deleted via WebSocket:', data)
     const { chatId, messageId } = data
 
-    if (!chatId || !messageId) {
-      console.error('❌ Missing required fields:', { chatId, messageId })
-      return
-    }
+    console.log('handleMessageDeleted:', { chatId, messageId })
 
-    console.log('🔄 Removing message from state...')
-
-    // Remove message from state
-    setMessages((prevMessages) => {
-      const chatMessages = prevMessages[chatId] || []
-
-      const updatedMessages = chatMessages.map((msg) => {
-        const msgId = msg._id || msg.id
-        if (msgId === messageId || msgId === message._id) {
-          // Create NEW object with NEW content
-          return {
-            ...msg,
-            content: message.content,
-            updatedAt: message.updatedAt || new Date().toISOString(),
-          }
-        }
-        return msg
-      })
-
-      // Return NEW object with NEW array
-      return {
-        ...prevMessages,
-        [chatId]: [...updatedMessages], // NEW array reference
+    // Use functional update
+    setMessages((prev) => {
+      const updated = { ...prev }
+      if (updated[chatId]) {
+        updated[chatId] = updated[chatId].filter(
+          (msg) => (msg._id || msg.id) !== messageId
+        )
       }
+      return updated
     })
 
-    // Update chat's last message
-    setChats((prevChats) =>
-      prevChats.map((chat) => {
+    // Update chat preview
+    setChats((prev) =>
+      prev.map((chat) => {
         if ((chat._id || chat.id) === chatId) {
-          const remainingMessages =
-            messages[chatId]?.filter(
-              (msg) => (msg._id || msg.id) !== messageId
-            ) || []
-
-          console.log(
-            `  - Remaining messages for last message update: ${remainingMessages.length}`
-          )
-
-          if (remainingMessages.length > 0) {
-            const lastMsg = remainingMessages[remainingMessages.length - 1]
+          const remaining =
+            messages[chatId]?.filter((m) => (m._id || m.id) !== messageId) || []
+          if (remaining.length > 0) {
+            const last = remaining[remaining.length - 1]
             return {
               ...chat,
-              lastMessage: lastMsg.content || 'Sent an attachment',
-              lastActivity: lastMsg.createdAt,
+              lastMessage:
+                last.content?.substring(0, 50) || 'Sent an attachment',
+              lastActivity: last.createdAt,
             }
           } else {
-            return {
-              ...chat,
-              lastMessage: '',
-              lastActivity: new Date(),
-            }
+            return { ...chat, lastMessage: '', lastActivity: new Date() }
           }
         }
         return chat
@@ -961,27 +932,45 @@ const ChatsProvider = ({ children }) => {
       }
 
       try {
-        const data = await del(`${API_URL}/delete-message/${messageId}`)
+        const response = await del(`${API_URL}/delete-message/${messageId}`)
+        console.log('deleteMessage response:', response)
 
-        if (data.success) {
+        if (response.success) {
           setMessages((prev) => ({
             ...prev,
             [chatId]: (prev[chatId] || []).filter(
               (msg) => (msg._id || msg.id) !== messageId
             ),
           }))
+
+          // Update chat preview
+          setChats((prev) =>
+            prev.map((chat) => {
+              if ((chat._id || chat.id) !== chatId) return chat
+              const remaining = (messages[chatId] || []).filter(
+                (m) => (m._id || m.id) !== messageId
+              )
+              if (remaining.length > 0) {
+                const last = remaining[remaining.length - 1]
+                return {
+                  ...chat,
+                  lastMessage:
+                    last.content?.substring(0, 50) || 'Sent an attachment',
+                  lastActivity: last.createdAt,
+                }
+              }
+              return { ...chat, lastMessage: '', lastActivity: new Date() }
+            })
+          )
         }
 
-        return data
+        return response
       } catch (error) {
         console.error('deleteMessage error:', error)
-        return {
-          success: false,
-          error: error.message || 'Failed to delete message',
-        }
+        return { success: false, error: error.message || 'Failed to delete' }
       }
     },
-    [isReady, del, user?.uid]
+    [isReady, del, user?.uid] // No messages dependency
   )
 
   const getMessagesForChat = useCallback(

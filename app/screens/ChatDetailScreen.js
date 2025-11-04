@@ -1104,34 +1104,17 @@ export default function ChatDetailScreen({ navigation, route }) {
     setEditModalVisible(true)
   }
 
-  const handleDeleteMessage = () => {
-    setActionMenuVisible(false)
-    setWebDropdownVisible(false)
+  const handleDeleteMessage = async () => {
+    const id = selectedMessage._id ?? selectedMessage.id
+    const result = await deleteMessage(id, chatId)
 
-    Alert.alert(
-      'Delete Message',
-      'Are you sure you want to delete this message? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            const messageId = selectedMessage._id || selectedMessage.id
-            const result = await deleteMessage(messageId, chatId)
-
-            if (result.success) {
-              // ✅ Context already updated via deleteMessage
-              Alert.alert('Success', 'Message deleted successfully')
-            } else {
-              Alert.alert('Error', result.error || 'Failed to delete message')
-            }
-
-            setSelectedMessage(null)
-          },
-        },
-      ]
-    )
+    if (result.success) {
+      setSelectedMessage(null)
+      setActionMenuVisible(false)
+      setWebDropdownVisible(false)
+    } else {
+      Alert.alert('Error', result.error ?? 'Delete failed')
+    }
   }
 
   const handleSaveEdit = async (newContent) => {
