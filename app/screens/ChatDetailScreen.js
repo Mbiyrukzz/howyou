@@ -1595,7 +1595,6 @@ export default function ChatDetailScreen({ navigation, route }) {
     }
   }
 
-  /* ---------- call functions ---------- */
   const startVideoCall = async () => {
     if (!otherUser || !chatId) {
       Alert.alert('Error', 'Cannot start call')
@@ -1615,6 +1614,8 @@ export default function ChatDetailScreen({ navigation, route }) {
           remoteUserId: otherUserId,
           remoteUserName: otherUser.name,
           callType: 'video',
+          isIncoming: false,
+          callId: result.call._id.toString(), // ✅ Add callId
         })
       } else {
         Alert.alert('Error', 'Failed to start video call')
@@ -1644,6 +1645,8 @@ export default function ChatDetailScreen({ navigation, route }) {
           remoteUserId: otherUserId,
           remoteUserName: otherUser.name,
           callType: 'voice',
+          isIncoming: false,
+          callId: result.call._id.toString(), // ✅ Add callId
         })
       } else {
         Alert.alert('Error', 'Failed to start audio call')

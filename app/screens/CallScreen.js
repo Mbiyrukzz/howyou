@@ -191,18 +191,21 @@ const CallScreen = () => {
     }
   }
 
+  // In CallScreen.js, replace the handleCallTimeout function:
+
   const handleCallTimeout = useCallback(() => {
     console.log('⏰ Handling call timeout')
     stopRingtones()
     clearRingTimer()
 
-    // Send end call signal
+    // Send end call signal with timeout reason
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(
         JSON.stringify({
           type: 'end-call',
           chatId,
           userId: user?.uid,
+          remoteUserId, // ← Add this
           reason: 'timeout',
         })
       )
@@ -218,18 +221,87 @@ const CallScreen = () => {
       { cancelable: false }
     )
 
-    // Fallback navigation in case alert doesn't trigger
+    // Fallback navigation
     setTimeout(() => {
       navigation.goBack()
     }, 100)
-  }, [chatId, user?.uid, navigation])
+  }, [chatId, user?.uid, remoteUserId, navigation])
+
+  // Also update the handleEndCall function to include remoteUserId:
+  const handleEndCall = useCallback(() => {
+    console.log('🔴 Ending call')
+
+    stopRingtones()
+    clearRingTimer()
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'end-call',
+          chatId,
+          userId: user?.uid,
+          remoteUserId, // ← Add this
+          reason: 'user_ended',
+        })
+      )
+    }
+
+    cleanup()
+    navigation.goBack()
+  }, [chatId, user?.uid, remoteUserId, navigation])
 
   const handleAnswerCall = async () => {
+    console.log('📞 User answering call...')
+
     stopRingtones()
     clearRingTimer()
     setCallAnswered(true)
     setCallStatus('connecting')
-    await setupCall()
+
+    try {
+      // ✅ CRITICAL: Notify backend that call was accepted
+      const response = await fetch(
+        `http://localhost:5000/answer-call/${route.params?.callId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await user.getIdToken()}`,
+          },
+          body: JSON.stringify({ accepted: true }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!data.success) {
+        console.error('❌ Failed to answer call:', data.error)
+        Alert.alert('Error', 'Failed to answer call')
+        navigation.goBack()
+        return
+      }
+
+      console.log('✅ Backend notified of call acceptance')
+
+      // Now setup the call
+      await setupCall()
+
+      // Send WebSocket notification to caller
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'call-answered',
+            from: user?.uid,
+            to: remoteUserId,
+            chatId,
+          })
+        )
+      }
+    } catch (error) {
+      console.error('❌ Error answering call:', error)
+      Alert.alert('Error', 'Failed to answer call')
+      navigation.goBack()
+    }
   }
 
   // Initialize WebSocket connection
@@ -281,12 +353,14 @@ const CallScreen = () => {
     }
   }, [user?.uid, chatId])
 
-  // In CallScreen.js, replace the handleWebSocketMessage function with this:
-
   const handleWebSocketMessage = async (data) => {
+    console.log('📨 CallScreen received:', data.type)
+
     switch (data.type) {
       case 'user-joined':
+        // When remote user joins, create offer
         if (data.userId !== user?.uid) {
+          console.log('👤 Remote user joined, creating offer...')
           stopRingtones()
           clearRingTimer()
           await createOffer()
@@ -294,15 +368,18 @@ const CallScreen = () => {
         break
 
       case 'call-answered':
+      case 'call_accepted':
+        // Call was accepted by recipient
         if (data.from !== user?.uid) {
+          console.log('✅ Call accepted by recipient')
           stopRingtones()
           clearRingTimer()
           setCallStatus('connecting')
         }
         break
 
-      // ✅ NEW: Handle call rejection
       case 'call_rejected':
+      case 'call-rejected':
         console.log('📵 Call rejected by recipient')
         stopRingtones()
         clearRingTimer()
@@ -315,7 +392,6 @@ const CallScreen = () => {
           { cancelable: false }
         )
 
-        // Fallback navigation
         setTimeout(() => {
           navigation.goBack()
         }, 100)
@@ -323,47 +399,55 @@ const CallScreen = () => {
 
       case 'webrtc-offer':
         if (data.from !== user?.uid) {
+          console.log('📞 Received WebRTC offer')
           await handleOffer(data.offer)
         }
         break
 
       case 'webrtc-answer':
         if (data.from !== user?.uid) {
+          console.log('📞 Received WebRTC answer')
           await handleAnswer(data.answer)
         }
         break
 
       case 'webrtc-ice-candidate':
         if (data.from !== user?.uid) {
+          console.log('🧊 Received ICE candidate')
           await handleNewICECandidate(data.candidate)
         }
         break
 
       case 'user-left':
         if (data.userId === remoteUserId) {
-          handleEndCall()
+          handleCallEnded('User left the call')
         }
         break
 
-      // ✅ UPDATED: Handle call ended with better message
       case 'call-ended':
       case 'call_ended':
-        console.log('📵 Call ended by other user')
+        console.log('📵 Call ended:', data.reason)
         stopRingtones()
         clearRingTimer()
         cleanup()
 
-        const durationText = data.duration
-          ? `Call duration: ${Math.floor(data.duration / 60)}:${(
-              data.duration % 60
-            )
-              .toString()
-              .padStart(2, '0')}`
-          : 'The call has ended'
+        let endMessage = 'The call has ended'
+
+        if (data.reason === 'timeout') {
+          endMessage = 'Call was not answered'
+        } else if (data.reason === 'user_ended') {
+          endMessage = 'Call ended by other user'
+        } else if (data.duration) {
+          const mins = Math.floor(data.duration / 60)
+          const secs = data.duration % 60
+          endMessage = `Call duration: ${mins}:${secs
+            .toString()
+            .padStart(2, '0')}`
+        }
 
         Alert.alert(
           'Call Ended',
-          durationText,
+          endMessage,
           [{ text: 'OK', onPress: () => navigation.goBack() }],
           { cancelable: false }
         )
@@ -380,10 +464,28 @@ const CallScreen = () => {
         break
 
       default:
-        console.log('Unknown message type:', data.type)
+        console.log('⚠️ Unknown message type:', data.type)
     }
   }
 
+  // Add a helper function for call ended scenarios:
+  const handleCallEnded = (reason) => {
+    console.log('📵 Call ended:', reason)
+    stopRingtones()
+    clearRingTimer()
+    cleanup()
+
+    Alert.alert(
+      'Call Ended',
+      reason || 'The call has ended',
+      [{ text: 'OK', onPress: () => navigation.goBack() }],
+      { cancelable: false }
+    )
+
+    setTimeout(() => {
+      navigation.goBack()
+    }, 100)
+  }
   // Initialize media and WebRTC
   useEffect(() => {
     if (!isIncoming || callAnswered) {
@@ -815,26 +917,6 @@ const CallScreen = () => {
     }
   }
 
-  const handleEndCall = useCallback(() => {
-    console.log('🔴 Ending call')
-
-    stopRingtones()
-    clearRingTimer()
-
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'end-call',
-          chatId,
-          userId: user?.uid,
-        })
-      )
-    }
-
-    cleanup()
-    navigation.goBack()
-  }, [chatId, user?.uid, navigation])
-
   const cleanup = () => {
     stopRingtones()
     clearRingTimer()
@@ -1005,7 +1087,6 @@ const CallScreen = () => {
     )
   }
 
-  // Render incoming call UI
   if (isIncoming && !callAnswered) {
     return (
       <Container>
@@ -1019,7 +1100,8 @@ const CallScreen = () => {
           </IncomingCallType>
 
           <IncomingCallActions>
-            <DeclineButton onPress={handleEndCall}>
+            {/* ✅ Changed from handleEndCall to handleRejectCall */}
+            <DeclineButton onPress={handleRejectCall}>
               <Ionicons name="close" size={36} color="#fff" />
             </DeclineButton>
             <AcceptButton onPress={handleAnswerCall}>
@@ -1030,7 +1112,6 @@ const CallScreen = () => {
       </Container>
     )
   }
-
   return (
     <Container>
       <Header>

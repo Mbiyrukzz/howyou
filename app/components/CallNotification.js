@@ -113,14 +113,44 @@ const CallNotification = () => {
   }
 
   const handleRejectCall = async () => {
-    if (!incomingCall) return
+    console.log('📵 User rejecting call...')
+
+    stopRingtones()
+    clearRingTimer()
 
     try {
-      stopRingtone()
-      stopVibration()
-      await rejectCall(incomingCall.callId)
+      // Notify backend that call was rejected
+      const response = await fetch(
+        `http://localhost:5000/answer-call/${route.params?.callId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await user.getIdToken()}`,
+          },
+          body: JSON.stringify({ accepted: false }),
+        }
+      )
+
+      const data = await response.json()
+      console.log('✅ Backend notified of call rejection')
+
+      // Send WebSocket notification to caller
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'call-rejected',
+            from: user?.uid,
+            to: remoteUserId,
+            chatId,
+          })
+        )
+      }
     } catch (error) {
-      console.error('Error rejecting call:', error)
+      console.error('❌ Error rejecting call:', error)
+    } finally {
+      cleanup()
+      navigation.goBack()
     }
   }
 
