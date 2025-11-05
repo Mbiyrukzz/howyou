@@ -91,24 +91,38 @@ const CallbackButton = styled.TouchableOpacity`
 `
 
 const getCallIcon = (callType, status, direction) => {
-  if (status === 'missed' || status === 'rejected') {
+  const isVideo = callType === 'video'
+
+  // Missed calls - use arrow-down with X
+  if (status === 'missed') {
     return {
-      name: direction === 'incoming' ? 'call-outline' : 'call-outline',
+      name: isVideo ? 'videocam-off' : 'call-outline',
       color: '#e74c3c',
       size: 20,
     }
   }
 
-  if (callType === 'video') {
+  // Rejected calls - use close/block icon
+  if (status === 'rejected') {
     return {
-      name: 'videocam',
+      name: 'close-circle',
+      color: '#e67e22',
+      size: 20,
+    }
+  }
+
+  // Incoming calls - use arrow pointing down/in
+  if (direction === 'incoming') {
+    return {
+      name: isVideo ? 'videocam' : 'arrow-down-circle',
       color: '#27ae60',
       size: 20,
     }
   }
 
+  // Outgoing calls - use arrow pointing up/out
   return {
-    name: 'call',
+    name: isVideo ? 'videocam' : 'arrow-up-circle',
     color: '#3498db',
     size: 20,
   }

@@ -1679,6 +1679,15 @@ export default function ChatDetailScreen({ navigation, route }) {
     prevMessageCount.current = currentCount
   }, [messages.length])
 
+  const navigateToProfile = () => {
+    if (otherUser && otherUserId) {
+      navigation.navigate('ViewProfile', {
+        userId: otherUserId,
+        chatId: chatId,
+      })
+    }
+  }
+
   const handleBack = () => navigation.goBack()
 
   /* ---------- render item (message or call log) ---------- */
@@ -1790,33 +1799,46 @@ export default function ChatDetailScreen({ navigation, route }) {
         <BackButton onPress={handleBack}>
           <Ionicons name="arrow-back" size={24} color="#2c3e50" />
         </BackButton>
-        <HeaderAvatar color={chatInfo.color}>
-          {/* Add online indicator */}
-          {chatInfo.isOnline && (
-            <View
-              style={{
-                position: 'absolute',
-                bottom: 0,
-                right: 0,
-                width: 12,
-                height: 12,
-                borderRadius: 6,
-                backgroundColor: '#27ae60',
-                borderWidth: 2,
-                borderColor: '#fff',
-              }}
-            />
-          )}
-          <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
-        </HeaderAvatar>
-        <HeaderInfo>
-          <HeaderName>{chatInfo.name}</HeaderName>
-          <HeaderStatus
-            style={{ color: chatInfo.isOnline ? '#27ae60' : '#95a5a6' }}
-          >
-            {chatInfo.status}
-          </HeaderStatus>
-        </HeaderInfo>
+
+        {/* Make the header info clickable */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            flex: 1,
+          }}
+          onPress={navigateToProfile}
+          activeOpacity={0.7}
+        >
+          <HeaderAvatar color={chatInfo.color}>
+            {chatInfo.isOnline && (
+              <View
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  right: 0,
+                  width: 12,
+                  height: 12,
+                  borderRadius: 6,
+                  backgroundColor: '#27ae60',
+                  borderWidth: 2,
+                  borderColor: '#fff',
+                }}
+              />
+            )}
+            <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
+          </HeaderAvatar>
+
+          <HeaderInfo>
+            <HeaderName>{chatInfo.name}</HeaderName>
+            <HeaderStatus
+              style={{ color: chatInfo.isOnline ? '#27ae60' : '#95a5a6' }}
+            >
+              {chatInfo.status}
+            </HeaderStatus>
+          </HeaderInfo>
+        </TouchableOpacity>
+
         <HeaderActions>
           {/* Show connection indicator */}
           <View style={{ marginRight: 8 }}>
