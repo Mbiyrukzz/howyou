@@ -2,10 +2,10 @@ import React, { useEffect, useState, useCallback, useRef } from 'react'
 import ChatsContext from '../contexts/ChatsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
+import useWebSocket from '../hooks/useWebSocket'
 import { Alert, Platform } from 'react-native'
 
 const API_URL = 'http://localhost:5000'
-const WS_URL = 'ws://localhost:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -16,210 +16,127 @@ const ChatsProvider = ({ children }) => {
   const [calls, setCalls] = useState({})
   const [incomingCall, setIncomingCall] = useState(null)
   const [callNotification, setCallNotification] = useState(null)
-  const [wsConnected, setWsConnected] = useState(false)
   const [typingUsers, setTypingUsers] = useState({})
   const [userStatuses, setUserStatuses] = useState({})
   const [lastSeen, setLastSeen] = useState({})
 
   const { isReady, get, put, post, del } = useAuthedRequest()
   const { user } = useUser()
-  const wsRef = useRef(null)
-  const reconnectTimeoutRef = useRef(null)
-  const reconnectAttemptsRef = useRef(0)
   const typingTimeoutRef = useRef({})
-  const maxReconnectAttempts = 5
 
-  // WebSocket connection
-  useEffect(() => {
-    if (user?.uid && isReady) {
-      initializeWebSocket()
-    }
-    return () => {
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current)
-      }
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
-      Object.values(typingTimeoutRef.current).forEach(clearTimeout)
-    }
-  }, [user?.uid, isReady])
+  // Handle WebSocket messages
+  const handleWebSocketMessage = useCallback(
+    (data) => {
+      console.log('📨 WebSocket message received:', data.type)
 
-  const initializeWebSocket = () => {
-    try {
-      if (wsRef.current) {
-        wsRef.current.close()
-      }
+      switch (data.type) {
+        case 'connected':
+          console.log('✅ WebSocket connection confirmed')
+          if (data.onlineUsers) {
+            setOnlineUsers(new Set(data.onlineUsers))
+          }
+          break
 
-      const wsUrl = `${WS_URL}/notifications?userId=${user.uid}`
-      console.log('🔌 Connecting to WebSocket:', wsUrl)
+        case 'incoming_call':
+          handleIncomingCall(data)
+          break
 
-      wsRef.current = new WebSocket(wsUrl)
+        case 'call_ended':
+          handleCallEnded(data)
+          break
 
-      wsRef.current.onopen = () => {
-        console.log('✅ WebSocket connected successfully')
-        setWsConnected(true)
-        reconnectAttemptsRef.current = 0
-      }
+        case 'call_accepted':
+          console.log('📞 Call accepted by recipient')
+          break
 
-      wsRef.current.onmessage = (event) => {
-        try {
-          const data = JSON.parse(event.data)
-          handleWebSocketMessage(data)
-        } catch (error) {
-          console.error('❌ WebSocket message parse error:', error)
-        }
-      }
-
-      wsRef.current.onerror = (error) => {
-        console.error('❌ WebSocket error:', error)
-        setWsConnected(false)
-      }
-
-      wsRef.current.onclose = (event) => {
-        console.log('❌ WebSocket disconnected:', {
-          code: event.code,
-          reason: event.reason,
-          clean: event.wasClean,
-        })
-        setWsConnected(false)
-
-        if (reconnectAttemptsRef.current < maxReconnectAttempts) {
-          const delay = Math.min(
-            1000 * Math.pow(2, reconnectAttemptsRef.current),
-            30000
-          )
-          console.log(
-            `⏳ Reconnecting in ${delay}ms (attempt ${
-              reconnectAttemptsRef.current + 1
-            }/${maxReconnectAttempts})`
-          )
-
-          reconnectTimeoutRef.current = setTimeout(() => {
-            reconnectAttemptsRef.current++
-            if (user?.uid && isReady) {
-              initializeWebSocket()
-            }
-          }, delay)
-        } else {
-          console.error('❌ Max reconnection attempts reached')
+        case 'call_rejected':
+          console.log('📞 Call rejected by recipient')
+          setIncomingCall(null)
+          setCallNotification(null)
           Alert.alert(
-            'Connection Lost',
-            'Unable to connect to server. Please check your internet connection and restart the app.',
-            [{ text: 'OK' }]
+            'Call Declined',
+            `${data.recipientName || 'The other person'} declined your call`
           )
-        }
+          break
+
+        case 'user-last-seen':
+          handleLastSeenUpdate(data)
+          break
+
+        case 'new-message':
+          handleNewMessage(data)
+          break
+
+        case 'message-updated':
+          handleMessageUpdated(data)
+          break
+
+        case 'message-deleted':
+          handleMessageDeleted(data)
+          break
+
+        case 'message-delivered':
+          handleMessageDelivered(data)
+          break
+
+        case 'message-read':
+          handleMessageRead(data)
+          break
+
+        case 'typing':
+          handleTypingIndicator(data)
+          break
+
+        case 'typing-stopped':
+          handleTypingStopped(data)
+          break
+
+        case 'user-online':
+          handleUserOnline(data)
+          break
+
+        case 'user-offline':
+          handleUserOffline(data)
+          break
+
+        case 'user-status-updated':
+          handleUserStatusUpdate(data)
+          break
+
+        case 'ping':
+          // Handled automatically by useWebSocket
+          break
+
+        case 'pong':
+          // Handled automatically by useWebSocket
+          break
+
+        case 'error':
+          console.error('❌ Server error:', data.message)
+          break
+
+        default:
+          console.log('⚠️ Unknown WebSocket message type:', data.type)
       }
-    } catch (error) {
-      console.error('❌ WebSocket initialization error:', error)
-      setWsConnected(false)
-    }
-  }
+    },
+    [user?.uid]
+  )
 
-  const handleWebSocketMessage = (data) => {
-    console.log('📨 WebSocket message received:', data.type)
-    console.log('📦 Full payload:', JSON.stringify(data, null, 2))
+  // Initialize WebSocket with the custom hook
+  const {
+    isConnected: wsConnected,
+    connectionState,
+    send: wsSend,
+    reconnect: wsReconnect,
+  } = useWebSocket({
+    userId: user?.uid,
+    endpoint: '/notifications',
+    onMessage: handleWebSocketMessage,
+    enabled: !!user?.uid && isReady,
+  })
 
-    switch (data.type) {
-      case 'connected':
-        console.log('✅ WebSocket connection confirmed')
-        if (data.onlineUsers) {
-          setOnlineUsers(new Set(data.onlineUsers))
-        }
-        break
-
-      case 'incoming_call':
-        handleIncomingCall(data)
-        break
-
-      case 'call_ended':
-        handleCallEnded(data)
-        break
-
-      case 'call_accepted':
-        console.log('📞 Call accepted by recipient')
-        break
-
-      case 'call_rejected':
-        console.log('📞 Call rejected by recipient')
-        setIncomingCall(null)
-        setCallNotification(null)
-        Alert.alert(
-          'Call Declined',
-          `${data.recipientName || 'The other person'} declined your call`
-        )
-        break
-
-      case 'user-last-seen':
-        handleLastSeenUpdate(data)
-        break
-
-      case 'new-message':
-        handleNewMessage(data)
-        break
-
-      case 'message-updated':
-        console.log('✏️ Handling message-updated event')
-        console.log('  - chatId:', data.chatId)
-        console.log('  - messageId:', data.messageId)
-        console.log('  - message:', data.message)
-        handleMessageUpdated(data)
-        break
-
-      case 'message-deleted':
-        console.log('🗑️ Handling message-deleted event')
-        console.log('  - chatId:', data.chatId)
-        console.log('  - messageId:', data.messageId)
-        handleMessageDeleted(data)
-        break
-
-      case 'message-delivered':
-        handleMessageDelivered(data)
-        break
-
-      case 'message-read':
-        handleMessageRead(data)
-        break
-
-      case 'typing':
-        handleTypingIndicator(data)
-        break
-
-      case 'typing-stopped':
-        handleTypingStopped(data)
-        break
-
-      case 'user-online':
-        handleUserOnline(data)
-        break
-
-      case 'user-offline':
-        handleUserOffline(data)
-        break
-
-      case 'user-status-updated':
-        handleUserStatusUpdate(data)
-        break
-
-      case 'ping':
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(JSON.stringify({ type: 'pong' }))
-        }
-        break
-
-      case 'pong':
-        break
-
-      case 'error':
-        console.error('❌ Server error:', data.message)
-        break
-
-      default:
-        console.log('⚠️ Unknown WebSocket message type:', data.type)
-    }
-  }
-
-  const handleIncomingCall = (callData) => {
+  // Message handlers
+  const handleIncomingCall = useCallback((callData) => {
     console.log('📞 Incoming call notification:', callData)
 
     setIncomingCall(callData)
@@ -233,107 +150,87 @@ const ChatsProvider = ({ children }) => {
     })
 
     setTimeout(() => {
-      if (incomingCall?.callId === callData.callId) {
-        setCallNotification(null)
-        setIncomingCall(null)
-        rejectCall(callData.callId)
-      }
+      setIncomingCall((current) => {
+        if (current?.callId === callData.callId) {
+          setCallNotification(null)
+          rejectCall(callData.callId)
+          return null
+        }
+        return current
+      })
     }, 40000)
-  }
+  }, [])
 
-  const handleCallEnded = (data) => {
+  const handleCallEnded = useCallback((data) => {
     console.log('📞 Call ended notification:', data)
     setIncomingCall(null)
     setCallNotification(null)
-
     Alert.alert('Call Ended', `Call ended after ${data.duration || 0} seconds`)
-  }
+  }, [])
 
-  const handleNewMessage = (messageData) => {
-    console.log('💬 New message received via WebSocket:', messageData)
-    const { chatId, message, senderId } = messageData
+  const handleNewMessage = useCallback(
+    (messageData) => {
+      const { chatId, message, senderId } = messageData
 
-    // Skip if this is our own message (already added when sending)
-    if (senderId === user?.uid) {
-      console.log('⏭️ Skipping own message (already in state)')
-      return
-    }
+      if (senderId === user?.uid) {
+        console.log('⏭️ Skipping own message (already in state)')
+        return
+      }
 
-    console.log('💬 Processing message for chatId:', chatId)
-    console.log('💬 Message content:', message.content)
+      setMessages((prevMessages) => {
+        const existingMessages = prevMessages[chatId] || []
+        const messageId = message._id || message.id
+        const isDuplicate = existingMessages.some(
+          (msg) => (msg._id || msg.id) === messageId
+        )
 
-    // ✅ Use functional update to avoid stale state
-    setMessages((prevMessages) => {
-      const existingMessages = prevMessages[chatId] || []
+        if (isDuplicate) {
+          console.log('⚠️ Duplicate message detected, skipping')
+          return prevMessages
+        }
 
-      // Check if message already exists (prevent duplicates)
-      const messageId = message._id || message.id
-      const isDuplicate = existingMessages.some(
-        (msg) => (msg._id || msg.id) === messageId
+        return {
+          ...prevMessages,
+          [chatId]: [...existingMessages, message],
+        }
+      })
+
+      setChats((prevChats) =>
+        prevChats.map((chat) =>
+          (chat._id || chat.id) === chatId
+            ? {
+                ...chat,
+                lastMessage: message.content || 'Sent an attachment',
+                lastActivity: message.createdAt,
+              }
+            : chat
+        )
       )
 
-      if (isDuplicate) {
-        console.log('⚠️ Duplicate message detected, skipping')
-        return prevMessages
-      }
+      setTypingUsers((prev) => {
+        const chatTyping = prev[chatId] || []
+        return {
+          ...prev,
+          [chatId]: chatTyping.filter((uid) => uid !== senderId),
+        }
+      })
+    },
+    [user?.uid]
+  )
 
-      console.log('✅ Adding new message to state')
-      const updated = {
-        ...prevMessages,
-        [chatId]: [...existingMessages, message],
-      }
-
-      console.log('💬 Updated messages count:', updated[chatId].length)
-      return updated
-    })
-
-    // Update chat's last message
-    setChats((prevChats) =>
-      prevChats.map((chat) =>
-        (chat._id || chat.id) === chatId
-          ? {
-              ...chat,
-              lastMessage: message.content || 'Sent an attachment',
-              lastActivity: message.createdAt,
-            }
-          : chat
-      )
-    )
-
-    // Stop typing indicator for sender
-    setTypingUsers((prev) => {
-      const chatTyping = prev[chatId] || []
-      return {
-        ...prev,
-        [chatId]: chatTyping.filter((uid) => uid !== senderId),
-      }
-    })
-  }
-
-  const handleMessageUpdated = (data) => {
-    console.log('✏️ Message updated via WebSocket:', data)
+  const handleMessageUpdated = useCallback((data) => {
     const { chatId, messageId, message } = data
 
     if (!chatId || !messageId || !message) {
-      console.error('❌ Missing required fields:', {
-        chatId,
-        messageId,
-        message,
-      })
+      console.error('❌ Missing required fields for message update')
       return
     }
 
-    console.log('🔄 Updating message in state...')
-
-    // Update messages in state
     setMessages((prevMessages) => {
       const chatMessages = prevMessages[chatId] || []
-      console.log(`  - Current messages in chat: ${chatMessages.length}`)
-
       const updatedMessages = chatMessages.map((msg) => {
         const msgId = msg._id || msg.id
         if (msgId === messageId || msgId === message._id) {
-          console.log(`  ✅ Found and updating message: ${msgId}`)
           return {
             ...msg,
             content: message.content,
@@ -343,85 +240,53 @@ const ChatsProvider = ({ children }) => {
         return msg
       })
 
-      const wasUpdated = updatedMessages.some(
-        (msg) =>
-          (msg._id || msg.id) === messageId && msg.content === message.content
-      )
-      console.log(`  - Update successful: ${wasUpdated}`)
-
       return {
         ...prevMessages,
         [chatId]: updatedMessages,
       }
     })
+  }, [])
 
-    // Update chat's last message if needed
-    setChats((prevChats) =>
-      prevChats.map((chat) => {
-        if ((chat._id || chat.id) === chatId) {
-          const chatMessages = messages[chatId] || []
-          if (chatMessages.length > 0) {
-            const lastMsg = chatMessages[chatMessages.length - 1]
-            const lastMsgId = lastMsg._id || lastMsg.id
+  const handleMessageDeleted = useCallback(
+    (data) => {
+      const { chatId, messageId } = data
 
-            if (lastMsgId === messageId) {
-              console.log(`  ✅ Updating last message in chat list`)
+      setMessages((prev) => {
+        const updated = { ...prev }
+        if (updated[chatId]) {
+          updated[chatId] = updated[chatId].filter(
+            (msg) => (msg._id || msg.id) !== messageId
+          )
+        }
+        return updated
+      })
+
+      setChats((prev) =>
+        prev.map((chat) => {
+          if ((chat._id || chat.id) === chatId) {
+            const remaining =
+              messages[chatId]?.filter((m) => (m._id || m.id) !== messageId) ||
+              []
+            if (remaining.length > 0) {
+              const last = remaining[remaining.length - 1]
               return {
                 ...chat,
-                lastMessage: message.content.substring(0, 50),
-                lastActivity: message.updatedAt || new Date(),
+                lastMessage:
+                  last.content?.substring(0, 50) || 'Sent an attachment',
+                lastActivity: last.createdAt,
               }
             }
-          }
-        }
-        return chat
-      })
-    )
-  }
-
-  const handleMessageDeleted = (data) => {
-    const { chatId, messageId } = data
-
-    console.log('handleMessageDeleted:', { chatId, messageId })
-
-    // Use functional update
-    setMessages((prev) => {
-      const updated = { ...prev }
-      if (updated[chatId]) {
-        updated[chatId] = updated[chatId].filter(
-          (msg) => (msg._id || msg.id) !== messageId
-        )
-      }
-      return updated
-    })
-
-    // Update chat preview
-    setChats((prev) =>
-      prev.map((chat) => {
-        if ((chat._id || chat.id) === chatId) {
-          const remaining =
-            messages[chatId]?.filter((m) => (m._id || m.id) !== messageId) || []
-          if (remaining.length > 0) {
-            const last = remaining[remaining.length - 1]
-            return {
-              ...chat,
-              lastMessage:
-                last.content?.substring(0, 50) || 'Sent an attachment',
-              lastActivity: last.createdAt,
-            }
-          } else {
             return { ...chat, lastMessage: '', lastActivity: new Date() }
           }
-        }
-        return chat
-      })
-    )
-  }
+          return chat
+        })
+      )
+    },
+    [messages]
+  )
 
-  const handleMessageDelivered = (data) => {
-    console.log('✓ Message delivered:', data.messageId)
+  const handleMessageDelivered = useCallback((data) => {
     const { chatId, messageId } = data
-
     setMessages((prev) => ({
       ...prev,
       [chatId]: (prev[chatId] || []).map((msg) =>
@@ -430,12 +295,10 @@ const ChatsProvider = ({ children }) => {
           : msg
       ),
     }))
-  }
+  }, [])
 
-  const handleMessageRead = (data) => {
-    console.log('✓✓ Message read:', data.messageId)
+  const handleMessageRead = useCallback((data) => {
     const { chatId, messageId } = data
-
     setMessages((prev) => ({
       ...prev,
       [chatId]: (prev[chatId] || []).map((msg) =>
@@ -444,21 +307,19 @@ const ChatsProvider = ({ children }) => {
           : msg
       ),
     }))
-  }
+  }, [])
 
-  const handleLastSeenUpdate = (data) => {
-    console.log(`👁️ User ${data.userId} last seen updated`)
+  const handleLastSeenUpdate = useCallback((data) => {
     setLastSeen((prev) => ({
       ...prev,
       [data.userId]: data.timestamp,
     }))
-  }
+  }, [])
 
-  const handleTypingIndicator = (data) => {
+  const handleTypingIndicator = useCallback((data) => {
     const { userId, chatId, isTyping } = data
 
     if (isTyping) {
-      console.log(`⌨️ User ${userId} is typing in chat ${chatId}`)
       setTypingUsers((prev) => {
         const chatTyping = prev[chatId] || []
         if (!chatTyping.includes(userId)) {
@@ -467,26 +328,23 @@ const ChatsProvider = ({ children }) => {
         return prev
       })
     } else {
-      console.log(`⌨️ User ${userId} stopped typing in chat ${chatId}`)
       setTypingUsers((prev) => ({
         ...prev,
         [chatId]: (prev[chatId] || []).filter((uid) => uid !== userId),
       }))
     }
-  }
+  }, [])
 
-  const handleTypingStopped = (data) => {
+  const handleTypingStopped = useCallback((data) => {
     const { userId, chatId } = data
     setTypingUsers((prev) => ({
       ...prev,
       [chatId]: (prev[chatId] || []).filter((uid) => uid !== userId),
     }))
-  }
+  }, [])
 
-  const handleUserOnline = (data) => {
-    console.log(`🟢 User ${data.userId} is online`)
+  const handleUserOnline = useCallback((data) => {
     setOnlineUsers((prev) => new Set([...prev, data.userId]))
-
     setUsers((prev) =>
       prev.map((u) =>
         u.firebaseUid === data.userId || u._id === data.userId
@@ -494,16 +352,14 @@ const ChatsProvider = ({ children }) => {
           : u
       )
     )
-  }
+  }, [])
 
-  const handleUserOffline = (data) => {
-    console.log(`🔴 User ${data.userId} is offline`)
+  const handleUserOffline = useCallback((data) => {
     setOnlineUsers((prev) => {
       const updated = new Set(prev)
       updated.delete(data.userId)
       return updated
     })
-
     setUsers((prev) =>
       prev.map((u) =>
         u.firebaseUid === data.userId || u._id === data.userId
@@ -511,10 +367,9 @@ const ChatsProvider = ({ children }) => {
           : u
       )
     )
-  }
+  }, [])
 
-  const handleUserStatusUpdate = (data) => {
-    console.log(`📍 User ${data.userId} status updated:`, data.status)
+  const handleUserStatusUpdate = useCallback((data) => {
     setUserStatuses((prev) => ({
       ...prev,
       [data.userId]: {
@@ -523,67 +378,9 @@ const ChatsProvider = ({ children }) => {
         timestamp: data.timestamp,
       },
     }))
-  }
-
-  const sendTypingIndicator = useCallback(
-    (chatId, isTyping) => {
-      if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-        return
-      }
-
-      const chat = chats.find((c) => (c._id || c.id) === chatId)
-      if (!chat) return
-
-      const message = {
-        type: isTyping ? 'typing-start' : 'typing-stop',
-        chatId,
-        participants: chat.participants,
-      }
-
-      wsRef.current.send(JSON.stringify(message))
-
-      if (isTyping) {
-        if (typingTimeoutRef.current[chatId]) {
-          clearTimeout(typingTimeoutRef.current[chatId])
-        }
-
-        typingTimeoutRef.current[chatId] = setTimeout(() => {
-          sendTypingIndicator(chatId, false)
-        }, 5000)
-      }
-    },
-    [chats]
-  )
-
-  const getTypingUsersForChat = useCallback(
-    (chatId) => {
-      const typingUserIds = typingUsers[chatId] || []
-      return typingUserIds.map((userId) => findUserById(userId)).filter(Boolean)
-    },
-    [typingUsers, users]
-  )
-
-  const updateUserStatus = useCallback((status, customMessage = '') => {
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
-      return
-    }
-
-    wsRef.current.send(
-      JSON.stringify({
-        type: 'update-status',
-        status,
-        customMessage,
-      })
-    )
   }, [])
 
-  const getUserStatus = useCallback(
-    (userId) => {
-      return userStatuses[userId] || { status: 'offline', customMessage: '' }
-    },
-    [userStatuses]
-  )
-
+  // API Methods
   const loadChats = useCallback(async () => {
     if (!isReady) return
     try {
@@ -594,6 +391,24 @@ const ChatsProvider = ({ children }) => {
       console.error('Failed to load chats:', error)
     } finally {
       setLoading(false)
+    }
+  }, [get, isReady])
+
+  const loadUsers = useCallback(async () => {
+    if (!isReady) return
+    try {
+      const data = await get(`${API_URL}/list-users`)
+      setUsers(data)
+
+      const lastSeenData = {}
+      data.forEach((user) => {
+        if (user.lastSeen) {
+          lastSeenData[user.firebaseUid || user._id] = user.lastSeen
+        }
+      })
+      setLastSeen(lastSeenData)
+    } catch (error) {
+      console.error('Failed to load users:', error)
     }
   }, [get, isReady])
 
@@ -616,65 +431,6 @@ const ChatsProvider = ({ children }) => {
     },
     [isReady, post, user?.uid]
   )
-
-  const loadLastSeenData = useCallback(async () => {
-    if (!isReady) return
-
-    try {
-      const data = await get(`${API_URL}/list-users`)
-
-      // Extract last seen from users
-      const lastSeenData = {}
-      data.forEach((user) => {
-        if (user.lastSeen) {
-          lastSeenData[user.firebaseUid || user._id] = user.lastSeen
-        }
-      })
-
-      setLastSeen(lastSeenData)
-      console.log(
-        '👁️ Loaded last seen data for',
-        Object.keys(lastSeenData).length,
-        'users'
-      )
-    } catch (error) {
-      console.error('Failed to load last seen:', error)
-    }
-  }, [get, isReady])
-
-  // 2. Update loadUsers to also load last seen
-  const loadUsers = useCallback(async () => {
-    if (!isReady) return
-    try {
-      const data = await get(`${API_URL}/list-users`)
-      setUsers(data)
-
-      // ✅ Also extract and set last seen
-      const lastSeenData = {}
-      data.forEach((user) => {
-        if (user.lastSeen) {
-          lastSeenData[user.firebaseUid || user._id] = user.lastSeen
-        }
-      })
-      setLastSeen(lastSeenData)
-
-      console.log(
-        '👁️ Loaded last seen for',
-        Object.keys(lastSeenData).length,
-        'users'
-      )
-    } catch (error) {
-      console.error('Failed to load users:', error)
-    }
-  }, [get, isReady])
-
-  // Make sure this runs on mount
-  useEffect(() => {
-    if (isReady) {
-      loadChats()
-      loadUsers() // This now also loads last seen
-    }
-  }, [isReady, loadChats, loadUsers])
 
   const deleteChat = useCallback(
     async (chatId) => {
@@ -727,37 +483,6 @@ const ChatsProvider = ({ children }) => {
       }
     },
     [get, isReady]
-  )
-
-  const updateLastSeen = useCallback(
-    async (chatId) => {
-      if (!isReady || !user?.uid) return
-
-      try {
-        await post(`${API_URL}/update-last-seen/${chatId}`)
-
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          const chat = chats.find((c) => (c._id || c.id) === chatId)
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'update-last-seen',
-              chatId,
-              participants: chat?.participants || [],
-            })
-          )
-        }
-      } catch (error) {
-        console.error('Failed to update last seen:', error)
-      }
-    },
-    [isReady, post, user?.uid, chats]
-  )
-
-  const getLastSeen = useCallback(
-    (userId) => {
-      return lastSeen[userId] || null
-    },
-    [lastSeen]
   )
 
   const sendMessage = useCallback(
@@ -858,21 +583,17 @@ const ChatsProvider = ({ children }) => {
             [chatId]: [...(prev[chatId] || []), data.message],
           }))
 
-          if (wsRef.current?.readyState === WebSocket.OPEN) {
-            const chat = chats.find((c) => (c._id || c.id) === chatId)
-            wsRef.current.send(
-              JSON.stringify({
-                type: 'new-message',
-                chatId,
-                message: data.message,
-                participants: chat?.participants || [],
-              })
-            )
+          const chat = chats.find((c) => (c._id || c.id) === chatId)
+          if (chat) {
+            wsSend({
+              type: 'new-message',
+              chatId,
+              message: data.message,
+              participants: chat.participants || [],
+            })
           }
 
           sendTypingIndicator(chatId, false)
-
-          // Update last seen after sending message
           await updateLastSeen(chatId)
         }
 
@@ -885,8 +606,9 @@ const ChatsProvider = ({ children }) => {
         }
       }
     },
-    [isReady, post, user, chats, sendTypingIndicator, updateLastSeen]
+    [isReady, post, user, chats, wsSend]
   )
+
   const updateMessage = useCallback(
     async (messageId, chatId, content) => {
       if (!isReady || !user?.uid) {
@@ -933,7 +655,6 @@ const ChatsProvider = ({ children }) => {
 
       try {
         const response = await del(`${API_URL}/delete-message/${messageId}`)
-        console.log('deleteMessage response:', response)
 
         if (response.success) {
           setMessages((prev) => ({
@@ -943,7 +664,6 @@ const ChatsProvider = ({ children }) => {
             ),
           }))
 
-          // Update chat preview
           setChats((prev) =>
             prev.map((chat) => {
               if ((chat._id || chat.id) !== chatId) return chat
@@ -970,12 +690,64 @@ const ChatsProvider = ({ children }) => {
         return { success: false, error: error.message || 'Failed to delete' }
       }
     },
-    [isReady, del, user?.uid] // No messages dependency
+    [isReady, del, user?.uid, messages]
   )
 
-  const getMessagesForChat = useCallback(
-    (chatId) => messages[chatId] || [],
-    [messages]
+  const updateLastSeen = useCallback(
+    async (chatId) => {
+      if (!isReady || !user?.uid) return
+
+      try {
+        await post(`${API_URL}/update-last-seen/${chatId}`)
+
+        const chat = chats.find((c) => (c._id || c.id) === chatId)
+        if (chat) {
+          wsSend({
+            type: 'update-last-seen',
+            chatId,
+            participants: chat.participants || [],
+          })
+        }
+      } catch (error) {
+        console.error('Failed to update last seen:', error)
+      }
+    },
+    [isReady, post, user?.uid, chats, wsSend]
+  )
+
+  const sendTypingIndicator = useCallback(
+    (chatId, isTyping) => {
+      const chat = chats.find((c) => (c._id || c.id) === chatId)
+      if (!chat) return
+
+      wsSend({
+        type: isTyping ? 'typing-start' : 'typing-stop',
+        chatId,
+        participants: chat.participants,
+      })
+
+      if (isTyping) {
+        if (typingTimeoutRef.current[chatId]) {
+          clearTimeout(typingTimeoutRef.current[chatId])
+        }
+
+        typingTimeoutRef.current[chatId] = setTimeout(() => {
+          sendTypingIndicator(chatId, false)
+        }, 5000)
+      }
+    },
+    [chats, wsSend]
+  )
+
+  const updateUserStatus = useCallback(
+    (status, customMessage = '') => {
+      wsSend({
+        type: 'update-status',
+        status,
+        customMessage,
+      })
+    },
+    [wsSend]
   )
 
   const initiateCall = useCallback(
@@ -1057,10 +829,8 @@ const ChatsProvider = ({ children }) => {
 
       try {
         const data = await post(`${API_URL}/end-call/${callId}`)
-
         setIncomingCall(null)
         setCallNotification(null)
-
         return data
       } catch (error) {
         console.error('endCall error:', error)
@@ -1088,9 +858,42 @@ const ChatsProvider = ({ children }) => {
     [get, isReady]
   )
 
-  const dismissCallNotification = useCallback(() => {
-    setCallNotification(null)
-  }, [])
+  // Utility functions
+  const getMessagesForChat = useCallback(
+    (chatId) => messages[chatId] || [],
+    [messages]
+  )
+
+  const getTypingUsersForChat = useCallback(
+    (chatId) => {
+      const typingUserIds = typingUsers[chatId] || []
+      return typingUserIds
+        .map((userId) => {
+          return users.find(
+            (u) =>
+              u.firebaseUid === userId ||
+              (u._id && u._id.toString()) === userId ||
+              (u.id && u.id.toString()) === userId
+          )
+        })
+        .filter(Boolean)
+    },
+    [typingUsers, users]
+  )
+
+  const getUserStatus = useCallback(
+    (userId) => {
+      return userStatuses[userId] || { status: 'offline', customMessage: '' }
+    },
+    [userStatuses]
+  )
+
+  const getLastSeen = useCallback(
+    (userId) => {
+      return lastSeen[userId] || null
+    },
+    [lastSeen]
+  )
 
   const findUserById = useCallback(
     (userId) => {
@@ -1133,12 +936,24 @@ const ChatsProvider = ({ children }) => {
     [onlineUsers]
   )
 
+  const dismissCallNotification = useCallback(() => {
+    setCallNotification(null)
+  }, [])
+
+  // Load initial data
   useEffect(() => {
     if (isReady) {
       loadChats()
       loadUsers()
     }
   }, [isReady, loadChats, loadUsers])
+
+  // Cleanup typing timeouts on unmount
+  useEffect(() => {
+    return () => {
+      Object.values(typingTimeoutRef.current).forEach(clearTimeout)
+    }
+  }, [])
 
   const contextValue = {
     chats,
@@ -1148,7 +963,9 @@ const ChatsProvider = ({ children }) => {
     calls,
     incomingCall,
     callNotification,
+    wsSend,
     wsConnected,
+    connectionState,
     typingUsers,
     onlineUsers,
     userStatuses,
@@ -1167,7 +984,6 @@ const ChatsProvider = ({ children }) => {
 
     updateLastSeen,
     getLastSeen,
-    loadLastSeenData,
 
     initiateCall,
     answerCall,
@@ -1186,6 +1002,8 @@ const ChatsProvider = ({ children }) => {
     getChatParticipants,
     getUnreadMessageCount,
     isUserOnline,
+
+    wsReconnect, // New: expose manual reconnect function
   }
 
   return (

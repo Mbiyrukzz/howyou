@@ -72,6 +72,7 @@ const CallScreen = () => {
   const [isConnected, setIsConnected] = useState(false)
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [callAnswered, setCallAnswered] = useState(!isIncoming)
+  const [callWsConnected, setCallWsConnected] = useState(false)
 
   // Refs
   const wsRef = useRef(null)
@@ -191,43 +192,50 @@ const CallScreen = () => {
     }
   }
 
-  // In CallScreen.js, replace the handleCallTimeout function:
+  const handleRejectCall = useCallback(async () => {
+    console.log('📵 User rejecting call...')
 
-  const handleCallTimeout = useCallback(() => {
-    console.log('⏰ Handling call timeout')
     stopRingtones()
     clearRingTimer()
 
-    // Send end call signal with timeout reason
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'end-call',
-          chatId,
-          userId: user?.uid,
-          remoteUserId, // ← Add this
-          reason: 'timeout',
-        })
+    try {
+      // ✅ Notify backend that call was rejected
+      const response = await fetch(
+        `http://localhost:5000/answer-call/${route.params?.callId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await user.getIdToken()}`,
+          },
+          body: JSON.stringify({ accepted: false }),
+        }
       )
+
+      const data = await response.json()
+      console.log('✅ Call rejection sent:', data)
+
+      // Send WebSocket notification to caller
+      if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(
+          JSON.stringify({
+            type: 'end-call',
+            chatId,
+            userId: user?.uid,
+            remoteUserId,
+            reason: 'rejected',
+          })
+        )
+      }
+    } catch (error) {
+      console.error('❌ Error rejecting call:', error)
     }
 
     cleanup()
+    navigation.goBack()
+  }, [route.params?.callId, user, chatId, remoteUserId, navigation])
 
-    // Show alert and navigate back
-    Alert.alert(
-      'Call Ended',
-      'No answer',
-      [{ text: 'OK', onPress: () => navigation.goBack() }],
-      { cancelable: false }
-    )
-
-    // Fallback navigation
-    setTimeout(() => {
-      navigation.goBack()
-    }, 100)
-  }, [chatId, user?.uid, remoteUserId, navigation])
-
-  // Also update the handleEndCall function to include remoteUserId:
+  // Update handleEndCall to use proper reason:
   const handleEndCall = useCallback(() => {
     console.log('🔴 Ending call')
 
@@ -240,14 +248,50 @@ const CallScreen = () => {
           type: 'end-call',
           chatId,
           userId: user?.uid,
-          remoteUserId, // ← Add this
-          reason: 'user_ended',
+          remoteUserId,
+          reason: callAnswered ? 'user_ended' : 'cancelled',
         })
       )
     }
 
     cleanup()
-    navigation.goBack()
+
+    // Small delay to ensure cleanup completes
+    setTimeout(() => {
+      navigation.goBack()
+    }, 100)
+  }, [chatId, user?.uid, remoteUserId, callAnswered, navigation])
+
+  // Update handleCallTimeout:
+  const handleCallTimeout = useCallback(() => {
+    console.log('⏰ Handling call timeout')
+    stopRingtones()
+    clearRingTimer()
+
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(
+        JSON.stringify({
+          type: 'end-call',
+          chatId,
+          userId: user?.uid,
+          remoteUserId,
+          reason: 'timeout',
+        })
+      )
+    }
+
+    cleanup()
+
+    Alert.alert(
+      'Call Ended',
+      'No answer',
+      [{ text: 'OK', onPress: () => navigation.goBack() }],
+      { cancelable: false }
+    )
+
+    setTimeout(() => {
+      navigation.goBack()
+    }, 100)
   }, [chatId, user?.uid, remoteUserId, navigation])
 
   const handleAnswerCall = async () => {
@@ -304,23 +348,26 @@ const CallScreen = () => {
     }
   }
 
-  // Initialize WebSocket connection
   useEffect(() => {
     if (!user?.uid || !chatId) {
       console.warn(
-        '🕓 Waiting for user or chatId before connecting WebSocket...'
+        '🕓 Waiting for user or chatId before connecting call WebSocket...'
       )
       return
     }
 
     const wsUrl = `${SIGNALING_URL}?userId=${user.uid}&chatId=${chatId}`
-    console.log('🔌 Connecting WebSocket to:', wsUrl)
+    console.log('🔌 Connecting call WebSocket to:', wsUrl)
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
+    // Flag to track intentional close
+    let intentionalClose = false
+
     ws.onopen = () => {
-      console.log('✅ WebSocket connected')
+      console.log('✅ Call WebSocket connected')
+      setCallWsConnected(true)
       ws.send(
         JSON.stringify({
           type: 'join-call',
@@ -335,24 +382,46 @@ const CallScreen = () => {
         const data = JSON.parse(event.data)
         await handleWebSocketMessage(data)
       } catch (error) {
-        console.error('❌ WebSocket message error:', error)
+        console.error('❌ Call WebSocket message error:', error)
       }
     }
 
     ws.onerror = (error) => {
-      console.error('❌ WebSocket error:', error)
-      Alert.alert('Connection Error', 'Failed to connect to call server')
+      console.error('❌ Call WebSocket error:', error)
+      setCallWsConnected(false)
     }
 
-    ws.onclose = () => {
-      console.log('🔴 WebSocket disconnected')
+    ws.onclose = (event) => {
+      console.log('🔴 Call WebSocket disconnected:', {
+        code: event.code,
+        reason: event.reason,
+        clean: event.wasClean,
+        intentional: intentionalClose,
+      })
+      setCallWsConnected(false)
+
+      // Only show alert if it wasn't an intentional close
+      if (!intentionalClose && event.code !== 1000) {
+        Alert.alert(
+          'Connection Lost',
+          'Call connection was lost. Please try again.',
+          [{ text: 'OK', onPress: () => navigation.goBack() }]
+        )
+      }
     }
 
+    // Cleanup function
     return () => {
-      ws.close()
+      console.log('🧹 Cleaning up call WebSocket')
+      intentionalClose = true // Mark as intentional
+      if (
+        ws.readyState === WebSocket.OPEN ||
+        ws.readyState === WebSocket.CONNECTING
+      ) {
+        ws.close(1000, 'Component unmount')
+      }
     }
-  }, [user?.uid, chatId])
-
+  }, [user?.uid, chatId, navigation])
   const handleWebSocketMessage = async (data) => {
     console.log('📨 CallScreen received:', data.type)
 
@@ -918,6 +987,8 @@ const CallScreen = () => {
   }
 
   const cleanup = () => {
+    console.log('🧹 Starting cleanup...')
+
     stopRingtones()
     clearRingTimer()
 
@@ -927,22 +998,33 @@ const CallScreen = () => {
     }
 
     if (localStreamRef.current) {
-      localStreamRef.current.getTracks().forEach((track) => track.stop())
+      localStreamRef.current.getTracks().forEach((track) => {
+        track.stop()
+        console.log('🎥 Stopped track:', track.kind)
+      })
       localStreamRef.current = null
     }
 
     if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((track) => track.stop())
+      screenStreamRef.current.getTracks().forEach((track) => {
+        track.stop()
+        console.log('📺 Stopped screen share track')
+      })
       screenStreamRef.current = null
     }
 
     if (pcRef.current) {
       pcRef.current.close()
       pcRef.current = null
+      console.log('📞 Closed peer connection')
     }
 
+    // Close WebSocket with proper code
     if (wsRef.current) {
-      wsRef.current.close()
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close(1000, 'Call ended')
+        console.log('🔌 Closed call WebSocket')
+      }
       wsRef.current = null
     }
 
@@ -958,8 +1040,10 @@ const CallScreen = () => {
     setRemoteStream(null)
     setIsConnected(false)
     setIsScreenSharing(false)
-  }
+    setCallWsConnected(false)
 
+    console.log('✅ Cleanup complete')
+  }
   const formatCallDuration = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60

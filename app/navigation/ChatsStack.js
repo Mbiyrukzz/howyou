@@ -32,7 +32,7 @@ export default function ChatsStack() {
       <Stack.Screen
         name="NewChats"
         component={NewChatScreen}
-        options={{ title: 'New Chat' }}
+        options={{ headerShown: false }}
       />
 
       <Stack.Screen
