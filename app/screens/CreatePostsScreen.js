@@ -1,4 +1,4 @@
-// screens/CreatePostScreen.js
+// screens/CreatePostScreen.js - Fixed navigation
 import { useState } from 'react'
 import {
   View,
@@ -412,6 +412,7 @@ export default function CreatePostScreen({ navigation, route }) {
 
     try {
       setLoading(true)
+      console.log('🚀 Starting post creation...')
 
       // Convert images to the format expected by createPost
       const fileObjects = images.map((img, index) => ({
@@ -421,17 +422,30 @@ export default function CreatePostScreen({ navigation, route }) {
         file: img.file, // For web
       }))
 
+      console.log('📤 Sending post with:', {
+        contentLength: content.length,
+        filesCount: fileObjects.length,
+      })
+
       await createPost(content, fileObjects)
 
-      Alert.alert('Success', 'Post created successfully!', [
-        {
-          text: 'OK',
-          onPress: () => navigation.goBack(),
-        },
-      ])
+      console.log('✅ Post created successfully')
+
+      // ✅ Navigate back immediately without Alert
+      navigation.goBack()
     } catch (error) {
-      console.error('Failed to create post:', error)
-      Alert.alert('Error', error.message || 'Failed to create post')
+      console.error('❌ Failed to create post:', error)
+
+      // Only show alert on error
+      if (error.status === 429 || error.message?.includes('Daily limit')) {
+        Alert.alert(
+          'Daily Limit Reached',
+          'You can only post 5 posts per day. Try again tomorrow!',
+          [{ text: 'OK' }]
+        )
+      } else {
+        Alert.alert('Error', error.message || 'Failed to create post')
+      }
     } finally {
       setLoading(false)
     }
@@ -449,7 +463,11 @@ export default function CreatePostScreen({ navigation, route }) {
       <Container>
         <Header>
           <HeaderContent>
-            <HeaderButton cancel onPress={() => navigation.goBack()}>
+            <HeaderButton
+              cancel
+              onPress={() => navigation.goBack()}
+              disabled={loading}
+            >
               <HeaderButtonText>Cancel</HeaderButtonText>
             </HeaderButton>
 
@@ -489,6 +507,7 @@ export default function CreatePostScreen({ navigation, route }) {
               onChangeText={setContent}
               maxLength={MAX_CHAR_LIMIT}
               autoFocus
+              editable={!loading}
             />
           </TextInputContainer>
 
@@ -507,12 +526,16 @@ export default function CreatePostScreen({ navigation, route }) {
                         <ImageCountText>{images.length} photos</ImageCountText>
                       </ImageCountBadge>
                     )}
-                    <RemoveImageButton onPress={() => handleRemoveImage(index)}>
-                      <Ionicons name="close" size={16} color="#fff" />
-                    </RemoveImageButton>
+                    {!loading && (
+                      <RemoveImageButton
+                        onPress={() => handleRemoveImage(index)}
+                      >
+                        <Ionicons name="close" size={16} color="#fff" />
+                      </RemoveImageButton>
+                    )}
                   </ImageItem>
                 ))}
-                {images.length < MAX_IMAGES && (
+                {images.length < MAX_IMAGES && !loading && (
                   <ImageItem count={images.length}>
                     <AddMoreButton
                       onPress={handlePickImages}
@@ -552,7 +575,11 @@ export default function CreatePostScreen({ navigation, route }) {
           )}
 
           <ActionBar>
-            <ActionButton onPress={handlePickImages} active={images.length > 0}>
+            <ActionButton
+              onPress={handlePickImages}
+              active={images.length > 0}
+              disabled={loading}
+            >
               <Ionicons
                 name="image"
                 size={20}
@@ -567,7 +594,9 @@ export default function CreatePostScreen({ navigation, route }) {
 
             <PostButtonWrapper>
               <PostButton onPress={handlePost} disabled={!canPost}>
-                <PostButtonText>Post</PostButtonText>
+                <PostButtonText>
+                  {loading ? 'Posting...' : 'Post'}
+                </PostButtonText>
               </PostButton>
             </PostButtonWrapper>
           </ActionBar>

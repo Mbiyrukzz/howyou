@@ -1,4 +1,4 @@
-// screens/PostsScreen.js
+// screens/PostsScreen.js - Fixed WebSocket connection indicator
 import React, { useRef, useState } from 'react'
 import {
   FlatList,
@@ -9,6 +9,9 @@ import {
   Image,
   Dimensions,
   Modal,
+  View,
+  Text,
+  TouchableOpacity,
   TouchableWithoutFeedback,
 } from 'react-native'
 import styled from 'styled-components/native'
@@ -49,6 +52,40 @@ const HeaderTitle = styled.Text`
   font-size: 28px;
   font-weight: bold;
   color: #2c3e50;
+`
+
+const ConnectionStatus = styled.TouchableOpacity`
+  flex-direction: row;
+  align-items: center;
+  padding: 6px 12px;
+  border-radius: 12px;
+  background-color: ${(props) => {
+    if (props.state === 'connected') return '#d4edda'
+    if (props.state === 'reconnecting') return '#fff3cd'
+    return '#f8d7da'
+  }};
+`
+
+const ConnectionDot = styled.View`
+  width: 8px;
+  height: 8px;
+  border-radius: 4px;
+  margin-right: 6px;
+  background-color: ${(props) => {
+    if (props.state === 'connected') return '#28a745'
+    if (props.state === 'reconnecting') return '#ffc107'
+    return '#dc3545'
+  }};
+`
+
+const ConnectionText = styled.Text`
+  font-size: 12px;
+  font-weight: 600;
+  color: ${(props) => {
+    if (props.state === 'connected') return '#155724'
+    if (props.state === 'reconnecting') return '#856404'
+    return '#721c24'
+  }};
 `
 
 const HeaderButton = styled.TouchableOpacity`
@@ -506,6 +543,9 @@ export default function PostsScreen({ navigation }) {
     toggleLike,
     deletePost,
     createPost,
+    wsConnected,
+    connectionState,
+    wsReconnect,
   } = usePosts()
 
   const [refreshing, setRefreshing] = useState(false)
@@ -561,7 +601,6 @@ export default function PostsScreen({ navigation }) {
   const handleViewStatus = () => {
     setModalVisible(false)
     if (myStatus && myStatus.length > 0) {
-      // Navigate to status viewer with all your statuses
       navigation.navigate('StatusViewer', {
         statuses: myStatus,
         userName: 'Your Story',
@@ -574,14 +613,11 @@ export default function PostsScreen({ navigation }) {
 
     if (isYourStory) {
       if (item.statusCount > 0) {
-        // Show modal with Add/View/Cancel options
         setModalVisible(true)
       } else {
-        // No status yet, directly add
         handleAddStatus()
       }
     } else {
-      // View someone else's statuses (all of them grouped)
       navigation.navigate('StatusViewer', {
         statuses: item.statuses || [item],
         userName: item.userName,
@@ -594,10 +630,39 @@ export default function PostsScreen({ navigation }) {
     refetch().finally(() => setRefreshing(false))
   }
 
+  const getConnectionText = () => {
+    switch (connectionState) {
+      case 'connected':
+        return 'Online'
+      case 'connecting':
+        return 'Connecting...'
+      case 'reconnecting':
+        return 'Reconnecting...'
+      case 'error':
+        return 'Error - Tap to retry'
+      case 'failed':
+        return 'Offline - Tap to retry'
+      default:
+        return 'Disconnected'
+    }
+  }
+
   const HeaderComponent = () => (
     <Header>
       <HeaderTop>
         <HeaderTitle>Posts</HeaderTitle>
+
+        <ConnectionStatus
+          state={connectionState}
+          onPress={wsConnected ? null : wsReconnect}
+          disabled={wsConnected}
+        >
+          <ConnectionDot state={connectionState} />
+          <ConnectionText state={connectionState}>
+            {getConnectionText()}
+          </ConnectionText>
+        </ConnectionStatus>
+
         <HeaderButton>
           <Ionicons name="notifications-outline" size={24} color="#7f8c8d" />
         </HeaderButton>

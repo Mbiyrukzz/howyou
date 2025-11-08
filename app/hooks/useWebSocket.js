@@ -3,10 +3,6 @@ import { Alert } from 'react-native'
 
 const WS_URL = 'ws://localhost:5000'
 
-/**
- * Dedicated WebSocket Hook
- * Manages WebSocket connection lifecycle, reconnection, and message handling
- */
 const useWebSocket = ({
   userId,
   chatId,
@@ -23,11 +19,12 @@ const useWebSocket = ({
   const heartbeatIntervalRef = useRef(null)
   const messageQueueRef = useRef([])
   const isIntentionalCloseRef = useRef(false)
+  const connectionIdRef = useRef(0) // Track connection attempts
 
   const maxReconnectAttempts = 10
   const heartbeatInterval = 30000 // 30 seconds
   const minReconnectDelay = 1000 // 1 second
-  const maxReconnectDelay = 3000 // 3 seconds
+  const maxReconnectDelay = 30000 // 30 seconds
 
   /**
    * Calculate exponential backoff delay for reconnection
@@ -116,11 +113,19 @@ const useWebSocket = ({
       return
     }
 
+    // Increment connection ID to track this specific connection attempt
+    connectionIdRef.current++
+    const currentConnectionId = connectionIdRef.current
+
     try {
       // Close existing connection if any
       if (wsRef.current) {
         isIntentionalCloseRef.current = true
-        wsRef.current.close()
+        try {
+          wsRef.current.close()
+        } catch (e) {
+          console.warn('Error closing previous connection:', e)
+        }
         wsRef.current = null
       }
 
@@ -128,13 +133,23 @@ const useWebSocket = ({
         chatId ? `&chatId=${chatId}` : ''
       }`
 
-      console.log(`🔌 Connecting WebSocket to: ${wsUrl}`)
+      console.log(`🔌 Connecting WebSocket [${currentConnectionId}]: ${wsUrl}`)
 
       setConnectionState('connecting')
-      wsRef.current = new WebSocket(wsUrl)
+      const newWs = new WebSocket(wsUrl)
+      wsRef.current = newWs
 
-      wsRef.current.onopen = () => {
-        console.log('✅ WebSocket connected successfully')
+      newWs.onopen = () => {
+        // Check if this is still the current connection attempt
+        if (currentConnectionId !== connectionIdRef.current) {
+          console.log(
+            `⚠️ Connection [${currentConnectionId}] superseded, closing`
+          )
+          newWs.close()
+          return
+        }
+
+        console.log(`✅ WebSocket connected [${currentConnectionId}]`)
         setIsConnected(true)
         setConnectionState('connected')
         reconnectAttemptsRef.current = 0
@@ -147,7 +162,7 @@ const useWebSocket = ({
         processMessageQueue()
       }
 
-      wsRef.current.onmessage = (event) => {
+      newWs.onmessage = (event) => {
         try {
           const data = JSON.parse(event.data)
 
@@ -166,13 +181,21 @@ const useWebSocket = ({
         }
       }
 
-      wsRef.current.onerror = (error) => {
-        console.error('❌ WebSocket error:', error)
+      newWs.onerror = (error) => {
+        console.error(`❌ WebSocket error [${currentConnectionId}]:`, error)
         setConnectionState('error')
       }
 
-      wsRef.current.onclose = (event) => {
-        console.log('🔴 WebSocket disconnected:', {
+      newWs.onclose = (event) => {
+        // Check if this is still the current connection
+        if (currentConnectionId !== connectionIdRef.current) {
+          console.log(
+            `⚠️ Old connection [${currentConnectionId}] closed, ignoring`
+          )
+          return
+        }
+
+        console.log(`🔴 WebSocket disconnected [${currentConnectionId}]:`, {
           code: event.code,
           reason: event.reason,
           clean: event.wasClean,
@@ -210,8 +233,8 @@ const useWebSocket = ({
 
           Alert.alert(
             'Connection Lost',
-            'Unable to connect to server. Please check your internet connection and restart the app.',
-            [{ text: 'OK' }]
+            'Unable to connect to server. Please check your internet connection.',
+            [{ text: 'Retry', onPress: () => reconnect() }, { text: 'Cancel' }]
           )
         }
       }
@@ -222,6 +245,7 @@ const useWebSocket = ({
     }
   }, [
     userId,
+    chatId,
     endpoint,
     enabled,
     onMessage,
@@ -247,8 +271,15 @@ const useWebSocket = ({
     stopHeartbeat()
 
     if (wsRef.current) {
-      if (wsRef.current.readyState === WebSocket.OPEN) {
-        wsRef.current.close(1000, 'Client disconnect')
+      if (
+        wsRef.current.readyState === WebSocket.OPEN ||
+        wsRef.current.readyState === WebSocket.CONNECTING
+      ) {
+        try {
+          wsRef.current.close(1000, 'Client disconnect')
+        } catch (e) {
+          console.warn('Error closing connection:', e)
+        }
       }
       wsRef.current = null
     }
@@ -290,9 +321,31 @@ const useWebSocket = ({
   const reconnect = useCallback(() => {
     console.log('🔄 Manual reconnect triggered')
     reconnectAttemptsRef.current = 0
-    disconnect()
-    setTimeout(() => connect(), 100)
-  }, [connect, disconnect])
+    isIntentionalCloseRef.current = true
+
+    // Disconnect first
+    if (wsRef.current) {
+      try {
+        wsRef.current.close()
+      } catch (e) {
+        console.warn('Error closing during reconnect:', e)
+      }
+      wsRef.current = null
+    }
+
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current)
+      reconnectTimeoutRef.current = null
+    }
+
+    stopHeartbeat()
+
+    // Wait a bit then reconnect
+    setTimeout(() => {
+      isIntentionalCloseRef.current = false
+      connect()
+    }, 500)
+  }, [connect, stopHeartbeat])
 
   /**
    * Get connection status
@@ -303,30 +356,43 @@ const useWebSocket = ({
       connectionState,
       reconnectAttempts: reconnectAttemptsRef.current,
       queuedMessages: messageQueueRef.current.length,
+      readyState: wsRef.current?.readyState,
     }
   }, [isConnected, connectionState])
 
   // Auto-connect when enabled and userId changes
   useEffect(() => {
     if (enabled && userId) {
+      console.log(`🔄 useEffect: Connecting for user ${userId} on ${endpoint}`)
       connect()
+    } else {
+      console.log(
+        `🔄 useEffect: Disconnecting (enabled: ${enabled}, userId: ${userId})`
+      )
+      disconnect()
     }
 
     return () => {
+      console.log('🔄 useEffect cleanup: Disconnecting')
       disconnect()
     }
-  }, [userId, enabled]) // Note: connect and disconnect are stable
+  }, [userId, endpoint, enabled]) // Stable dependencies
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      console.log('🧹 Component unmounting, cleaning up WebSocket')
       if (reconnectTimeoutRef.current) {
         clearTimeout(reconnectTimeoutRef.current)
       }
       stopHeartbeat()
       isIntentionalCloseRef.current = true
       if (wsRef.current) {
-        wsRef.current.close()
+        try {
+          wsRef.current.close()
+        } catch (e) {
+          console.warn('Error closing on unmount:', e)
+        }
       }
     }
   }, [stopHeartbeat])

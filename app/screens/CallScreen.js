@@ -294,59 +294,25 @@ const CallScreen = () => {
     }, 100)
   }, [chatId, user?.uid, remoteUserId, navigation])
 
-  const handleAnswerCall = async () => {
-    console.log('📞 User answering call...')
-
-    stopRingtones()
-    clearRingTimer()
-    setCallAnswered(true)
-    setCallStatus('connecting')
-
-    try {
-      // ✅ CRITICAL: Notify backend that call was accepted
-      const response = await fetch(
-        `http://localhost:5000/answer-call/${route.params?.callId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${await user.getIdToken()}`,
-          },
-          body: JSON.stringify({ accepted: true }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (!data.success) {
-        console.error('❌ Failed to answer call:', data.error)
-        Alert.alert('Error', 'Failed to answer call')
-        navigation.goBack()
-        return
-      }
-
-      console.log('✅ Backend notified of call acceptance')
-
-      // Now setup the call
-      await setupCall()
-
-      // Send WebSocket notification to caller
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'call-answered',
-            from: user?.uid,
-            to: remoteUserId,
-            chatId,
-          })
-        )
-      }
-    } catch (error) {
-      console.error('❌ Error answering call:', error)
-      Alert.alert('Error', 'Failed to answer call')
-      navigation.goBack()
+  useEffect(() => {
+    // ✅ Only setup immediately if NOT incoming OR already answered
+    if (!isIncoming || callAnswered) {
+      setupCall()
     }
-  }
+
+    const backHandler = BackHandler.addEventListener(
+      'hardwareBackPress',
+      () => {
+        handleEndCall()
+        return true
+      }
+    )
+
+    return () => {
+      cleanup()
+      backHandler.remove()
+    }
+  }, [callAnswered])
 
   useEffect(() => {
     if (!user?.uid || !chatId) {
@@ -356,18 +322,19 @@ const CallScreen = () => {
       return
     }
 
-    const wsUrl = `${SIGNALING_URL}?userId=${user.uid}&chatId=${chatId}`
+    const wsUrl = `${SIGNALING_URL}/signaling?userId=${user.uid}&chatId=${chatId}`
     console.log('🔌 Connecting call WebSocket to:', wsUrl)
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
 
-    // Flag to track intentional close
     let intentionalClose = false
 
     ws.onopen = () => {
-      console.log('✅ Call WebSocket connected')
+      console.log('✅ Call WebSocket connected to /signaling')
       setCallWsConnected(true)
+
+      // Join the call room
       ws.send(
         JSON.stringify({
           type: 'join-call',
@@ -375,6 +342,22 @@ const CallScreen = () => {
           userId: user.uid,
         })
       )
+
+      // ✅ If caller and already setup, wait a moment then create offer
+      if (!isIncoming && pcRef.current && localStreamRef.current) {
+        console.log('📞 Caller connected, waiting for recipient to join...')
+        // The offer will be created when we receive 'user-joined' event
+      }
+
+      // ✅ If answerer just connected after accepting, create offer
+      if (isIncoming && callAnswered && pcRef.current) {
+        console.log('📞 Answerer connected, creating offer...')
+        setTimeout(() => {
+          if (pcRef.current && !pcRef.current.localDescription) {
+            createOffer()
+          }
+        }, 1000)
+      }
     }
 
     ws.onmessage = async (event) => {
@@ -400,7 +383,6 @@ const CallScreen = () => {
       })
       setCallWsConnected(false)
 
-      // Only show alert if it wasn't an intentional close
       if (!intentionalClose && event.code !== 1000) {
         Alert.alert(
           'Connection Lost',
@@ -410,10 +392,9 @@ const CallScreen = () => {
       }
     }
 
-    // Cleanup function
     return () => {
       console.log('🧹 Cleaning up call WebSocket')
-      intentionalClose = true // Mark as intentional
+      intentionalClose = true
       if (
         ws.readyState === WebSocket.OPEN ||
         ws.readyState === WebSocket.CONNECTING
@@ -422,28 +403,73 @@ const CallScreen = () => {
       }
     }
   }, [user?.uid, chatId, navigation])
+
   const handleWebSocketMessage = async (data) => {
     console.log('📨 CallScreen received:', data.type)
 
     switch (data.type) {
+      case 'connected':
+        console.log('✅ WebSocket connection confirmed on /signaling')
+
+        // ✅ FIX: If you connected AFTER answering, create offer immediately
+        if (isIncoming && callAnswered && !pcRef.current) {
+          console.log('📞 Late connection detected, setting up call now...')
+          setTimeout(async () => {
+            if (!pcRef.current) {
+              await setupCall()
+              await createOffer()
+            }
+          }, 500)
+        }
+        break
+
       case 'user-joined':
-        // When remote user joins, create offer
+        // When remote user joins the signaling channel
         if (data.userId !== user?.uid) {
-          console.log('👤 Remote user joined, creating offer...')
+          console.log('👤 Remote user joined /signaling:', data.userId)
           stopRingtones()
           clearRingTimer()
-          await createOffer()
+
+          // ✅ Caller creates offer when recipient joins
+          if (!isIncoming) {
+            console.log('📞 Caller creating offer for newly joined user...')
+            // Small delay to ensure recipient's peer connection is ready
+            setTimeout(async () => {
+              if (pcRef.current && !pcRef.current.localDescription) {
+                await createOffer()
+              }
+            }, 500)
+          }
+        }
+        break
+
+      case 'user-already-in-room':
+        // When you join and someone is already there
+        if (data.userId !== user?.uid) {
+          console.log('👤 User already in room:', data.userId)
+
+          // ✅ If you're the answerer and joining late, create offer
+          if (isIncoming && callAnswered) {
+            console.log('📞 Answerer creating offer for existing user...')
+            setTimeout(async () => {
+              if (pcRef.current && !pcRef.current.localDescription) {
+                await createOffer()
+              }
+            }, 500)
+          }
         }
         break
 
       case 'call-answered':
       case 'call_accepted':
-        // Call was accepted by recipient
         if (data.from !== user?.uid) {
           console.log('✅ Call accepted by recipient')
           stopRingtones()
           clearRingTimer()
           setCallStatus('connecting')
+
+          // The recipient will join /signaling and trigger user-joined event
+          // which will cause the caller to create an offer
         }
         break
 
@@ -537,6 +563,57 @@ const CallScreen = () => {
     }
   }
 
+  // ✅ Update handleAnswerCall to ensure proper setup
+  const handleAnswerCall = async () => {
+    console.log('📞 User answering call...')
+
+    stopRingtones()
+    clearRingTimer()
+    setCallAnswered(true)
+    setCallStatus('connecting')
+
+    try {
+      // ✅ Step 1: Notify backend that call was accepted
+      const response = await fetch(
+        `http://localhost:5000/answer-call/${route.params?.callId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await user.getIdToken()}`,
+          },
+          body: JSON.stringify({ accepted: true }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!data.success) {
+        console.error('❌ Failed to answer call:', data.error)
+        Alert.alert('Error', 'Failed to answer call')
+        navigation.goBack()
+        return
+      }
+
+      console.log('✅ Backend notified of call acceptance')
+
+      // ✅ Step 2: Setup local media FIRST before connecting to signaling
+      console.log('📹 Setting up local media...')
+      await setupCall()
+
+      // ✅ Step 3: Wait for WebSocket to /signaling to connect
+      // The useEffect will handle the connection
+      // Once connected, we'll receive 'connected' event and create offer
+
+      console.log(
+        '✅ Call answer complete, waiting for signaling connection...'
+      )
+    } catch (error) {
+      console.error('❌ Error answering call:', error)
+      Alert.alert('Error', 'Failed to answer call')
+      navigation.goBack()
+    }
+  }
   // Add a helper function for call ended scenarios:
   const handleCallEnded = (reason) => {
     console.log('📵 Call ended:', reason)
@@ -582,6 +659,10 @@ const CallScreen = () => {
       setLocalStream(stream)
       localStreamRef.current = stream
       await createPeerConnection()
+
+      console.log('✅ Call setup complete, media and peer connection ready')
+
+      // ✅ Don't create offer here - wait for user-joined event
     } catch (error) {
       console.error('❌ Setup call error:', error)
       Alert.alert(
@@ -591,7 +672,6 @@ const CallScreen = () => {
       )
     }
   }
-
   const requestPermissions = async () => {
     if (Platform.OS !== 'web') {
       const { status: cameraStatus } =
@@ -757,17 +837,27 @@ const CallScreen = () => {
   const createOffer = async () => {
     try {
       if (!pcRef.current) {
-        await createPeerConnection()
+        console.error('❌ Cannot create offer: No peer connection')
+        return
       }
+
+      if (!localStreamRef.current) {
+        console.error('❌ Cannot create offer: No local stream')
+        return
+      }
+
+      console.log('📞 Creating WebRTC offer...')
 
       const offer = await pcRef.current.createOffer({
         offerToReceiveAudio: true,
         offerToReceiveVideo: callType === 'video' || isScreenSharing,
       })
 
+      console.log('📞 Setting local description...')
       await pcRef.current.setLocalDescription(offer)
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
+        console.log('📞 Sending offer to remote peer...')
         wsRef.current.send(
           JSON.stringify({
             type: 'webrtc-offer',
@@ -776,12 +866,14 @@ const CallScreen = () => {
             chatId,
           })
         )
+        console.log('✅ Offer sent successfully')
+      } else {
+        console.error('❌ Cannot send offer: WebSocket not open')
       }
     } catch (error) {
       console.error('❌ Create offer error:', error)
     }
   }
-
   const handleOffer = async (offer) => {
     try {
       if (!pcRef.current) {
