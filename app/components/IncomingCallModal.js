@@ -63,7 +63,7 @@ export default function IncomingCallModal({
       if (Platform.OS === 'web') {
         // Use HTML5 Audio for web
         if (!audioElementRef.current) {
-          audioElementRef.current = new window.Audio('/ringtone.mp3')
+          audioElementRef.current = new window.Audio('../assets/ringtone.mp3')
           audioElementRef.current.loop = true
           audioElementRef.current.volume = 1.0
         }

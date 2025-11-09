@@ -14,7 +14,7 @@ export default function ChatsStack() {
       <Stack.Screen
         name="ChatsHome"
         component={ChatsScreen}
-        options={{ title: 'Chats' }}
+        options={{ title: 'Chats', headerShown: false }}
       />
       <Stack.Screen
         name="ChatDetail"

@@ -1,4 +1,4 @@
-// screens/PostsScreen.js - Fixed WebSocket connection indicator
+// screens/PostsScreen.js - Enhanced UI with delete and update functions
 import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
@@ -13,6 +13,9 @@ import {
   Text,
   TouchableOpacity,
   TouchableWithoutFeedback,
+  TextInput,
+  Platform,
+  ActivityIndicator,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -364,6 +367,190 @@ const ModalCancelText = styled.Text`
   color: #7f8c8d;
 `
 
+// ─── Edit Modal Components ───────────────────────────
+const EditModalContent = styled.View`
+  background-color: #fff;
+  border-radius: 20px;
+  width: 90%;
+  max-width: 500px;
+  padding: 24px;
+  max-height: 80%;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 8px;
+  elevation: 10;
+`
+
+const EditModalHeader = styled.View`
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+`
+
+const EditModalTitle = styled.Text`
+  font-size: 22px;
+  font-weight: bold;
+  color: #2c3e50;
+`
+
+const EditModalCloseButton = styled.TouchableOpacity`
+  padding: 4px;
+`
+
+const EditTextInput = styled.TextInput`
+  background-color: #f8f9fa;
+  border-radius: 12px;
+  padding: 16px;
+  font-size: 16px;
+  color: #2c3e50;
+  min-height: 120px;
+  text-align-vertical: top;
+  margin-bottom: 20px;
+  border-width: 1px;
+  border-color: #e9ecef;
+`
+
+const EditModalButtons = styled.View`
+  flex-direction: row;
+  gap: 12px;
+`
+
+const EditModalButton = styled.TouchableOpacity`
+  flex: 1;
+  padding: 16px;
+  border-radius: 12px;
+  background-color: ${(props) => (props.primary ? '#3498db' : '#e9ecef')};
+  align-items: center;
+  justify-content: center;
+`
+
+const EditModalButtonText = styled.Text`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${(props) => (props.primary ? '#fff' : '#7f8c8d')};
+`
+
+// ─── Post Detail Components ──────────────────────────
+const PostDetailHeader = styled.View`
+  padding: 20px;
+  border-bottom-width: 1px;
+  border-bottom-color: #e9ecef;
+  background-color: #fff;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+`
+
+const PostDetailTitle = styled.Text`
+  font-size: 24px;
+  font-weight: 700;
+  color: #2c3e50;
+`
+
+const PostDetailContent = styled.ScrollView`
+  flex: 1;
+  padding: 20px;
+`
+
+const PostDetailCard = styled.View`
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 4px;
+  elevation: 3;
+`
+
+const PostDetailText = styled.Text`
+  font-size: 18px;
+  line-height: 26px;
+  color: #2c3e50;
+  margin: 16px 0;
+`
+
+const PostDetailImage = styled.View`
+  width: 100%;
+  height: 400px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 16px 0;
+  background-color: #f0f0f0;
+`
+
+const CommentsSection = styled.View`
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 4px;
+  elevation: 3;
+`
+
+const CommentsSectionTitle = styled.Text`
+  font-size: 20px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 16px;
+`
+
+const EmptyCommentsText = styled.Text`
+  font-size: 16px;
+  color: #95a5a6;
+  text-align: center;
+  padding: 40px 20px;
+`
+
+const ActionButtonsRow = styled.View`
+  flex-direction: row;
+  gap: 12px;
+  margin-top: 16px;
+`
+
+const SecondaryButton = styled.TouchableOpacity`
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  background-color: #f8f9fa;
+  border-width: 1px;
+  border-color: #e9ecef;
+  align-items: center;
+  flex-direction: row;
+  justify-content: center;
+`
+
+const SecondaryButtonText = styled.Text`
+  font-size: 15px;
+  font-weight: 600;
+  color: #7f8c8d;
+  margin-left: 6px;
+`
+
+const DangerButton = styled.TouchableOpacity`
+  flex: 1;
+  padding: 12px;
+  border-radius: 12px;
+  background-color: #fee;
+  border-width: 1px;
+  border-color: #fcc;
+  align-items: center;
+  flex-direction: row;
+  justify-content: center;
+`
+
+const DangerButtonText = styled.Text`
+  font-size: 15px;
+  font-weight: 600;
+  color: #dc3545;
+  margin-left: 6px;
+`
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -426,67 +613,6 @@ const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// ─── POST COMPONENT ───────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-const PostComponent = ({ item, onLike, onComment, onShare, onMenuPress }) => (
-  <PostCard>
-    <PostHeader>
-      <PostAvatar color={item.avatarColor || '#3498db'}>
-        <PostAvatarText>{getInitials(item.username)}</PostAvatarText>
-      </PostAvatar>
-      <PostUserInfo>
-        <PostUsername>{item.username}</PostUsername>
-        <PostTimestamp>
-          {new Date(item.createdAt).toLocaleTimeString([], {
-            hour: '2-digit',
-            minute: '2-digit',
-          })}
-        </PostTimestamp>
-      </PostUserInfo>
-      <PostMenuButton onPress={() => onMenuPress(item)}>
-        <Ionicons name="ellipsis-horizontal" size={20} color="#7f8c8d" />
-      </PostMenuButton>
-    </PostHeader>
-
-    <PostContent>{item.content}</PostContent>
-
-    {item.files?.[0] && (
-      <PostImage>
-        <Image
-          source={{ uri: item.files[0].url }}
-          style={{ width: '100%', height: '100%' }}
-          resizeMode="cover"
-        />
-      </PostImage>
-    )}
-
-    <PostActions>
-      <ActionButton
-        active={item.isLiked}
-        onPress={() => onLike(item._id, item.isLiked)}
-      >
-        <Ionicons
-          name={item.isLiked ? 'heart' : 'heart-outline'}
-          size={20}
-          color={item.isLiked ? '#e74c3c' : '#7f8c8d'}
-        />
-        <ActionText active={item.isLiked}>{item.likes}</ActionText>
-      </ActionButton>
-
-      <ActionButton onPress={() => onComment(item._id)}>
-        <Ionicons name="chatbubble-outline" size={18} color="#7f8c8d" />
-        <ActionText>{item.comments || 0}</ActionText>
-      </ActionButton>
-
-      <ActionButton onPress={() => onShare(item._id)}>
-        <Ionicons name="share-outline" size={18} color="#7f8c8d" />
-        <ActionText>{item.shares || 0}</ActionText>
-      </ActionButton>
-    </PostActions>
-  </PostCard>
-)
-
-// ─────────────────────────────────────────────────────────────────────────────
 // ─── STATUS ACTION MODAL ─────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 const StatusActionModal = ({
@@ -532,6 +658,86 @@ const StatusActionModal = ({
   </Modal>
 )
 
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── EDIT POST MODAL ─────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+const EditPostModal = ({ visible, post, onClose, onSave }) => {
+  const [content, setContent] = useState(post?.content || '')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (post) {
+      setContent(post.content || '')
+    }
+  }, [post])
+
+  const handleSave = async () => {
+    if (!content.trim()) {
+      Alert.alert('Error', 'Post content cannot be empty')
+      return
+    }
+
+    setSaving(true)
+    try {
+      await onSave(content.trim())
+      onClose()
+    } catch (error) {
+      Alert.alert('Error', 'Failed to update post')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  return (
+    <Modal
+      visible={visible}
+      transparent
+      animationType="fade"
+      onRequestClose={onClose}
+    >
+      <TouchableWithoutFeedback onPress={onClose}>
+        <ModalOverlay>
+          <TouchableWithoutFeedback>
+            <EditModalContent>
+              <EditModalHeader>
+                <EditModalTitle>Edit Post</EditModalTitle>
+                <EditModalCloseButton onPress={onClose}>
+                  <Ionicons name="close" size={28} color="#7f8c8d" />
+                </EditModalCloseButton>
+              </EditModalHeader>
+
+              <EditTextInput
+                value={content}
+                onChangeText={setContent}
+                placeholder="What's on your mind?"
+                multiline
+                maxLength={500}
+                editable={!saving}
+              />
+
+              <EditModalButtons>
+                <EditModalButton onPress={onClose} disabled={saving}>
+                  <EditModalButtonText>Cancel</EditModalButtonText>
+                </EditModalButton>
+                <EditModalButton primary onPress={handleSave} disabled={saving}>
+                  {saving ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <EditModalButtonText primary>Save</EditModalButtonText>
+                  )}
+                </EditModalButton>
+              </EditModalButtons>
+            </EditModalContent>
+          </TouchableWithoutFeedback>
+        </ModalOverlay>
+      </TouchableWithoutFeedback>
+    </Modal>
+  )
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── MAIN SCREEN COMPONENT ───────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 export default function PostsScreen({ navigation, route }) {
   const {
     posts,
@@ -540,6 +746,7 @@ export default function PostsScreen({ navigation, route }) {
     loading,
     refetch,
     toggleLike,
+    updatePost,
     deletePost,
     createPost,
     wsConnected,
@@ -549,20 +756,19 @@ export default function PostsScreen({ navigation, route }) {
 
   const [refreshing, setRefreshing] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
+  const [editModalVisible, setEditModalVisible] = useState(false)
+  const [editingPost, setEditingPost] = useState(null)
   const scrollY = useRef(new Animated.Value(0)).current
 
-  // ✅ NEW: Sidebar state
   const [selectedPostId, setSelectedPostId] = useState(null)
   const isWebSidebar = useWebSidebar()
 
-  // ✅ NEW: Update selected post from route
   useEffect(() => {
     if (route?.params?.postId) {
       setSelectedPostId(route.params.postId)
     }
   }, [route?.params?.postId])
 
-  // Prepare stories list with "Your Story" first
   const yourStory = {
     _id: 'your-story',
     userName: 'Your Story',
@@ -633,21 +839,17 @@ export default function PostsScreen({ navigation, route }) {
     }
   }
 
-  // ✅ NEW: Handle post press differently for sidebar
   const handlePostPress = (post) => {
     const postId = post._id
 
     if (isWebSidebar) {
-      // On web with sidebar, update selected post
       console.log('🖥️ Sidebar mode: selecting post', postId)
       setSelectedPostId(postId)
 
-      // Update URL
       if (typeof window !== 'undefined' && window.history) {
         window.history.pushState({}, '', `/posts/${postId}`)
       }
     } else {
-      // Mobile mode, navigate to detail screen
       console.log('📱 Mobile mode: navigating to post detail', postId)
       navigation.navigate('PostDetail', { postId })
     }
@@ -675,70 +877,74 @@ export default function PostsScreen({ navigation, route }) {
     }
   }
 
-  // ✅ NEW: Handle post menu (edit/delete)
   const handlePostMenu = (post) => {
-    if (Platform.OS === 'web') {
-      // Web: Show custom menu
-      Alert.alert('Post Options', 'Choose an action', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Edit',
-          onPress: () => handleEditPost(post),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => handleDeletePost(post),
-        },
-      ])
-    } else {
-      // Mobile: Show action sheet
-      Alert.alert('Post Options', 'Choose an action', [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Edit',
-          onPress: () => handleEditPost(post),
-        },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: () => handleDeletePost(post),
-        },
-      ])
-    }
-  }
-
-  const handleEditPost = (post) => {
-    // Navigate to edit screen or show edit modal
-    navigation.navigate('EditPost', { postId: post._id })
-  }
-
-  const handleDeletePost = (post) => {
-    Alert.alert('Delete Post', 'Are you sure you want to delete this post?', [
+    Alert.alert('Post Options', 'Choose an action', [
       { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Edit',
+        onPress: () => {
+          setEditingPost(post)
+          setEditModalVisible(true)
+        },
+      },
       {
         text: 'Delete',
         style: 'destructive',
-        onPress: async () => {
-          try {
-            await deletePost(post._id)
-            Alert.alert('Success', 'Post deleted successfully')
-
-            // If this was the selected post in sidebar, deselect it
-            if (selectedPostId === post._id) {
-              setSelectedPostId(null)
-              if (typeof window !== 'undefined' && window.history) {
-                window.history.pushState({}, '', '/posts')
-              }
-            }
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete post')
-          }
-        },
+        onPress: () => handleDeletePost(post),
       },
     ])
   }
 
+  const handleUpdatePost = async (newContent) => {
+    if (!editingPost) return
+
+    try {
+      // ✅ Use updatePost from the provider (authenticated)
+      await updatePost(editingPost._id, newContent)
+
+      setEditModalVisible(false)
+      setEditingPost(null)
+
+      Alert.alert('Success', 'Post updated successfully')
+    } catch (error) {
+      console.error('Update post error:', error)
+      Alert.alert('Error', 'Failed to update post. Please try again.')
+      throw error
+    }
+  }
+
+  const handleDeletePost = (post) => {
+    Alert.alert(
+      'Delete Post',
+      'Are you sure you want to delete this post? This action cannot be undone.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              // ✅ Use deletePost from the provider (authenticated)
+              await deletePost(post._id)
+
+              // Handle sidebar deselection
+              if (selectedPostId === post._id) {
+                setSelectedPostId(null)
+                if (typeof window !== 'undefined' && window.history) {
+                  window.history.pushState({}, '', '/posts')
+                }
+              }
+
+              Alert.alert('Success', 'Post deleted successfully')
+            } catch (error) {
+              console.error('Delete post error:', error)
+              Alert.alert('Error', 'Failed to delete post. Please try again.')
+            }
+          },
+        },
+      ]
+    )
+  }
   const HeaderComponent = () => (
     <Header>
       <HeaderTop>
@@ -779,7 +985,6 @@ export default function PostsScreen({ navigation, route }) {
     </Header>
   )
 
-  // ✅ NEW: Render posts feed (sidebar content)
   const renderPostsFeed = () => (
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
@@ -899,25 +1104,43 @@ export default function PostsScreen({ navigation, route }) {
         onView={handleViewStatus}
         statusCount={yourStory.statusCount}
       />
+
+      <EditPostModal
+        visible={editModalVisible}
+        post={editingPost}
+        onClose={() => {
+          setEditModalVisible(false)
+          setEditingPost(null)
+        }}
+        onSave={handleUpdatePost}
+      />
+    
     </Container>
   )
 
-  // ✅ NEW: Render post detail (main content)
   const renderPostDetail = () => {
     if (!selectedPostId) return null
 
     const selectedPost = posts.find((p) => p._id === selectedPostId)
     if (!selectedPost) return null
 
-    return <PostDetailView post={selectedPost} onDelete={handleDeletePost} />
+    return (
+      <PostDetailView
+        post={selectedPost}
+        onEdit={() => {
+          setEditingPost(selectedPost)
+          setEditModalVisible(true)
+        }}
+        onDelete={() => handleDeletePost(selectedPost)}
+        onLike={() => toggleLike(selectedPost._id, selectedPost.isLiked)}
+      />
+    )
   }
 
-  // ✅ If not in sidebar mode (mobile), just show posts feed
   if (!isWebSidebar) {
     return renderPostsFeed()
   }
 
-  // ✅ In sidebar mode (web), show split view
   return (
     <WebSidebarLayout
       sidebar={renderPostsFeed()}
@@ -928,15 +1151,16 @@ export default function PostsScreen({ navigation, route }) {
   )
 }
 
-// ✅ NEW: Post Detail View Component
-const PostDetailView = ({ post, onDelete }) => (
+// ─────────────────────────────────────────────────────────────────────────────
+// ─── POST DETAIL VIEW COMPONENT ──────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
+const PostDetailView = ({ post, onEdit, onDelete, onLike }) => (
   <Container style={{ backgroundColor: '#fff' }}>
     <PostDetailHeader>
       <PostDetailTitle>Post Details</PostDetailTitle>
     </PostDetailHeader>
 
     <PostDetailContent>
-      {/* Post Header */}
       <PostDetailCard>
         <PostHeader>
           <PostAvatar color={post.avatarColor || '#3498db'}>
@@ -954,10 +1178,8 @@ const PostDetailView = ({ post, onDelete }) => (
           </PostUserInfo>
         </PostHeader>
 
-        {/* Post Content */}
         <PostDetailText>{post.content}</PostDetailText>
 
-        {/* Post Image (full size) */}
         {post.files?.[0] && (
           <PostDetailImage>
             <Image
@@ -968,9 +1190,8 @@ const PostDetailView = ({ post, onDelete }) => (
           </PostDetailImage>
         )}
 
-        {/* Post Actions */}
         <PostActions>
-          <ActionButton active={post.isLiked}>
+          <ActionButton active={post.isLiked} onPress={onLike}>
             <Ionicons
               name={post.isLiked ? 'heart' : 'heart-outline'}
               size={24}
@@ -989,9 +1210,20 @@ const PostDetailView = ({ post, onDelete }) => (
             <ActionText>{post.shares || 0} Shares</ActionText>
           </ActionButton>
         </PostActions>
+
+        <ActionButtonsRow>
+          <SecondaryButton onPress={onEdit}>
+            <Ionicons name="create-outline" size={20} color="#7f8c8d" />
+            <SecondaryButtonText>Edit Post</SecondaryButtonText>
+          </SecondaryButton>
+
+          <DangerButton onPress={onDelete}>
+            <Ionicons name="trash-outline" size={20} color="#dc3545" />
+            <DangerButtonText>Delete</DangerButtonText>
+          </DangerButton>
+        </ActionButtonsRow>
       </PostDetailCard>
 
-      {/* Comments Section */}
       <CommentsSection>
         <CommentsSectionTitle>Comments</CommentsSectionTitle>
         <EmptyCommentsText>
@@ -1001,75 +1233,3 @@ const PostDetailView = ({ post, onDelete }) => (
     </PostDetailContent>
   </Container>
 )
-
-// ✅ NEW: Styled components for post detail
-const PostDetailHeader = styled.View`
-  padding: 20px;
-  border-bottom-width: 1px;
-  border-bottom-color: #e9ecef;
-  background-color: #fff;
-`
-
-const PostDetailTitle = styled.Text`
-  font-size: 24px;
-  font-weight: 700;
-  color: #2c3e50;
-`
-
-const PostDetailContent = styled.ScrollView`
-  flex: 1;
-  padding: 20px;
-`
-
-const PostDetailCard = styled.View`
-  background-color: #fff;
-  border-radius: 16px;
-  padding: 20px;
-  margin-bottom: 20px;
-  shadow-color: #000;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.1;
-  shadow-radius: 4px;
-  elevation: 3;
-`
-
-const PostDetailText = styled.Text`
-  font-size: 18px;
-  line-height: 26px;
-  color: #2c3e50;
-  margin: 16px 0;
-`
-
-const PostDetailImage = styled.View`
-  width: 100%;
-  height: 400px;
-  border-radius: 12px;
-  overflow: hidden;
-  margin: 16px 0;
-  background-color: #f0f0f0;
-`
-
-const CommentsSection = styled.View`
-  background-color: #fff;
-  border-radius: 16px;
-  padding: 20px;
-  shadow-color: #000;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.1;
-  shadow-radius: 4px;
-  elevation: 3;
-`
-
-const CommentsSectionTitle = styled.Text`
-  font-size: 20px;
-  font-weight: 700;
-  color: #2c3e50;
-  margin-bottom: 16px;
-`
-
-const EmptyCommentsText = styled.Text`
-  font-size: 16px;
-  color: #95a5a6;
-  text-align: center;
-  padding: 40px 20px;
-`

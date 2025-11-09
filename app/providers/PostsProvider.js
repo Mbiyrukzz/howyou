@@ -1,3 +1,4 @@
+// providers/PostsProvider.js - Add updatePost function
 import React, { useEffect, useState, useCallback, useContext } from 'react'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import PostsContext from '../contexts/PostsContext'
@@ -72,11 +73,7 @@ export const PostsProvider = ({ children }) => {
           break
 
         case 'ping':
-          // Handled by useWebSocket
-          break
-
         case 'pong':
-          // Handled by useWebSocket
           break
 
         case 'error':
@@ -90,7 +87,7 @@ export const PostsProvider = ({ children }) => {
     [user?.uid]
   )
 
-  // ─── Initialize WebSocket with dedicated /posts endpoint ────────────────────────────────
+  // ─── Initialize WebSocket ────────────────────────────────
   const {
     isConnected: wsConnected,
     connectionState,
@@ -98,7 +95,7 @@ export const PostsProvider = ({ children }) => {
     reconnect: wsReconnect,
   } = useWebSocket({
     userId: user?.uid,
-    endpoint: '/posts', // Use dedicated posts endpoint
+    endpoint: '/posts',
     onMessage: handleWebSocketMessage,
     enabled: !!user?.uid && isReady,
   })
@@ -109,27 +106,17 @@ export const PostsProvider = ({ children }) => {
     (data) => {
       const { post: newPost, senderId } = data
 
-      console.log('📝 Received new-post event:', {
-        postId: newPost._id,
-        senderId,
-        currentUserId: user?.uid,
-        isSelf: senderId === user?.uid,
-      })
-
-      // Skip if it's your own post (already in state)
       if (senderId === user?.uid) {
         console.log('⏭️ Skipping own post (already in state)')
         return
       }
 
       setPosts((prevPosts) => {
-        // Check for duplicates
         const isDuplicate = prevPosts.some((p) => p._id === newPost._id)
         if (isDuplicate) {
           console.log('⚠️ Duplicate post detected, skipping')
           return prevPosts
         }
-
         console.log('✅ Adding new post to state:', newPost._id)
         return [newPost, ...prevPosts]
       })
@@ -139,7 +126,6 @@ export const PostsProvider = ({ children }) => {
 
   const handlePostUpdated = useCallback((data) => {
     const { postId, post: updatedPost } = data
-
     console.log('✏️ Post updated:', postId)
 
     setPosts((prevPosts) =>
@@ -157,16 +143,13 @@ export const PostsProvider = ({ children }) => {
 
   const handlePostDeleted = useCallback((data) => {
     const { postId } = data
-
     console.log('🗑️ Post deleted:', postId)
-
     setPosts((prevPosts) => prevPosts.filter((p) => p._id !== postId))
   }, [])
 
   const handlePostLiked = useCallback(
     (data) => {
       const { postId, userId, newLikeCount } = data
-
       console.log('❤️ Post liked:', postId, 'by:', userId)
 
       setPosts((prevPosts) =>
@@ -179,7 +162,7 @@ export const PostsProvider = ({ children }) => {
               isLiked: isCurrentUser ? true : p.isLiked,
               likedBy: [...(p.likedBy || []), userId].filter(
                 (id, idx, arr) => arr.indexOf(id) === idx
-              ), // Remove duplicates
+              ),
             }
           }
           return p
@@ -192,7 +175,6 @@ export const PostsProvider = ({ children }) => {
   const handlePostUnliked = useCallback(
     (data) => {
       const { postId, userId, newLikeCount } = data
-
       console.log('💔 Post unliked:', postId, 'by:', userId)
 
       setPosts((prevPosts) =>
@@ -217,14 +199,6 @@ export const PostsProvider = ({ children }) => {
     (data) => {
       const { status: newStatus, userId: senderId } = data
 
-      console.log('📸 Received new-status event:', {
-        statusId: newStatus._id,
-        senderId,
-        currentUserId: user?.uid,
-        isSelf: senderId === user?.uid,
-      })
-
-      // If it's your status (shouldn't happen due to server exclusion)
       if (senderId === user?.uid) {
         console.log('⏭️ Skipping own status (already in state)')
         setMyStatus((prev) => {
@@ -235,15 +209,12 @@ export const PostsProvider = ({ children }) => {
         return
       }
 
-      // Update statuses list (grouped by user)
       setStatuses((prevStatuses) => {
-        // Check if user already has statuses in the list
         const existingUserIndex = prevStatuses.findIndex(
           (group) => group.userId === senderId
         )
 
         if (existingUserIndex >= 0) {
-          // Check for duplicate status
           const existingGroup = prevStatuses[existingUserIndex]
           const isDuplicate = existingGroup.statuses.some(
             (s) => s._id === newStatus._id
@@ -254,19 +225,16 @@ export const PostsProvider = ({ children }) => {
             return prevStatuses
           }
 
-          // Add to existing user's statuses
           const updated = [...prevStatuses]
           updated[existingUserIndex] = {
             ...updated[existingUserIndex],
             statuses: [newStatus, ...updated[existingUserIndex].statuses],
             statusCount: updated[existingUserIndex].statusCount + 1,
-            fileUrl: newStatus.fileUrl, // Update preview to latest
+            fileUrl: newStatus.fileUrl,
             createdAt: newStatus.createdAt,
           }
-          console.log('✅ Added status to existing user group:', senderId)
           return updated
         } else {
-          // Create new group for this user
           const newGroup = {
             _id: newStatus._id,
             userId: senderId,
@@ -278,7 +246,6 @@ export const PostsProvider = ({ children }) => {
             statuses: [newStatus],
             createdAt: newStatus.createdAt,
           }
-          console.log('✅ Created new status group for user:', senderId)
           return [newGroup, ...prevStatuses]
         }
       })
@@ -289,15 +256,12 @@ export const PostsProvider = ({ children }) => {
   const handleStatusDeleted = useCallback(
     (data) => {
       const { statusId, userId: senderId } = data
-
       console.log('🗑️ Status deleted:', statusId, 'by:', senderId)
 
-      // If it's your status
       if (senderId === user?.uid) {
         setMyStatus((prev) => (prev || []).filter((s) => s._id !== statusId))
       }
 
-      // Update statuses list
       setStatuses((prevStatuses) => {
         return prevStatuses
           .map((group) => {
@@ -307,7 +271,7 @@ export const PostsProvider = ({ children }) => {
               )
 
               if (updatedStatuses.length === 0) {
-                return null // Remove group if no statuses left
+                return null
               }
 
               return {
@@ -338,7 +302,7 @@ export const PostsProvider = ({ children }) => {
     })
   }, [])
 
-  // ─── Fetch posts ────────────────────────────────
+  // ─── Fetch functions ────────────────────────────────
   const fetchPosts = useCallback(async () => {
     if (!isReady) return
     try {
@@ -349,7 +313,6 @@ export const PostsProvider = ({ children }) => {
     }
   }, [isReady, get])
 
-  // ─── Fetch all statuses (grouped by user, excluding yours) ────────────────
   const fetchStatuses = useCallback(async () => {
     if (!isReady) return
     try {
@@ -360,13 +323,11 @@ export const PostsProvider = ({ children }) => {
     }
   }, [isReady, get])
 
-  // ─── Fetch your statuses (all of them) ────────────────────────────────
   const fetchMyStatus = useCallback(async () => {
     if (!isReady) return
     try {
       const data = await get(`${API_URL}/status/my`)
       setMyStatus(data.statuses || [])
-      console.log('My statuses:', data.statuses?.length || 0)
     } catch (e) {
       console.error('Fetch my status error:', e)
       setMyStatus([])
@@ -379,7 +340,7 @@ export const PostsProvider = ({ children }) => {
     setLoading(false)
   }, [fetchPosts, fetchStatuses, fetchMyStatus])
 
-  // ─── Create Post or Status (unified) ────────────────────────────────
+  // ─── Create Post or Status ────────────────────────────────
   const createPost = async (contentOrAsset, files = []) => {
     if (!isReady) throw new Error('Auth not ready')
 
@@ -393,42 +354,21 @@ export const PostsProvider = ({ children }) => {
       const asset = contentOrAsset
       const formData = new FormData()
 
-      console.log('Creating status from asset:', {
-        uri: asset.uri,
-        type: asset.type,
-        fileName: asset.fileName,
-      })
-
       const isWeb =
         typeof window !== 'undefined' && asset.uri.startsWith('blob:')
 
       if (isWeb) {
-        try {
-          const response = await fetch(asset.uri)
-          const blob = await response.blob()
-
-          const fileType = blob.type || asset.type || 'image/jpeg'
-          const extension = fileType.includes('video') ? 'mp4' : 'jpg'
-          const fileName = asset.fileName || `status-${Date.now()}.${extension}`
-
-          const file = new File([blob], fileName, { type: fileType })
-
-          console.log('Created File for web:', {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-          })
-
-          formData.append('files', file)
-        } catch (error) {
-          console.error('Failed to process blob:', error)
-          throw new Error('Failed to process image')
-        }
+        const response = await fetch(asset.uri)
+        const blob = await response.blob()
+        const fileType = blob.type || asset.type || 'image/jpeg'
+        const extension = fileType.includes('video') ? 'mp4' : 'jpg'
+        const fileName = asset.fileName || `status-${Date.now()}.${extension}`
+        const file = new File([blob], fileName, { type: fileType })
+        formData.append('files', file)
       } else {
         const fileType =
           asset.type ||
           (asset.uri.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg')
-
         formData.append('files', {
           uri: asset.uri,
           name:
@@ -440,18 +380,8 @@ export const PostsProvider = ({ children }) => {
         })
       }
 
-      console.log('Sending status to API...')
-
       const data = await post(`${API_URL}/status`, formData, true)
-
-      console.log('Status created successfully:', data.status._id)
-
-      // Update local state immediately
       setMyStatus((prev) => [data.status, ...(prev || [])])
-
-      // Server will broadcast to others automatically
-      console.log('✅ Status created, server will broadcast to others')
-
       return data.status
     }
 
@@ -460,33 +390,17 @@ export const PostsProvider = ({ children }) => {
     const fd = new FormData()
     fd.append('content', content)
 
-    console.log('Creating post with content:', content?.substring(0, 50))
-    console.log('Number of files:', files.length)
-
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
       const isWeb = typeof window !== 'undefined' && f.uri?.startsWith('blob:')
 
       if (isWeb) {
-        try {
-          const response = await fetch(f.uri)
-          const blob = await response.blob()
-
-          const fileType = blob.type || f.type || 'image/jpeg'
-          const fileName = f.name || `post_${Date.now()}_${i}.jpg`
-
-          const file = new File([blob], fileName, { type: fileType })
-
-          console.log(`Web file ${i}:`, {
-            name: file.name,
-            type: file.type,
-            size: file.size,
-          })
-
-          fd.append('files', file)
-        } catch (error) {
-          console.error(`Failed to process file ${i}:`, error)
-        }
+        const response = await fetch(f.uri)
+        const blob = await response.blob()
+        const fileType = blob.type || f.type || 'image/jpeg'
+        const fileName = f.name || `post_${Date.now()}_${i}.jpg`
+        const file = new File([blob], fileName, { type: fileType })
+        fd.append('files', file)
       } else {
         fd.append('files', {
           uri: f.uri,
@@ -496,25 +410,49 @@ export const PostsProvider = ({ children }) => {
       }
     }
 
-    console.log('Sending post to API...')
     const data = await post(`${API_URL}/posts`, fd, true)
-
-    console.log('Post created successfully:', data.post._id)
-
-    // Update local state immediately
     setPosts((p) => [data.post, ...p])
-
-    // Server will broadcast to others automatically
-    console.log('✅ Post created, server will broadcast to others')
-
     return data.post
   }
 
-  // ─── Like / Delete ────────────────────────────────
+  // ✅ NEW: Update Post
+  const updatePost = async (postId, newContent) => {
+    if (!isReady) throw new Error('Auth not ready')
+
+    console.log('Updating post:', postId, 'with content:', newContent)
+
+    // Optimistic update
+    setPosts((p) =>
+      p.map((x) =>
+        x._id === postId
+          ? { ...x, content: newContent, updatedAt: new Date() }
+          : x
+      )
+    )
+
+    try {
+      const data = await put(`${API_URL}/posts/${postId}`, {
+        content: newContent,
+      })
+
+      console.log('✅ Post updated successfully')
+
+      // Update with server response
+      setPosts((p) => p.map((x) => (x._id === postId ? data.post : x)))
+
+      return data.post
+    } catch (e) {
+      console.error('Update post error:', e)
+      // Rollback on error
+      await refetch()
+      throw e
+    }
+  }
+
+  // ─── Toggle Like ────────────────────────────────
   const toggleLike = async (postId, currentIsLiked) => {
     if (!isReady) return
 
-    // Optimistic update
     setPosts((p) =>
       p.map((x) =>
         x._id === postId
@@ -529,11 +467,8 @@ export const PostsProvider = ({ children }) => {
 
     try {
       await put(`${API_URL}/posts/${postId}/like`)
-
-      console.log('✅ Like toggled, server will broadcast to others')
     } catch (e) {
       console.error('Toggle like error:', e)
-      // Rollback on error
       setPosts((p) =>
         p.map((x) =>
           x._id === postId
@@ -548,22 +483,50 @@ export const PostsProvider = ({ children }) => {
     }
   }
 
+  // ─── Delete Post ────────────────────────────────
   const deletePost = async (postId) => {
-    if (!isReady) return
-    await del(`${API_URL}/posts/${postId}`)
+    if (!isReady) throw new Error('Auth not ready')
+
+    console.log('Deleting post:', postId)
+
+    // Optimistic update
+    const deletedPost = posts.find((p) => p._id === postId)
     setPosts((p) => p.filter((x) => x._id !== postId))
 
-    console.log('✅ Post deleted, server will broadcast to others')
+    try {
+      await del(`${API_URL}/posts/${postId}`)
+      console.log('✅ Post deleted successfully')
+    } catch (e) {
+      console.error('Delete post error:', e)
+      // Rollback on error
+      if (deletedPost) {
+        setPosts((p) => [deletedPost, ...p])
+      }
+      throw e
+    }
   }
 
+  // ─── Delete Status ────────────────────────────────
   const deleteStatus = async (statusId) => {
-    if (!isReady) return
-    await del(`${API_URL}/status/${statusId}`)
+    if (!isReady) throw new Error('Auth not ready')
 
+    console.log('Deleting status:', statusId)
+
+    // Optimistic update
+    const deletedStatus = (myStatus || []).find((s) => s._id === statusId)
     setMyStatus((prev) => (prev || []).filter((x) => x._id !== statusId))
-    setStatuses((p) => p.filter((x) => x._id !== statusId))
 
-    console.log('✅ Status deleted, server will broadcast to others')
+    try {
+      await del(`${API_URL}/status/${statusId}`)
+      console.log('✅ Status deleted successfully')
+    } catch (e) {
+      console.error('Delete status error:', e)
+      // Rollback on error
+      if (deletedStatus) {
+        setMyStatus((prev) => [deletedStatus, ...(prev || [])])
+      }
+      throw e
+    }
   }
 
   // ─── Auto Fetch on Mount ────────────────────────────────
@@ -578,24 +541,20 @@ export const PostsProvider = ({ children }) => {
     loading,
     error,
     createPost,
+    updatePost, // ✅ Export updatePost
     toggleLike,
     deletePost,
     deleteStatus,
     refetch,
-
-    // WebSocket state
     wsConnected,
     connectionState,
     onlineUsers,
     wsReconnect,
     wsSend,
-
-    // Utility functions
     isUserOnline: (userId) => onlineUsers.has(userId),
   }
 
   return <PostsContext.Provider value={value}>{children}</PostsContext.Provider>
 }
 
-// ✅ Hook
 export const usePosts = () => useContext(PostsContext)

@@ -48,8 +48,7 @@ const CallNotification = () => {
   const playRingtone = async () => {
     try {
       const { sound: newSound } = await Audio.Sound.createAsync(
-        // You can use a custom ringtone file or system sound
-        require('../assets/sounds/ringtone.mp3'), // Add this file to your assets
+        require('../assets/sounds/ringtone.mp3'),
         {
           shouldPlay: true,
           isLooping: true,
