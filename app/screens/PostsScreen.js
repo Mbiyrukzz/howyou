@@ -1,5 +1,5 @@
 // screens/PostsScreen.js - Fixed WebSocket connection indicator
-import React, { useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
   StatusBar,
@@ -18,6 +18,8 @@ import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { usePosts } from '../providers/PostsProvider'
+import { useWebSidebar } from '../hooks/useWebSidebar'
+import WebSidebarLayout from '../components/WebSidebarLayout'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -530,10 +532,7 @@ const StatusActionModal = ({
   </Modal>
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── MAIN SCREEN ─────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
-export default function PostsScreen({ navigation }) {
+export default function PostsScreen({ navigation, route }) {
   const {
     posts,
     statuses,
@@ -551,6 +550,17 @@ export default function PostsScreen({ navigation }) {
   const [refreshing, setRefreshing] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const scrollY = useRef(new Animated.Value(0)).current
+
+  // ✅ NEW: Sidebar state
+  const [selectedPostId, setSelectedPostId] = useState(null)
+  const isWebSidebar = useWebSidebar()
+
+  // ✅ NEW: Update selected post from route
+  useEffect(() => {
+    if (route?.params?.postId) {
+      setSelectedPostId(route.params.postId)
+    }
+  }, [route?.params?.postId])
 
   // Prepare stories list with "Your Story" first
   const yourStory = {
@@ -583,8 +593,6 @@ export default function PostsScreen({ navigation }) {
         Alert.alert('Success', 'Status added!')
       } catch (error) {
         console.error('Failed to add status:', error)
-
-        // Handle 429 rate limit error
         if (error.status === 429 || error.message?.includes('Daily limit')) {
           Alert.alert(
             'Daily Limit Reached',
@@ -625,6 +633,26 @@ export default function PostsScreen({ navigation }) {
     }
   }
 
+  // ✅ NEW: Handle post press differently for sidebar
+  const handlePostPress = (post) => {
+    const postId = post._id
+
+    if (isWebSidebar) {
+      // On web with sidebar, update selected post
+      console.log('🖥️ Sidebar mode: selecting post', postId)
+      setSelectedPostId(postId)
+
+      // Update URL
+      if (typeof window !== 'undefined' && window.history) {
+        window.history.pushState({}, '', `/posts/${postId}`)
+      }
+    } else {
+      // Mobile mode, navigate to detail screen
+      console.log('📱 Mobile mode: navigating to post detail', postId)
+      navigation.navigate('PostDetail', { postId })
+    }
+  }
+
   const handleRefresh = () => {
     setRefreshing(true)
     refetch().finally(() => setRefreshing(false))
@@ -645,6 +673,70 @@ export default function PostsScreen({ navigation }) {
       default:
         return 'Disconnected'
     }
+  }
+
+  // ✅ NEW: Handle post menu (edit/delete)
+  const handlePostMenu = (post) => {
+    if (Platform.OS === 'web') {
+      // Web: Show custom menu
+      Alert.alert('Post Options', 'Choose an action', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Edit',
+          onPress: () => handleEditPost(post),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeletePost(post),
+        },
+      ])
+    } else {
+      // Mobile: Show action sheet
+      Alert.alert('Post Options', 'Choose an action', [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Edit',
+          onPress: () => handleEditPost(post),
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: () => handleDeletePost(post),
+        },
+      ])
+    }
+  }
+
+  const handleEditPost = (post) => {
+    // Navigate to edit screen or show edit modal
+    navigation.navigate('EditPost', { postId: post._id })
+  }
+
+  const handleDeletePost = (post) => {
+    Alert.alert('Delete Post', 'Are you sure you want to delete this post?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Delete',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await deletePost(post._id)
+            Alert.alert('Success', 'Post deleted successfully')
+
+            // If this was the selected post in sidebar, deselect it
+            if (selectedPostId === post._id) {
+              setSelectedPostId(null)
+              if (typeof window !== 'undefined' && window.history) {
+                window.history.pushState({}, '', '/posts')
+              }
+            }
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete post')
+          }
+        },
+      },
+    ])
   }
 
   const HeaderComponent = () => (
@@ -687,7 +779,8 @@ export default function PostsScreen({ navigation }) {
     </Header>
   )
 
-  return (
+  // ✅ NEW: Render posts feed (sidebar content)
+  const renderPostsFeed = () => (
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
 
@@ -695,26 +788,96 @@ export default function PostsScreen({ navigation }) {
         data={posts}
         keyExtractor={(item) => item._id}
         ListHeaderComponent={HeaderComponent}
-        renderItem={({ item }) => (
-          <PostComponent
-            item={item}
-            onLike={toggleLike}
-            onComment={(id) =>
-              navigation.navigate('PostDetail', { postId: id })
-            }
-            onShare={() => {}}
-            onMenuPress={(post) => {
-              Alert.alert('Delete Post', 'Are you sure?', [
-                { text: 'Cancel' },
-                {
-                  text: 'Delete',
-                  style: 'destructive',
-                  onPress: () => deletePost(post._id),
-                },
-              ])
-            }}
-          />
-        )}
+        renderItem={({ item }) => {
+          const isSelected = isWebSidebar && selectedPostId === item._id
+
+          return (
+            <TouchableOpacity
+              activeOpacity={0.9}
+              onPress={() => handlePostPress(item)}
+            >
+              <PostCard
+                style={{
+                  backgroundColor: isSelected ? '#e3f2fd' : '#fff',
+                  borderLeftWidth: isSelected ? 4 : 0,
+                  borderLeftColor: isSelected ? '#3498db' : 'transparent',
+                }}
+              >
+                <PostHeader>
+                  <PostAvatar color={item.avatarColor || '#3498db'}>
+                    <PostAvatarText>
+                      {getInitials(item.username)}
+                    </PostAvatarText>
+                  </PostAvatar>
+                  <PostUserInfo>
+                    <PostUsername>{item.username}</PostUsername>
+                    <PostTimestamp>
+                      {new Date(item.createdAt).toLocaleTimeString([], {
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </PostTimestamp>
+                  </PostUserInfo>
+                  <PostMenuButton
+                    onPress={(e) => {
+                      e.stopPropagation()
+                      handlePostMenu(item)
+                    }}
+                  >
+                    <Ionicons
+                      name="ellipsis-horizontal"
+                      size={20}
+                      color="#7f8c8d"
+                    />
+                  </PostMenuButton>
+                </PostHeader>
+
+                <PostContent>{item.content}</PostContent>
+
+                {item.files?.[0] && (
+                  <PostImage>
+                    <Image
+                      source={{ uri: item.files[0].url }}
+                      style={{ width: '100%', height: '100%' }}
+                      resizeMode="cover"
+                    />
+                  </PostImage>
+                )}
+
+                <PostActions>
+                  <ActionButton
+                    active={item.isLiked}
+                    onPress={(e) => {
+                      e.stopPropagation()
+                      toggleLike(item._id, item.isLiked)
+                    }}
+                  >
+                    <Ionicons
+                      name={item.isLiked ? 'heart' : 'heart-outline'}
+                      size={20}
+                      color={item.isLiked ? '#e74c3c' : '#7f8c8d'}
+                    />
+                    <ActionText active={item.isLiked}>{item.likes}</ActionText>
+                  </ActionButton>
+
+                  <ActionButton onPress={(e) => e.stopPropagation()}>
+                    <Ionicons
+                      name="chatbubble-outline"
+                      size={18}
+                      color="#7f8c8d"
+                    />
+                    <ActionText>{item.comments || 0}</ActionText>
+                  </ActionButton>
+
+                  <ActionButton onPress={(e) => e.stopPropagation()}>
+                    <Ionicons name="share-outline" size={18} color="#7f8c8d" />
+                    <ActionText>{item.shares || 0}</ActionText>
+                  </ActionButton>
+                </PostActions>
+              </PostCard>
+            </TouchableOpacity>
+          )
+        }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />
         }
@@ -738,4 +901,175 @@ export default function PostsScreen({ navigation }) {
       />
     </Container>
   )
+
+  // ✅ NEW: Render post detail (main content)
+  const renderPostDetail = () => {
+    if (!selectedPostId) return null
+
+    const selectedPost = posts.find((p) => p._id === selectedPostId)
+    if (!selectedPost) return null
+
+    return <PostDetailView post={selectedPost} onDelete={handleDeletePost} />
+  }
+
+  // ✅ If not in sidebar mode (mobile), just show posts feed
+  if (!isWebSidebar) {
+    return renderPostsFeed()
+  }
+
+  // ✅ In sidebar mode (web), show split view
+  return (
+    <WebSidebarLayout
+      sidebar={renderPostsFeed()}
+      main={renderPostDetail()}
+      sidebarWidth={420}
+      emptyStateType="post"
+    />
+  )
 }
+
+// ✅ NEW: Post Detail View Component
+const PostDetailView = ({ post, onDelete }) => (
+  <Container style={{ backgroundColor: '#fff' }}>
+    <PostDetailHeader>
+      <PostDetailTitle>Post Details</PostDetailTitle>
+    </PostDetailHeader>
+
+    <PostDetailContent>
+      {/* Post Header */}
+      <PostDetailCard>
+        <PostHeader>
+          <PostAvatar color={post.avatarColor || '#3498db'}>
+            <PostAvatarText>{getInitials(post.username)}</PostAvatarText>
+          </PostAvatar>
+          <PostUserInfo>
+            <PostUsername>{post.username}</PostUsername>
+            <PostTimestamp>
+              {new Date(post.createdAt).toLocaleDateString()} at{' '}
+              {new Date(post.createdAt).toLocaleTimeString([], {
+                hour: '2-digit',
+                minute: '2-digit',
+              })}
+            </PostTimestamp>
+          </PostUserInfo>
+        </PostHeader>
+
+        {/* Post Content */}
+        <PostDetailText>{post.content}</PostDetailText>
+
+        {/* Post Image (full size) */}
+        {post.files?.[0] && (
+          <PostDetailImage>
+            <Image
+              source={{ uri: post.files[0].url }}
+              style={{ width: '100%', height: 400 }}
+              resizeMode="cover"
+            />
+          </PostDetailImage>
+        )}
+
+        {/* Post Actions */}
+        <PostActions>
+          <ActionButton active={post.isLiked}>
+            <Ionicons
+              name={post.isLiked ? 'heart' : 'heart-outline'}
+              size={24}
+              color={post.isLiked ? '#e74c3c' : '#7f8c8d'}
+            />
+            <ActionText active={post.isLiked}>{post.likes} Likes</ActionText>
+          </ActionButton>
+
+          <ActionButton>
+            <Ionicons name="chatbubble-outline" size={22} color="#7f8c8d" />
+            <ActionText>{post.comments || 0} Comments</ActionText>
+          </ActionButton>
+
+          <ActionButton>
+            <Ionicons name="share-outline" size={22} color="#7f8c8d" />
+            <ActionText>{post.shares || 0} Shares</ActionText>
+          </ActionButton>
+        </PostActions>
+      </PostDetailCard>
+
+      {/* Comments Section */}
+      <CommentsSection>
+        <CommentsSectionTitle>Comments</CommentsSectionTitle>
+        <EmptyCommentsText>
+          No comments yet. Be the first to comment!
+        </EmptyCommentsText>
+      </CommentsSection>
+    </PostDetailContent>
+  </Container>
+)
+
+// ✅ NEW: Styled components for post detail
+const PostDetailHeader = styled.View`
+  padding: 20px;
+  border-bottom-width: 1px;
+  border-bottom-color: #e9ecef;
+  background-color: #fff;
+`
+
+const PostDetailTitle = styled.Text`
+  font-size: 24px;
+  font-weight: 700;
+  color: #2c3e50;
+`
+
+const PostDetailContent = styled.ScrollView`
+  flex: 1;
+  padding: 20px;
+`
+
+const PostDetailCard = styled.View`
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 20px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 4px;
+  elevation: 3;
+`
+
+const PostDetailText = styled.Text`
+  font-size: 18px;
+  line-height: 26px;
+  color: #2c3e50;
+  margin: 16px 0;
+`
+
+const PostDetailImage = styled.View`
+  width: 100%;
+  height: 400px;
+  border-radius: 12px;
+  overflow: hidden;
+  margin: 16px 0;
+  background-color: #f0f0f0;
+`
+
+const CommentsSection = styled.View`
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 20px;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 4px;
+  elevation: 3;
+`
+
+const CommentsSectionTitle = styled.Text`
+  font-size: 20px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 16px;
+`
+
+const EmptyCommentsText = styled.Text`
+  font-size: 16px;
+  color: #95a5a6;
+  text-align: center;
+  padding: 40px 20px;
+`

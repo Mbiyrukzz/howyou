@@ -1,3 +1,4 @@
+// screens/ChatsScreen.js - Updated with sidebar layout
 import React, { useContext, useState, useEffect } from 'react'
 import {
   FlatList,
@@ -11,18 +12,25 @@ import {
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native'
-
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as ImagePicker from 'expo-image-picker'
+
+import ChatDetailScreen from './ChatDetailScreen'
+
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import { usePosts } from '../providers/PostsProvider'
+import WebSidebarLayout, {
+  shouldShowSidebar,
+} from '../components/WebSidebarLayout'
+import { useWebNavigation } from '../navigation/WebNavigationHandler'
 import LoadingIndicator from '../components/LoadingIndicator'
 
 const { width: screenWidth } = Dimensions.get('window')
 
+// ─── Styled Components ────────────────────────────────
 const Container = styled.View`
   flex: 1;
   background-color: #f8fafc;
@@ -116,6 +124,12 @@ const ChatItem = styled.TouchableOpacity`
   shadow-radius: 8px;
   elevation: 4;
   border: 1px solid #f1f5f9;
+  ${(props) =>
+    props.selected &&
+    `
+    background-color: #e3f2fd;
+    border-color: #3396d3;
+  `}
 `
 
 const ChatAvatar = styled.View`
@@ -385,7 +399,6 @@ const ModalCancelText = styled.Text`
   color: #7f8c8d;
 `
 
-// ─── Camera Action Modal Component ────────────────────────────────
 const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
   <Modal
     visible={visible}
@@ -401,19 +414,16 @@ const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
             <ModalSubtitle>
               Choose how you want to add your status
             </ModalSubtitle>
-
             <ModalButton bgColor="#e3f2fd" onPress={onCamera}>
               <Ionicons name="camera" size={24} color="#2196f3" />
               <ModalButtonText color="#2196f3">Take Photo</ModalButtonText>
             </ModalButton>
-
             <ModalButton bgColor="#f0f4ff" onPress={onGallery}>
               <Ionicons name="images" size={24} color="#5e72e4" />
               <ModalButtonText color="#5e72e4">
                 Choose from Gallery
               </ModalButtonText>
             </ModalButton>
-
             <ModalCancelButton onPress={onClose}>
               <ModalCancelText>Cancel</ModalCancelText>
             </ModalCancelButton>
@@ -424,13 +434,12 @@ const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
   </Modal>
 )
 
-// Helper functions
+// ─── Helper Functions ────────────────────────────────
 const getLastMessageText = (lastMessage) => {
   if (!lastMessage) return null
   if (typeof lastMessage === 'string') return lastMessage
-  if (typeof lastMessage === 'object' && lastMessage.content) {
+  if (typeof lastMessage === 'object' && lastMessage.content)
     return lastMessage.content
-  }
   return null
 }
 
@@ -471,6 +480,7 @@ const getInitials = (name) => {
     .substring(0, 2)
 }
 
+// ─── Chat Item Component ────────────────────────────────
 const ChatItemComponent = ({
   item,
   onPress,
@@ -480,13 +490,13 @@ const ChatItemComponent = ({
   currentUserId,
   showDropdown,
   onDeletePress,
+  selected,
 }) => {
   const otherParticipants =
     item.participants?.filter((id) => id !== currentUserId) || []
   const otherUser = otherParticipants.length
     ? findUserByAnyId(users, otherParticipants[0])
     : null
-
   const chatName = otherUser?.name || 'Unknown'
   const lastMsg = item.lastMessage
   const isOwn = lastMsg?.senderId === currentUserId
@@ -505,6 +515,7 @@ const ChatItemComponent = ({
         onPress={() => onPress(item)}
         onLongPress={!isWeb ? () => onLongPress(item) : undefined}
         delayLongPress={500}
+        selected={selected}
       >
         <ChatAvatar color={avatarColor}>
           <ChatAvatarText>{getInitials(chatName)}</ChatAvatarText>
@@ -536,13 +547,9 @@ const ChatItemComponent = ({
   )
 }
 
-export default function ChatsScreen({ navigation }) {
-  useEffect(() => {
-    navigation.setOptions({
-      headerShown: false,
-    })
-  }, [navigation])
-
+// ─── Main ChatsScreen ────────────────────────────────
+export default function ChatsScreen({ navigation, route }) {
+  const [selectedChatId, setSelectedChatId] = useState(null)
   const [searchText, setSearchText] = useState('')
   const [refreshing, setRefreshing] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState(null)
@@ -561,80 +568,75 @@ export default function ChatsScreen({ navigation }) {
     deleteChat,
   } = chatsContext || {}
 
-  // Filter chats based on search
-  const filteredChats = chats.filter((chat) => {
-    if (!searchText) return true
-    if (chat.name) {
-      return chat.name.toLowerCase().includes(searchText.toLowerCase())
-    } else {
-      const otherParticipants =
-        chat.participants?.filter(
-          (participantId) => participantId !== user?.uid
-        ) || []
-      return otherParticipants.some((participantId) => {
-        const participant = users.find(
-          (u) =>
-            (u._id || u.id) === participantId || u.firebaseUid === participantId
-        )
-        return participant?.name
-          ?.toLowerCase()
-          .includes(searchText.toLowerCase())
-      })
+  useWebNavigation((type, id) => {
+    if (type === 'chat') {
+      setSelectedChatId(id || null)
     }
   })
 
-  const handleChatPress = (chat) => {
-    setActiveDropdown(null)
-    navigation.navigate('ChatDetail', {
-      chatId: chat._id || chat.id,
+  // Deep linking: Set selected chat from route
+  const routeChatId = route?.params?.chatId
+  useEffect(() => {
+    if (routeChatId && !shouldShowSidebar) {
+      // Only apply on mobile (web uses URL)
+      setSelectedChatId(routeChatId)
+    }
+  }, [routeChatId])
+
+  // Filter chats
+  const filteredChats = chats.filter((chat) => {
+    if (!searchText) return true
+    const otherParticipants =
+      chat.participants?.filter((id) => id !== user?.uid) || []
+    return otherParticipants.some((id) => {
+      const participant = findUserByAnyId(users, id)
+      return participant?.name?.toLowerCase().includes(searchText.toLowerCase())
     })
+  })
+
+  // ─── Handlers ────────────────────────────────
+
+  const handleChatPress = (chat) => {
+    const chatId = chat._id || chat.id
+    setActiveDropdown(null)
+
+    if (shouldShowSidebar) {
+      setSelectedChatId(chatId)
+      if (Platform.OS === 'web') {
+        window.history.pushState({}, '', `/chats/${chatId}`)
+      }
+    } else {
+      navigation.navigate('ChatDetail', { chatId })
+    }
   }
 
-  const handleNewChat = () => {
-    navigation.navigate('NewChats')
-  }
-
-  const handleCameraPress = () => {
-    setCameraModalVisible(true)
-  }
+  const handleNewChat = () => navigation.navigate('NewChats')
+  const handleCameraPress = () => setCameraModalVisible(true)
 
   const handleTakePhoto = async () => {
     setCameraModalVisible(false)
-
-    // Check if we're on web
     if (Platform.OS === 'web') {
-      // For web, use a file input with capture attribute
       const input = document.createElement('input')
       input.type = 'file'
       input.accept = 'image/*,video/*'
-      input.capture = 'environment' // This hints to use camera
-
+      input.capture = 'environment'
       input.onchange = async (e) => {
         const file = e.target.files[0]
         if (file) {
-          // Create a blob URL for the captured image
           const uri = URL.createObjectURL(file)
-          const asset = {
-            uri,
-            type: file.type,
-            fileName: file.name,
-          }
-          await uploadStatus(asset)
+          await uploadStatus({ uri, type: file.type, fileName: file.name })
         }
       }
-
       input.click()
       return
     }
 
-    // For native platforms
     const { status } = await ImagePicker.requestCameraPermissionsAsync()
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Allow camera access to take photos')
       return
     }
 
-    // Launch camera
     const result = await ImagePicker.launchCameraAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 0.8,
@@ -648,15 +650,12 @@ export default function ChatsScreen({ navigation }) {
 
   const handleChooseFromGallery = async () => {
     setCameraModalVisible(false)
-
-    // Request media library permissions
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
     if (status !== 'granted') {
       Alert.alert('Permission needed', 'Allow photo access to choose images')
       return
     }
 
-    // Launch image picker
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.All,
       quality: 0.8,
@@ -675,13 +674,10 @@ export default function ChatsScreen({ navigation }) {
       Alert.alert('Success', 'Status uploaded successfully!')
     } catch (error) {
       console.error('Failed to upload status:', error)
-
-      // Handle 429 rate limit error
       if (error.status === 429 || error.message?.includes('Daily limit')) {
         Alert.alert(
           'Daily Limit Reached',
-          'You can only post 5 statuses per day. Try again tomorrow!',
-          [{ text: 'OK' }]
+          'You can only post 5 statuses per day. Try again tomorrow!'
         )
       } else {
         Alert.alert('Error', error.message || 'Failed to upload status')
@@ -700,23 +696,18 @@ export default function ChatsScreen({ navigation }) {
   }
 
   const handleDeleteChat = async (chatId, chatName) => {
-    if (!deleteChat) {
-      Alert.alert('Error', 'Delete function not available')
-      return
-    }
-
+    if (!deleteChat)
+      return Alert.alert('Error', 'Delete function not available')
     setActiveDropdown(null)
-
     try {
       const result = await deleteChat(chatId)
-
       if (result.success) {
         Alert.alert('Success', 'Chat deleted successfully')
+        if (selectedChatId === chatId) setSelectedChatId(null)
       } else {
         Alert.alert('Error', result.error || 'Failed to delete chat')
       }
     } catch (error) {
-      console.error('Delete chat error:', error)
       Alert.alert('Error', 'Failed to delete chat: ' + error.message)
     }
   }
@@ -726,51 +717,19 @@ export default function ChatsScreen({ navigation }) {
     setActiveDropdown(activeDropdown === chatId ? null : chatId)
   }
 
-  const handleChatLongPress = (chat) => {
-    const chatId = chat._id || chat.id
-    const otherParticipants =
-      chat.participants?.filter((id) => id !== user?.uid) || []
-    const otherUser = otherParticipants.length
-      ? findUserByAnyId(users, otherParticipants[0])
-      : null
-    const chatName = otherUser?.name || 'Unknown'
-
-    Alert.alert(
-      'Chat Options',
-      `Chat with ${chatName}`,
-      [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
-        {
-          text: 'Delete Chat',
-          style: 'destructive',
-          onPress: () => confirmDeleteChat(chatId, chatName),
-        },
-      ],
-      { cancelable: true }
-    )
-  }
-
   const confirmDeleteChat = (chatId, chatName) => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        `Are you sure you want to delete your chat with ${chatName}? This will delete all messages and cannot be undone.`
-      )
-
-      if (confirmed) {
+      if (
+        window.confirm(`Delete chat with ${chatName}? This cannot be undone.`)
+      ) {
         handleDeleteChat(chatId, chatName)
       }
     } else {
       Alert.alert(
         'Delete Chat',
-        `Are you sure you want to delete your chat with ${chatName}? This will delete all messages and cannot be undone.`,
+        `Delete chat with ${chatName}? This cannot be undone.`,
         [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-          },
+          { text: 'Cancel', style: 'cancel' },
           {
             text: 'Delete',
             style: 'destructive',
@@ -781,6 +740,7 @@ export default function ChatsScreen({ navigation }) {
     }
   }
 
+  // ─── Render Helpers ────────────────────────────────
   const renderEmptyState = () => (
     <EmptyStateContainer>
       <EmptyStateIcon>
@@ -790,7 +750,7 @@ export default function ChatsScreen({ navigation }) {
       <EmptyStateText>
         Connect with friends and colleagues by starting your first conversation
       </EmptyStateText>
-      <EmptyStateButton onPress={handleNewChat} activeOpacity={0.8}>
+      <EmptyStateButton onPress={handleNewChat}>
         <EmptyStateButtonText>Start Messaging</EmptyStateButtonText>
       </EmptyStateButton>
     </EmptyStateContainer>
@@ -806,174 +766,191 @@ export default function ChatsScreen({ navigation }) {
         Unable to load your conversations. Please check your internet connection
         and try again.
       </ErrorText>
-      <RetryButton onPress={handleRefresh} activeOpacity={0.8}>
+      <RetryButton onPress={handleRefresh}>
         <RetryButtonText>Try Again</RetryButtonText>
       </RetryButton>
     </ErrorContainer>
   )
 
-  if (loading && chats.length === 0) {
-    return (
-      <Container>
-        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
-        <Header>
-          <HeaderTitle>PeepGram</HeaderTitle>
-          <CameraButton disabled activeOpacity={0.6}>
-            <Ionicons name="camera-outline" size={24} color="#94a3b8" />
-          </CameraButton>
-        </Header>
-        <SearchContainer>
-          <SearchIcon>
-            <Ionicons name="search-outline" size={18} color="#64748b" />
-          </SearchIcon>
-          <SearchInput
-            placeholder="Search messages..."
-            placeholderTextColor="#94a3b8"
-            value={searchText}
-            onChangeText={setSearchText}
-            editable={false}
-          />
-        </SearchContainer>
-        <LoadingIndicator
-          type="pulse"
-          size="large"
-          showText={true}
-          text="Loading conversations..."
-          showCard={true}
-          subtext="Please wait while we sync your messages"
-        />
-      </Container>
-    )
-  }
-
-  if (!chatsContext) {
-    return (
-      <Container>
-        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
-        <Header>
-          <HeaderTitle>PeepGram</HeaderTitle>
-          <CameraButton disabled activeOpacity={0.6}>
-            <Ionicons name="camera-outline" size={24} color="#94a3b8" />
-          </CameraButton>
-        </Header>
-        <SearchContainer>
-          <SearchIcon>
-            <Ionicons name="search-outline" size={18} color="#64748b" />
-          </SearchIcon>
-          <SearchInput
-            placeholder="Search messages..."
-            placeholderTextColor="#94a3b8"
-            value={searchText}
-            onChangeText={setSearchText}
-            editable={false}
-          />
-        </SearchContainer>
-        {renderErrorState()}
-      </Container>
-    )
-  }
-
-  return (
-    <Container>
-      <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
-      <Header>
-        <HeaderTitle>PeepGram</HeaderTitle>
-        <CameraButton
-          onPress={handleCameraPress}
-          activeOpacity={0.7}
-          disabled={uploading}
-        >
-          <Ionicons
-            name="camera-outline"
-            size={24}
-            color={uploading ? '#94a3b8' : '#3396d3'}
-          />
-        </CameraButton>
-      </Header>
-      <SearchContainer>
-        <SearchIcon>
-          <Ionicons name="search-outline" size={18} color="#64748b" />
-        </SearchIcon>
-        <SearchInput
-          placeholder="Search messages..."
-          placeholderTextColor="#94a3b8"
-          value={searchText}
-          onChangeText={setSearchText}
-        />
-      </SearchContainer>
-      <FlatList
-        data={filteredChats}
-        keyExtractor={(item) => (item._id || item.id).toString()}
-        renderItem={({ item }) => {
-          const chatId = item._id || item.id
-          const otherParticipants =
-            item.participants?.filter((id) => id !== user?.uid) || []
-          const otherUser = otherParticipants.length
-            ? findUserByAnyId(users, otherParticipants[0])
-            : null
-          const chatName = otherUser?.name || 'Unknown'
-
-          return (
-            <ChatItemComponent
-              item={item}
-              onPress={handleChatPress}
-              onLongPress={handleChatLongPress}
-              onOptionsPress={handleOptionsPress}
-              currentUserId={user?.uid}
-              users={users}
-              showDropdown={activeDropdown === chatId}
-              onDeletePress={() => confirmDeleteChat(chatId, chatName)}
+  const renderChatList = () => {
+    if (loading && chats.length === 0) {
+      return (
+        <Container>
+          <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+          <Header>
+            <HeaderTitle>PeepGram</HeaderTitle>
+            <CameraButton disabled>
+              <Ionicons name="camera-outline" size={24} color="#94a3b8" />
+            </CameraButton>
+          </Header>
+          <SearchContainer>
+            <SearchIcon>
+              <Ionicons name="search-outline" size={18} color="#64748b" />
+            </SearchIcon>
+            <SearchInput
+              placeholder="Search messages..."
+              placeholderTextColor="#94a3b8"
+              editable={false}
             />
-          )
-        }}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={{ paddingBottom: 120 }}
-        ListEmptyComponent={renderEmptyState}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={handleRefresh}
-            colors={['#3396D3']}
-            tintColor="#3396D3"
-            progressBackgroundColor="white"
-          />
-        }
-      />
-      <FloatingActionButton onPress={handleNewChat} activeOpacity={0.8}>
-        <FABGradient>
-          <Ionicons name="add" size={28} color="white" />
-        </FABGradient>
-      </FloatingActionButton>
-
-      <CameraActionModal
-        visible={cameraModalVisible}
-        onClose={() => setCameraModalVisible(false)}
-        onCamera={handleTakePhoto}
-        onGallery={handleChooseFromGallery}
-      />
-
-      {uploading && (
-        <View
-          style={{
-            position: 'absolute',
-            top: 0,
-            left: 0,
-            right: 0,
-            bottom: 0,
-            backgroundColor: 'rgba(0,0,0,0.5)',
-            justifyContent: 'center',
-            alignItems: 'center',
-          }}
-        >
+          </SearchContainer>
           <LoadingIndicator
             type="pulse"
             size="large"
-            showText={true}
-            text="Uploading status..."
-            showCard={true}
+            showText
+            text="Loading conversations..."
+            showCard
+            subtext="Please wait while we sync your messages"
           />
+        </Container>
+      )
+    }
+
+    if (!chatsContext) return renderErrorState()
+
+    return (
+      <Container>
+        <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
+        <Header>
+          <HeaderTitle>PeepGram</HeaderTitle>
+          <CameraButton onPress={handleCameraPress} disabled={uploading}>
+            <Ionicons
+              name="camera-outline"
+              size={24}
+              color={uploading ? '#94a3b8' : '#3396d3'}
+            />
+          </CameraButton>
+        </Header>
+        <SearchContainer>
+          <SearchIcon>
+            <Ionicons name="search-outline" size={18} color="#64748b" />
+          </SearchIcon>
+          <SearchInput
+            placeholder="Search messages..."
+            placeholderTextColor="#94a3b8"
+            value={searchText}
+            onChangeText={setSearchText}
+          />
+        </SearchContainer>
+        <FlatList
+          data={filteredChats}
+          keyExtractor={(item) => (item._id || item.id).toString()}
+          renderItem={({ item }) => {
+            const chatId = item._id || item.id
+            const otherParticipants =
+              item.participants?.filter((id) => id !== user?.uid) || []
+            const otherUser = otherParticipants.length
+              ? findUserByAnyId(users, otherParticipants[0])
+              : null
+            const chatName = otherUser?.name || 'Unknown'
+
+            return (
+              <ChatItemComponent
+                item={item}
+                onPress={handleChatPress}
+                onLongPress={() => confirmDeleteChat(chatId, chatName)}
+                onOptionsPress={handleOptionsPress}
+                currentUserId={user?.uid}
+                users={users}
+                showDropdown={activeDropdown === chatId}
+                onDeletePress={() => confirmDeleteChat(chatId, chatName)}
+                selected={shouldShowSidebar && selectedChatId === chatId}
+              />
+            )
+          }}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={{ paddingBottom: 120 }}
+          ListEmptyComponent={renderEmptyState}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={handleRefresh}
+              colors={['#3396D3']}
+              tintColor="#3396D3"
+            />
+          }
+        />
+        <FloatingActionButton onPress={handleNewChat}>
+          <FABGradient>
+            <Ionicons name="add" size={28} color="white" />
+          </FABGradient>
+        </FloatingActionButton>
+
+        <CameraActionModal
+          visible={cameraModalVisible}
+          onClose={() => setCameraModalVisible(false)}
+          onCamera={handleTakePhoto}
+          onGallery={handleChooseFromGallery}
+        />
+
+        {uploading && (
+          <View
+            style={{
+              position: 'absolute',
+              top: 0,
+              left: 0,
+              right: 0,
+              bottom: 0,
+              backgroundColor: 'rgba(0,0,0,0.5)',
+              justifyContent: 'center',
+              alignItems: 'center',
+            }}
+          >
+            <LoadingIndicator
+              type="pulse"
+              size="large"
+              showText
+              text="Uploading status..."
+              showCard
+            />
+          </View>
+        )}
+      </Container>
+    )
+  }
+
+  const renderChatDetail = () => {
+    if (!selectedChatId) {
+      return (
+        <View
+          style={{
+            flex: 1,
+            justifyContent: 'center',
+            alignItems: 'center',
+            padding: 32,
+          }}
+        >
+          <Ionicons name="chatbubble-outline" size={64} color="#94a3b8" />
+          <EmptyStateTitle style={{ marginTop: 16 }}>
+            Select a chat
+          </EmptyStateTitle>
+          <EmptyStateText>
+            Choose a conversation from the list to start messaging
+          </EmptyStateText>
         </View>
-      )}
-    </Container>
+      )
+    }
+
+    return (
+      <ChatDetailScreen
+        navigation={navigation}
+        route={{ params: { chatId: selectedChatId } }}
+        isInSidebar={true}
+      />
+    )
+  }
+
+  // ─── Mobile: Full Screen List ────────────────────────────────
+  if (!shouldShowSidebar) {
+    return renderChatList()
+  }
+
+  // ─── Web: Sidebar Layout ────────────────────────────────
+  return (
+    <WebSidebarLayout
+      sidebar={renderChatList()}
+      main={renderChatDetail()}
+      sidebarWidth={380}
+      emptyStateType="chat"
+    />
   )
 }

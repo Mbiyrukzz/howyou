@@ -4,6 +4,7 @@ import React, {
   useEffect,
   useContext,
   useCallback,
+  useMemo,
 } from 'react'
 import {
   FlatList,
@@ -930,9 +931,12 @@ const SoundWaveAnimation = () => {
 }
 
 /* =================== main screen =================== */
-export default function ChatDetailScreen({ navigation, route }) {
+export default function ChatDetailScreen({
+  navigation,
+  route,
+  isInSidebar = false,
+}) {
   const [message, setMessage] = useState('')
-  // const [messages, setMessages] = useState([])
   const [callLogs, setCallLogs] = useState([])
   const [combinedItems, setCombinedItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1691,7 +1695,32 @@ export default function ChatDetailScreen({ navigation, route }) {
     }
   }
 
-  const handleBack = () => navigation.goBack()
+  const handleBack = useCallback(() => {
+    console.log('⬅️ Back pressed')
+
+    if (isInSidebar && Platform.OS === 'web') {
+      console.log('🌐 Web sidebar mode - updating URL only')
+      if (window?.history) {
+        window.history.pushState({}, '', '/chats')
+      }
+      return
+    }
+
+    console.log('📱 Normal mode - navigating back')
+    if (navigation?.goBack) {
+      navigation.goBack()
+    }
+  }, [isInSidebar, navigation])
+
+  const showBackButton = useMemo(() => {
+    const shouldShow = !(Platform.OS === 'web' && isInSidebar)
+    console.log('🔍 showBackButton calculated:', {
+      platform: Platform.OS,
+      isInSidebar,
+      shouldShow,
+    })
+    return shouldShow
+  }, [isInSidebar])
 
   /* ---------- render item (message or call log) ---------- */
   const renderItem = useCallback(({ item, index }) => {
@@ -1799,16 +1828,22 @@ export default function ChatDetailScreen({ navigation, route }) {
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <Header>
-        <BackButton onPress={handleBack}>
+        {/* Alternative Method 2: Always render but control visibility */}
+        <BackButton
+          onPress={handleBack}
+          style={{
+            display: showBackButton ? 'flex' : 'none',
+          }}
+        >
           <Ionicons name="arrow-back" size={24} color="#2c3e50" />
         </BackButton>
-
         {/* Make the header info clickable */}
         <TouchableOpacity
           style={{
             flexDirection: 'row',
             alignItems: 'center',
             flex: 1,
+            marginLeft: showBackButton ? 0 : 16,
           }}
           onPress={navigateToProfile}
           activeOpacity={0.7}
@@ -1843,7 +1878,6 @@ export default function ChatDetailScreen({ navigation, route }) {
         </TouchableOpacity>
 
         <HeaderActions>
-          {/* Show connection indicator */}
           <View style={{ marginRight: 8 }}>
             <Ionicons
               name={wsConnected ? 'wifi' : 'wifi-off'}
@@ -2009,29 +2043,6 @@ export default function ChatDetailScreen({ navigation, route }) {
           />
         </ImagePreviewContainer>
       </ImagePreviewModal>
-
-      {/* {Platform.OS === 'web' && (
-        <View
-          style={{
-            position: 'absolute',
-            top: 100,
-            left: 10,
-            zIndex: 999999,
-            backgroundColor: 'yellow',
-            padding: 10,
-          }}
-        >
-          <Text style={{ color: 'black' }}>
-            Dropdown Visible: {webDropdownVisible ? 'TRUE' : 'FALSE'}
-          </Text>
-          <Text style={{ color: 'black' }}>
-            Selected: {selectedMessage ? 'YES' : 'NO'}
-          </Text>
-          <Text style={{ color: 'black' }}>
-            Position: {dropdownPosition.x}, {dropdownPosition.y}
-          </Text>
-        </View>
-      )} */}
 
       {/* Mobile Action Menu */}
       <MessageActionMenu
