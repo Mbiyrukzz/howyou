@@ -1,4 +1,4 @@
-// providers/PostsProvider.js - Add updatePost function
+// providers/PostsProvider.js - Fixed version
 import React, { useEffect, useState, useCallback, useContext } from 'react'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import PostsContext from '../contexts/PostsContext'
@@ -415,11 +415,11 @@ export const PostsProvider = ({ children }) => {
     return data.post
   }
 
-  // ✅ NEW: Update Post
+  // ─── Update Post ────────────────────────────────
   const updatePost = async (postId, newContent) => {
     if (!isReady) throw new Error('Auth not ready')
 
-    console.log('Updating post:', postId, 'with content:', newContent)
+    console.log('📝 Updating post:', postId, 'with content:', newContent)
 
     // Optimistic update
     setPosts((p) =>
@@ -442,7 +442,7 @@ export const PostsProvider = ({ children }) => {
 
       return data.post
     } catch (e) {
-      console.error('Update post error:', e)
+      console.error('❌ Update post error:', e)
       // Rollback on error
       await refetch()
       throw e
@@ -485,21 +485,46 @@ export const PostsProvider = ({ children }) => {
 
   // ─── Delete Post ────────────────────────────────
   const deletePost = async (postId) => {
-    if (!isReady) throw new Error('Auth not ready')
+    console.log('═══════════════════════════════════')
+    console.log('🔍 DELETE POST CALLED')
+    console.log('═══════════════════════════════════')
+    console.log('postId:', postId)
+    console.log('isReady:', isReady)
+    console.log('API_URL:', API_URL)
+    console.log('Full URL:', `${API_URL}/posts/${postId}`)
+    console.log('del function type:', typeof del)
+    console.log('posts count:', posts.length)
 
-    console.log('Deleting post:', postId)
+    if (!isReady) {
+      console.log('❌ Auth not ready!')
+      throw new Error('Auth not ready')
+    }
 
     // Optimistic update
     const deletedPost = posts.find((p) => p._id === postId)
+    console.log('Found post to delete:', !!deletedPost)
+
     setPosts((p) => p.filter((x) => x._id !== postId))
+    console.log('Optimistically removed from state')
 
     try {
-      await del(`${API_URL}/posts/${postId}`)
+      console.log('📡 Calling del() function...')
+      const result = await del(`${API_URL}/posts/${postId}`)
+      console.log('✅ API Response:', result)
       console.log('✅ Post deleted successfully')
+      console.log('═══════════════════════════════════')
+      return result
     } catch (e) {
-      console.error('Delete post error:', e)
+      console.log('❌ DELETE FAILED')
+      console.error('Error:', e)
+      console.error('Error type:', e.constructor.name)
+      console.error('Error message:', e.message)
+      console.error('Error stack:', e.stack)
+      console.log('═══════════════════════════════════')
+
       // Rollback on error
       if (deletedPost) {
+        console.log('Rolling back...')
         setPosts((p) => [deletedPost, ...p])
       }
       throw e
@@ -508,26 +533,61 @@ export const PostsProvider = ({ children }) => {
 
   // ─── Delete Status ────────────────────────────────
   const deleteStatus = async (statusId) => {
-    if (!isReady) throw new Error('Auth not ready')
+    console.log('═══════════════════════════════════')
+    console.log('🔍 DELETE STATUS CALLED')
+    console.log('═══════════════════════════════════')
+    console.log('statusId:', statusId)
+    console.log('isReady:', isReady)
+    console.log('API_URL:', API_URL)
+    console.log('Full URL:', `${API_URL}/status/${statusId}`)
+    console.log('del function type:', typeof del)
+    console.log('myStatus count:', myStatus?.length || 0)
 
-    console.log('Deleting status:', statusId)
+    if (!isReady) {
+      console.log('❌ Auth not ready!')
+      throw new Error('Auth not ready')
+    }
 
     // Optimistic update
     const deletedStatus = (myStatus || []).find((s) => s._id === statusId)
+    console.log('Found status to delete:', !!deletedStatus)
+
     setMyStatus((prev) => (prev || []).filter((x) => x._id !== statusId))
+    console.log('Optimistically removed from state')
 
     try {
-      await del(`${API_URL}/status/${statusId}`)
+      console.log('📡 Calling del() function...')
+      const response = await del(`${API_URL}/status/${statusId}`)
+      console.log('✅ API Response:', response)
       console.log('✅ Status deleted successfully')
+      console.log('═══════════════════════════════════')
+      return response
     } catch (e) {
-      console.error('Delete status error:', e)
+      console.log('❌ DELETE FAILED')
+      console.error('Error:', e)
+      console.error('Error type:', e.constructor.name)
+      console.error('Error message:', e.message)
+      console.error('Error stack:', e.stack)
+      console.log('═══════════════════════════════════')
+
       // Rollback on error
       if (deletedStatus) {
+        console.log('Rolling back...')
         setMyStatus((prev) => [deletedStatus, ...(prev || [])])
       }
-      throw e
+      throw new Error(e.message || 'Failed to delete status')
     }
   }
+
+  // ─── Check Post Ownership ────────────────────────────────
+  const isPostOwner = useCallback(
+    (post) => {
+      if (!user?.uid || !post) return false
+      // Check both userId and user._id fields for compatibility
+      return post.userId === user.uid || post.user?._id === user.uid
+    },
+    [user?.uid]
+  )
 
   // ─── Auto Fetch on Mount ────────────────────────────────
   useEffect(() => {
@@ -541,7 +601,7 @@ export const PostsProvider = ({ children }) => {
     loading,
     error,
     createPost,
-    updatePost, // ✅ Export updatePost
+    updatePost,
     toggleLike,
     deletePost,
     deleteStatus,
@@ -552,6 +612,8 @@ export const PostsProvider = ({ children }) => {
     wsReconnect,
     wsSend,
     isUserOnline: (userId) => onlineUsers.has(userId),
+    isPostOwner,
+    currentUserId: user?.uid,
   }
 
   return <PostsContext.Provider value={value}>{children}</PostsContext.Provider>

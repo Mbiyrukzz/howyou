@@ -1,4 +1,4 @@
-// screens/StatusViewerScreen.js
+// screens/StatusViewerScreen.js - FIXED DELETE
 import React, { useState, useEffect, useRef } from 'react'
 import {
   View,
@@ -6,6 +6,7 @@ import {
   ActivityIndicator,
   Alert,
   Dimensions,
+  Platform,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Video } from 'expo-av'
@@ -160,52 +161,49 @@ const formatTimestamp = (date) => {
 }
 
 export default function StatusViewerScreen({ route, navigation }) {
-  // Get params - can receive either single status or array of statuses
   const { status, statuses: passedStatuses, userName } = route.params
   const { statuses, myStatus, deleteStatus } = usePosts()
 
   console.log('StatusViewer params:', { status, passedStatuses, userName })
   console.log('myStatus from provider:', myStatus)
 
-  // Determine the list of statuses to show
-  let statusList = []
-  let isViewingOwnStatus = false
+  // ✅ LOCAL STATE: Manage the status list locally so we can update it after deletion
+  const [localStatusList, setLocalStatusList] = useState([])
+  const [isViewingOwnStatus, setIsViewingOwnStatus] = useState(false)
 
-  if (passedStatuses && passedStatuses.length > 0) {
-    // Passed an array of statuses (new approach)
-    statusList = passedStatuses
+  // ✅ Initialize local state from props/provider
+  useEffect(() => {
+    let statusList = []
+    let isOwn = false
 
-    // Check if these are your own statuses
-    isViewingOwnStatus =
-      myStatus &&
-      myStatus.length > 0 &&
-      passedStatuses[0]?.userId === myStatus[0]?.userId
-  } else if (status) {
-    // Passed a single status (old approach - for backwards compatibility)
-    const statusUserId = status.userId
+    if (passedStatuses && passedStatuses.length > 0) {
+      statusList = passedStatuses
+      isOwn =
+        myStatus &&
+        myStatus.length > 0 &&
+        passedStatuses[0]?.userId === myStatus[0]?.userId
+    } else if (status) {
+      const statusUserId = status.userId
+      isOwn =
+        myStatus &&
+        myStatus.length > 0 &&
+        myStatus.some((s) => s._id === status._id || s.userId === statusUserId)
 
-    // Check if this is your own status
-    isViewingOwnStatus =
-      myStatus &&
-      myStatus.length > 0 &&
-      myStatus.some((s) => s._id === status._id || s.userId === statusUserId)
-
-    if (isViewingOwnStatus) {
-      // Show all your statuses
-      statusList = myStatus || []
-    } else {
-      // Find all statuses from this user
-      const userStatuses = statuses.find((s) => s.userId === statusUserId)
-      statusList = userStatuses?.statuses || [status]
+      if (isOwn) {
+        statusList = myStatus || []
+      } else {
+        const userStatuses = statuses.find((s) => s.userId === statusUserId)
+        statusList = userStatuses?.statuses || [status]
+      }
     }
-  }
 
-  console.log('Final statusList length:', statusList.length)
-  console.log('isViewingOwnStatus:', isViewingOwnStatus)
+    console.log('Setting local status list:', statusList.length)
+    setLocalStatusList(statusList)
+    setIsViewingOwnStatus(isOwn)
+  }, [status, passedStatuses, myStatus, statuses])
 
-  // Find initial index
   const initialIndex = status
-    ? statusList.findIndex((s) => s._id === status._id)
+    ? localStatusList.findIndex((s) => s._id === status._id)
     : 0
 
   const [currentIndex, setCurrentIndex] = useState(
@@ -216,18 +214,16 @@ export default function StatusViewerScreen({ route, navigation }) {
   const videoRef = useRef(null)
   const timerRef = useRef(null)
 
-  const currentStatus = statusList[currentIndex]
+  const currentStatus = localStatusList[currentIndex]
 
-  const DURATION = 5000 // 5 seconds per status
+  const DURATION = 5000
 
   useEffect(() => {
     if (!currentStatus) return
 
-    // Reset progress
     setProgress(0)
     setIsPaused(false)
 
-    // Start timer
     const startTime = Date.now()
     timerRef.current = setInterval(() => {
       if (isPaused) return
@@ -248,7 +244,7 @@ export default function StatusViewerScreen({ route, navigation }) {
   }, [currentIndex, isPaused, currentStatus])
 
   const goToNext = () => {
-    if (currentIndex < statusList.length - 1) {
+    if (currentIndex < localStatusList.length - 1) {
       setCurrentIndex(currentIndex + 1)
     } else {
       navigation.goBack()
@@ -277,40 +273,118 @@ export default function StatusViewerScreen({ route, navigation }) {
   }
 
   const handleDelete = () => {
-    Alert.alert(
-      'Delete Status',
-      'Are you sure you want to delete this status?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await deleteStatus(currentStatus._id)
-              Alert.alert('Success', 'Status deleted')
+    if (!currentStatus) return
 
-              // If this was the last status, go back
-              if (statusList.length <= 1) {
-                navigation.goBack()
-              } else {
-                // Remove from local list and adjust index
-                const newList = statusList.filter((_, i) => i !== currentIndex)
-                if (currentIndex >= newList.length) {
-                  setCurrentIndex(newList.length - 1)
-                }
-              }
-            } catch (error) {
-              console.error('Delete status error:', error)
-              Alert.alert('Error', 'Failed to delete status')
-            }
+    console.log('🗑️ Delete button clicked for status:', currentStatus._id)
+
+    if (Platform.OS === 'web') {
+      // Use window.confirm for web
+      const confirmed = window.confirm(
+        'Are you sure you want to delete this status? This action cannot be undone.'
+      )
+
+      if (confirmed) {
+        console.log('✅ User confirmed delete')
+        performDelete()
+      } else {
+        console.log('❌ User cancelled delete')
+      }
+    } else {
+      // Use Alert.alert for mobile (this actually works on mobile)
+      Alert.alert(
+        'Delete Status',
+        'Are you sure you want to delete this status? This action cannot be undone.',
+        [
+          {
+            text: 'Cancel',
+            style: 'cancel',
+            onPress: () => console.log('❌ User cancelled delete'),
           },
-        },
-      ]
-    )
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => {
+              console.log('✅ User confirmed delete')
+              performDelete()
+            },
+          },
+        ]
+      )
+    }
   }
 
-  if (!currentStatus || statusList.length === 0) {
+  const performDelete = async () => {
+    if (!currentStatus) return
+
+    try {
+      console.log('═══════════════════════════════════')
+      console.log('🗑️ STARTING DELETE PROCESS')
+      console.log('═══════════════════════════════════')
+      console.log('Status ID:', currentStatus._id)
+      console.log('deleteStatus function:', typeof deleteStatus)
+
+      // Call the API
+      const result = await deleteStatus(currentStatus._id)
+
+      console.log('✅ API Response:', result)
+      console.log('✅ Status deleted successfully')
+
+      // Update local state
+      const newList = localStatusList.filter((s) => s._id !== currentStatus._id)
+      console.log('Updated list length:', newList.length)
+
+      // If no more statuses, go back
+      if (newList.length === 0) {
+        console.log('No more statuses, navigating back')
+
+        if (Platform.OS === 'web') {
+          alert('Status deleted successfully!')
+        } else {
+          Alert.alert('Success', 'Status deleted successfully!', [
+            { text: 'OK', onPress: () => navigation.goBack() },
+          ])
+          return
+        }
+
+        navigation.goBack()
+        return
+      }
+
+      // Update the local list
+      setLocalStatusList(newList)
+
+      // Adjust current index if needed
+      if (currentIndex >= newList.length) {
+        setCurrentIndex(newList.length - 1)
+      }
+
+      console.log('✅ Local state updated successfully')
+      console.log(
+        'New current index:',
+        currentIndex >= newList.length ? newList.length - 1 : currentIndex
+      )
+      console.log('═══════════════════════════════════')
+    } catch (error) {
+      console.log('═══════════════════════════════════')
+      console.log('❌ DELETE FAILED')
+      console.log('═══════════════════════════════════')
+      console.error('Error type:', error.constructor.name)
+      console.error('Error message:', error.message)
+      console.error('Error stack:', error.stack)
+      console.log('═══════════════════════════════════')
+
+      if (Platform.OS === 'web') {
+        alert('Failed to delete status: ' + (error.message || 'Unknown error'))
+      } else {
+        Alert.alert(
+          'Error',
+          'Failed to delete status: ' + (error.message || 'Unknown error')
+        )
+      }
+    }
+  }
+
+  if (!currentStatus || localStatusList.length === 0) {
     return (
       <Container style={{ justifyContent: 'center', alignItems: 'center' }}>
         <ActivityIndicator size="large" color="#fff" />
@@ -329,7 +403,7 @@ export default function StatusViewerScreen({ route, navigation }) {
       >
         {/* Progress Bars */}
         <ProgressBarContainer>
-          {statusList.map((_, i) => (
+          {localStatusList.map((_, i) => (
             <ProgressSegment key={i}>
               <ProgressFill
                 progress={
@@ -356,10 +430,10 @@ export default function StatusViewerScreen({ route, navigation }) {
             <Timestamp>{formatTimestamp(currentStatus.createdAt)}</Timestamp>
           </UserInfo>
 
-          {/* Status counter if multiple */}
-          {statusList.length > 1 && (
+          {/* Status counter */}
+          {localStatusList.length > 1 && (
             <StatusCounter>
-              {currentIndex + 1}/{statusList.length}
+              {currentIndex + 1}/{localStatusList.length}
             </StatusCounter>
           )}
 

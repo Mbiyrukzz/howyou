@@ -735,6 +735,61 @@ const EditPostModal = ({ visible, post, onClose, onSave }) => {
   )
 }
 
+// ─── POST MENU MODAL ─────────────────────────────────────────────────────────
+const PostMenuModal = ({
+  visible,
+  post,
+  onClose,
+  onEdit,
+  onDelete,
+  isDeleting,
+}) => (
+  <Modal
+    visible={visible}
+    transparent
+    animationType="fade"
+    onRequestClose={onClose}
+  >
+    <TouchableWithoutFeedback onPress={!isDeleting ? onClose : null}>
+      <ModalOverlay>
+        <TouchableWithoutFeedback>
+          <ModalContent>
+            <ModalTitle>Post Options</ModalTitle>
+            <ModalSubtitle>{post?.username}'s post</ModalSubtitle>
+
+            <ModalButton
+              bgColor="#e3f2fd"
+              onPress={onEdit}
+              disabled={isDeleting}
+            >
+              <Ionicons name="create-outline" size={24} color="#2196f3" />
+              <ModalButtonText color="#2196f3">Edit Post</ModalButtonText>
+            </ModalButton>
+
+            <ModalButton
+              bgColor="#fee"
+              onPress={onDelete}
+              disabled={isDeleting}
+            >
+              {isDeleting ? (
+                <ActivityIndicator size="small" color="#dc3545" />
+              ) : (
+                <Ionicons name="trash-outline" size={24} color="#dc3545" />
+              )}
+              <ModalButtonText color="#dc3545">
+                {isDeleting ? 'Deleting...' : 'Delete Post'}
+              </ModalButtonText>
+            </ModalButton>
+
+            <ModalCancelButton onPress={onClose} disabled={isDeleting}>
+              <ModalCancelText>Cancel</ModalCancelText>
+            </ModalCancelButton>
+          </ModalContent>
+        </TouchableWithoutFeedback>
+      </ModalOverlay>
+    </TouchableWithoutFeedback>
+  </Modal>
+)
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── MAIN SCREEN COMPONENT ───────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -748,16 +803,22 @@ export default function PostsScreen({ navigation, route }) {
     toggleLike,
     updatePost,
     deletePost,
+    deleteStatus, // ✅ Now imported
     createPost,
     wsConnected,
     connectionState,
     wsReconnect,
+    isPostOwner, // ✅ NEW: Check if user owns post
+    currentUserId, // ✅ NEW: Current user ID
   } = usePosts()
 
   const [refreshing, setRefreshing] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [editingPost, setEditingPost] = useState(null)
+  const [menuModalVisible, setMenuModalVisible] = useState(false)
+  const [menuSelectedPost, setMenuSelectedPost] = useState(null)
+  const [isDeleting, setIsDeleting] = useState(false)
   const scrollY = useRef(new Animated.Value(0)).current
 
   const [selectedPostId, setSelectedPostId] = useState(null)
@@ -878,21 +939,9 @@ export default function PostsScreen({ navigation, route }) {
   }
 
   const handlePostMenu = (post) => {
-    Alert.alert('Post Options', 'Choose an action', [
-      { text: 'Cancel', style: 'cancel' },
-      {
-        text: 'Edit',
-        onPress: () => {
-          setEditingPost(post)
-          setEditModalVisible(true)
-        },
-      },
-      {
-        text: 'Delete',
-        style: 'destructive',
-        onPress: () => handleDeletePost(post),
-      },
-    ])
+    console.log('📋 Menu clicked for post:', post._id)
+    setMenuSelectedPost(post)
+    setMenuModalVisible(true)
   }
 
   const handleUpdatePost = async (newContent) => {
@@ -905,7 +954,14 @@ export default function PostsScreen({ navigation, route }) {
       setEditModalVisible(false)
       setEditingPost(null)
 
-      Alert.alert('Success', 'Post updated successfully')
+      // Replace the success Alert with:
+      setTimeout(() => {
+        if (Platform.OS === 'web') {
+          alert('Post updated successfully!')
+        } else {
+          Alert.alert('Success', 'Post updated successfully')
+        }
+      }, 100)
     } catch (error) {
       console.error('Update post error:', error)
       Alert.alert('Error', 'Failed to update post. Please try again.')
@@ -913,37 +969,51 @@ export default function PostsScreen({ navigation, route }) {
     }
   }
 
-  const handleDeletePost = (post) => {
-    Alert.alert(
-      'Delete Post',
-      'Are you sure you want to delete this post? This action cannot be undone.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Delete',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              // ✅ Use deletePost from the provider (authenticated)
-              await deletePost(post._id)
+  const handleDeletePost = async () => {
+    if (!menuSelectedPost) return
 
-              // Handle sidebar deselection
-              if (selectedPostId === post._id) {
-                setSelectedPostId(null)
-                if (typeof window !== 'undefined' && window.history) {
-                  window.history.pushState({}, '', '/posts')
-                }
-              }
+    console.log('🗑️ Delete clicked for post:', menuSelectedPost._id)
+    setIsDeleting(true)
 
-              Alert.alert('Success', 'Post deleted successfully')
-            } catch (error) {
-              console.error('Delete post error:', error)
-              Alert.alert('Error', 'Failed to delete post. Please try again.')
-            }
-          },
-        },
-      ]
-    )
+    try {
+      console.log('📡 Calling deletePost...')
+      await deletePost(menuSelectedPost._id)
+
+      console.log('✅ Delete successful')
+
+      // Close modal
+      setMenuModalVisible(false)
+
+      // Handle sidebar deselection
+      if (selectedPostId === menuSelectedPost._id) {
+        setSelectedPostId(null)
+        if (typeof window !== 'undefined' && window.history) {
+          window.history.pushState({}, '', '/posts')
+        }
+      }
+
+      // Clear state
+      setMenuSelectedPost(null)
+
+      // Show success (use setTimeout to avoid modal conflicts)
+      setTimeout(() => {
+        if (Platform.OS === 'web') {
+          alert('Post deleted successfully!')
+        } else {
+          Alert.alert('Success', 'Post deleted successfully')
+        }
+      }, 100)
+    } catch (error) {
+      console.error('❌ Delete post error:', error)
+
+      if (Platform.OS === 'web') {
+        alert('Failed to delete post: ' + (error.message || 'Unknown error'))
+      } else {
+        Alert.alert('Error', 'Failed to delete post. Please try again.')
+      }
+    } finally {
+      setIsDeleting(false)
+    }
   }
   const HeaderComponent = () => (
     <Header>
@@ -988,7 +1058,6 @@ export default function PostsScreen({ navigation, route }) {
   const renderPostsFeed = () => (
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
-
       <FlatList
         data={posts}
         keyExtractor={(item) => item._id}
@@ -1023,18 +1092,22 @@ export default function PostsScreen({ navigation, route }) {
                       })}
                     </PostTimestamp>
                   </PostUserInfo>
-                  <PostMenuButton
-                    onPress={(e) => {
-                      e.stopPropagation()
-                      handlePostMenu(item)
-                    }}
-                  >
-                    <Ionicons
-                      name="ellipsis-horizontal"
-                      size={20}
-                      color="#7f8c8d"
-                    />
-                  </PostMenuButton>
+
+                  {/* ✅ FIXED: Only show menu for owned posts */}
+                  {isPostOwner(item) && (
+                    <PostMenuButton
+                      onPress={(e) => {
+                        e.stopPropagation()
+                        handlePostMenu(item)
+                      }}
+                    >
+                      <Ionicons
+                        name="ellipsis-horizontal"
+                        size={20}
+                        color="#7f8c8d"
+                      />
+                    </PostMenuButton>
+                  )}
                 </PostHeader>
 
                 <PostContent>{item.content}</PostContent>
@@ -1092,11 +1165,9 @@ export default function PostsScreen({ navigation, route }) {
           { useNativeDriver: false }
         )}
       />
-
       <FloatingActionButton onPress={() => navigation.navigate('CreatePost')}>
         <Ionicons name="add" size={28} color="#fff" />
       </FloatingActionButton>
-
       <StatusActionModal
         visible={modalVisible}
         onClose={() => setModalVisible(false)}
@@ -1104,7 +1175,6 @@ export default function PostsScreen({ navigation, route }) {
         onView={handleViewStatus}
         statusCount={yourStory.statusCount}
       />
-
       <EditPostModal
         visible={editModalVisible}
         post={editingPost}
@@ -1114,7 +1184,24 @@ export default function PostsScreen({ navigation, route }) {
         }}
         onSave={handleUpdatePost}
       />
-    
+
+      <PostMenuModal
+        visible={menuModalVisible}
+        post={menuSelectedPost}
+        onClose={() => {
+          if (!isDeleting) {
+            setMenuModalVisible(false)
+            setMenuSelectedPost(null)
+          }
+        }}
+        onEdit={() => {
+          setMenuModalVisible(false)
+          setEditingPost(menuSelectedPost)
+          setEditModalVisible(true)
+        }}
+        onDelete={handleDeletePost}
+        isDeleting={isDeleting}
+      />
     </Container>
   )
 
@@ -1154,82 +1241,89 @@ export default function PostsScreen({ navigation, route }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── POST DETAIL VIEW COMPONENT ──────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
-const PostDetailView = ({ post, onEdit, onDelete, onLike }) => (
-  <Container style={{ backgroundColor: '#fff' }}>
-    <PostDetailHeader>
-      <PostDetailTitle>Post Details</PostDetailTitle>
-    </PostDetailHeader>
+const PostDetailView = ({ post, onEdit, onDelete, onLike }) => {
+  const { isPostOwner } = usePosts() // ✅ Get ownership check
 
-    <PostDetailContent>
-      <PostDetailCard>
-        <PostHeader>
-          <PostAvatar color={post.avatarColor || '#3498db'}>
-            <PostAvatarText>{getInitials(post.username)}</PostAvatarText>
-          </PostAvatar>
-          <PostUserInfo>
-            <PostUsername>{post.username}</PostUsername>
-            <PostTimestamp>
-              {new Date(post.createdAt).toLocaleDateString()} at{' '}
-              {new Date(post.createdAt).toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit',
-              })}
-            </PostTimestamp>
-          </PostUserInfo>
-        </PostHeader>
+  return (
+    <Container style={{ backgroundColor: '#fff' }}>
+      <PostDetailHeader>
+        <PostDetailTitle>Post Details</PostDetailTitle>
+      </PostDetailHeader>
 
-        <PostDetailText>{post.content}</PostDetailText>
+      <PostDetailContent>
+        <PostDetailCard>
+          <PostHeader>
+            <PostAvatar color={post.avatarColor || '#3498db'}>
+              <PostAvatarText>{getInitials(post.username)}</PostAvatarText>
+            </PostAvatar>
+            <PostUserInfo>
+              <PostUsername>{post.username}</PostUsername>
+              <PostTimestamp>
+                {new Date(post.createdAt).toLocaleDateString()} at{' '}
+                {new Date(post.createdAt).toLocaleTimeString([], {
+                  hour: '2-digit',
+                  minute: '2-digit',
+                })}
+              </PostTimestamp>
+            </PostUserInfo>
+          </PostHeader>
 
-        {post.files?.[0] && (
-          <PostDetailImage>
-            <Image
-              source={{ uri: post.files[0].url }}
-              style={{ width: '100%', height: 400 }}
-              resizeMode="cover"
-            />
-          </PostDetailImage>
-        )}
+          <PostDetailText>{post.content}</PostDetailText>
 
-        <PostActions>
-          <ActionButton active={post.isLiked} onPress={onLike}>
-            <Ionicons
-              name={post.isLiked ? 'heart' : 'heart-outline'}
-              size={24}
-              color={post.isLiked ? '#e74c3c' : '#7f8c8d'}
-            />
-            <ActionText active={post.isLiked}>{post.likes} Likes</ActionText>
-          </ActionButton>
+          {post.files?.[0] && (
+            <PostDetailImage>
+              <Image
+                source={{ uri: post.files[0].url }}
+                style={{ width: '100%', height: 400 }}
+                resizeMode="cover"
+              />
+            </PostDetailImage>
+          )}
 
-          <ActionButton>
-            <Ionicons name="chatbubble-outline" size={22} color="#7f8c8d" />
-            <ActionText>{post.comments || 0} Comments</ActionText>
-          </ActionButton>
+          <PostActions>
+            <ActionButton active={post.isLiked} onPress={onLike}>
+              <Ionicons
+                name={post.isLiked ? 'heart' : 'heart-outline'}
+                size={24}
+                color={post.isLiked ? '#e74c3c' : '#7f8c8d'}
+              />
+              <ActionText active={post.isLiked}>{post.likes} Likes</ActionText>
+            </ActionButton>
 
-          <ActionButton>
-            <Ionicons name="share-outline" size={22} color="#7f8c8d" />
-            <ActionText>{post.shares || 0} Shares</ActionText>
-          </ActionButton>
-        </PostActions>
+            <ActionButton>
+              <Ionicons name="chatbubble-outline" size={22} color="#7f8c8d" />
+              <ActionText>{post.comments || 0} Comments</ActionText>
+            </ActionButton>
 
-        <ActionButtonsRow>
-          <SecondaryButton onPress={onEdit}>
-            <Ionicons name="create-outline" size={20} color="#7f8c8d" />
-            <SecondaryButtonText>Edit Post</SecondaryButtonText>
-          </SecondaryButton>
+            <ActionButton>
+              <Ionicons name="share-outline" size={22} color="#7f8c8d" />
+              <ActionText>{post.shares || 0} Shares</ActionText>
+            </ActionButton>
+          </PostActions>
 
-          <DangerButton onPress={onDelete}>
-            <Ionicons name="trash-outline" size={20} color="#dc3545" />
-            <DangerButtonText>Delete</DangerButtonText>
-          </DangerButton>
-        </ActionButtonsRow>
-      </PostDetailCard>
+          {/* ✅ FIXED: Only show action buttons for owned posts */}
+          {isPostOwner(post) && (
+            <ActionButtonsRow>
+              <SecondaryButton onPress={onEdit}>
+                <Ionicons name="create-outline" size={20} color="#7f8c8d" />
+                <SecondaryButtonText>Edit Post</SecondaryButtonText>
+              </SecondaryButton>
 
-      <CommentsSection>
-        <CommentsSectionTitle>Comments</CommentsSectionTitle>
-        <EmptyCommentsText>
-          No comments yet. Be the first to comment!
-        </EmptyCommentsText>
-      </CommentsSection>
-    </PostDetailContent>
-  </Container>
-)
+              <DangerButton onPress={onDelete}>
+                <Ionicons name="trash-outline" size={20} color="#dc3545" />
+                <DangerButtonText>Delete</DangerButtonText>
+              </DangerButton>
+            </ActionButtonsRow>
+          )}
+        </PostDetailCard>
+
+        <CommentsSection>
+          <CommentsSectionTitle>Comments</CommentsSectionTitle>
+          <EmptyCommentsText>
+            No comments yet. Be the first to comment!
+          </EmptyCommentsText>
+        </CommentsSection>
+      </PostDetailContent>
+    </Container>
+  )
+}
