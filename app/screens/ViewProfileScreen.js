@@ -19,11 +19,13 @@ import { useUser } from '../hooks/useUser'
 import useChatHelpers from '../hooks/useChatHelpers'
 import ChatsContext from '../contexts/ChatsContext'
 import { useWebSidebar } from '../hooks/useWebSidebar'
+import SharedChatsSidebar from '../components/SharedChatsSidebar'
 
 const { width } = Dimensions.get('window')
 const MEDIA_ITEM_SIZE = (width - 64) / 3
 
 /* =================== Styled Components =================== */
+
 const Container = styled.View`
   flex: 1;
   background-color: #f8f9fa;
@@ -1550,14 +1552,14 @@ export default function ViewProfileScreen({ navigation, route }) {
     getMessagesForChat,
     loadMessages,
     isUserOnline,
-    users = [], // ✅ Add users array from context
+    users = [],
   } = React.useContext(ChatsContext) || {}
 
   const { checkUserOnline, getStatusText, getLastSeenText } =
     useChatHelpers(initialChatId)
   const isWebSidebar = useWebSidebar()
 
-  // Load profile
+  // Load profile (existing logic)
   useEffect(() => {
     const load = async () => {
       try {
@@ -1569,7 +1571,6 @@ export default function ViewProfileScreen({ navigation, route }) {
 
         setProfileUser(found)
 
-        // Auto-find or create chat
         if (currentUser?.uid) {
           const participantId = found.firebaseUid || found._id
           const existing = chats.find((c) => {
@@ -1583,7 +1584,6 @@ export default function ViewProfileScreen({ navigation, route }) {
             setActiveChatId(existing._id || existing.id)
             setSelectedChat(existing)
           } else if (isWebSidebar) {
-            // Auto-create chat for web sidebar
             const res = await createChat([currentUser.uid, participantId], null)
             if (res.success) {
               setActiveChatId(res.chat._id || res.chat.id)
@@ -1602,7 +1602,7 @@ export default function ViewProfileScreen({ navigation, route }) {
     load()
   }, [userId, findUserById, isWebSidebar, currentUser?.uid])
 
-  // Load shared media
+  // Load shared media (existing logic)
   useEffect(() => {
     const loadSharedMedia = async () => {
       if (!profileUser || !currentUser?.uid) return
@@ -1653,7 +1653,6 @@ export default function ViewProfileScreen({ navigation, route }) {
 
     loadSharedMedia()
   }, [profileUser, currentUser, chats, getMessagesForChat, loadMessages])
-
   // Handlers
   const handleSelectChat = (chat) => {
     const chatId = chat._id || chat.id
@@ -1665,7 +1664,6 @@ export default function ViewProfileScreen({ navigation, route }) {
       (p) => p !== currentUser?.uid
     )
 
-    // Try multiple sources for user data
     const otherUser =
       chat.participantDetails?.[otherParticipant] ||
       users.find(
@@ -1685,12 +1683,10 @@ export default function ViewProfileScreen({ navigation, route }) {
       })
     }
 
-    // Load messages for this chat
     if (loadMessages) {
       loadMessages(chatId)
     }
   }
-
   const handleSendMessage = async () => {
     if (!profileUser || !currentUser?.uid)
       return Alert.alert('Error', 'Cannot send message')
@@ -1804,15 +1800,18 @@ export default function ViewProfileScreen({ navigation, route }) {
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <ThreeColumnLayout>
-        <ChatsColumn
+        {/* ✅ Replace ChatsColumn with SharedChatsSidebar */}
+        <SharedChatsSidebar
           chats={chats}
           selectedChatId={activeChatId}
           onSelectChat={handleSelectChat}
           currentUser={currentUser}
           isUserOnline={isUserOnline}
           users={users}
+          showOptionsButton={false}
         />
 
+        {/* Keep your existing ProfileColumn */}
         <ProfileColumn
           profileUser={profileUser}
           loading={loading}
@@ -1830,6 +1829,7 @@ export default function ViewProfileScreen({ navigation, route }) {
           onMediaPress={handleMediaPress}
         />
 
+        {/* Keep your existing MessagesColumn */}
         <MessagesColumn
           chatId={activeChatId}
           profileUser={profileUser}

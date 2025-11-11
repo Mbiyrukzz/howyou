@@ -1,14 +1,11 @@
-// screens/ChatsScreen.js - Updated with sidebar layout
+// screens/ChatsScreen.js - Updated with SharedChatsSidebar
 import React, { useContext, useState, useEffect } from 'react'
 import {
-  FlatList,
+  View,
   TouchableOpacity,
   Platform,
   StatusBar,
-  RefreshControl,
-  Dimensions,
   Alert,
-  View,
   Modal,
   TouchableWithoutFeedback,
 } from 'react-native'
@@ -18,7 +15,6 @@ import { LinearGradient } from 'expo-linear-gradient'
 import * as ImagePicker from 'expo-image-picker'
 
 import ChatDetailScreen from './ChatDetailScreen'
-
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import { usePosts } from '../providers/PostsProvider'
@@ -27,10 +23,9 @@ import WebSidebarLayout, {
 } from '../components/WebSidebarLayout'
 import { useWebNavigation } from '../navigation/WebNavigationHandler'
 import LoadingIndicator from '../components/LoadingIndicator'
+import SharedChatsSidebar from '../components/SharedChatsSidebar' // ✅ Import shared component
 
-const { width: screenWidth } = Dimensions.get('window')
-
-// ─── Styled Components ────────────────────────────────
+// ─── Styled Components (Keep Header, FloatingActionButton, etc.) ────
 const Container = styled.View`
   flex: 1;
   background-color: #f8fafc;
@@ -65,146 +60,6 @@ const CameraButton = styled.TouchableOpacity`
   background-color: #f1f5f9;
   justify-content: center;
   align-items: center;
-`
-
-const SearchInput = styled.TextInput`
-  flex: 1;
-  margin-left: 12px;
-  font-size: 16px;
-  color: #1e293b;
-  font-weight: 500;
-  border-width: 0;
-  outline: none;
-  text-decoration-line: none;
-  background-color: transparent;
-  &:focus {
-    border-bottom-width: 2px;
-    border-bottom-color: #3396d3;
-  }
-`
-
-const SearchContainer = styled.View`
-  background-color: white;
-  margin: 16px 24px;
-  padding: 16px 20px;
-  border-radius: 16px;
-  flex-direction: row;
-  align-items: center;
-  shadow-color: #3396d3;
-  shadow-offset: 0px 4px;
-  shadow-opacity: 0.15;
-  shadow-radius: 12px;
-  elevation: 8;
-  border: 1px solid rgba(102, 126, 234, 0.1);
-`
-
-const SearchIcon = styled.View`
-  width: 32px;
-  height: 32px;
-  border-radius: 16px;
-  background-color: #f1f5f9;
-  justify-content: center;
-  align-items: center;
-`
-
-const ChatItemContainer = styled.View`
-  position: relative;
-  margin: 6px 24px;
-`
-
-const ChatItem = styled.TouchableOpacity`
-  background-color: white;
-  padding: 20px;
-  border-radius: 20px;
-  flex-direction: row;
-  align-items: center;
-  shadow-color: #000;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.08;
-  shadow-radius: 8px;
-  elevation: 4;
-  border: 1px solid #f1f5f9;
-  ${(props) =>
-    props.selected &&
-    `
-    background-color: #e3f2fd;
-    border-color: #3396d3;
-  `}
-`
-
-const ChatAvatar = styled.View`
-  width: 48px;
-  height: 48px;
-  border-radius: 24px;
-  background-color: ${(props) => props.color || '#3396d3'};
-  justify-content: center;
-  align-items: center;
-  margin-right: 16px;
-`
-
-const ChatAvatarText = styled.Text`
-  color: white;
-  font-size: 18px;
-  font-weight: bold;
-`
-
-const ChatInfo = styled.View`
-  flex: 1;
-`
-
-const ChatName = styled.Text`
-  font-size: 18px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 6px;
-`
-
-const LastMessage = styled.Text`
-  font-size: 15px;
-  color: #64748b;
-  line-height: 20px;
-  font-weight: 500;
-`
-
-const OptionsButton = styled.TouchableOpacity`
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  background-color: #f1f5f9;
-  justify-content: center;
-  align-items: center;
-  margin-left: 8px;
-`
-
-const DropdownMenu = styled.View`
-  position: absolute;
-  right: 20px;
-  top: 60px;
-  background-color: white;
-  border-radius: 12px;
-  padding: 8px 0;
-  min-width: 180px;
-  shadow-color: #000;
-  shadow-offset: 0px 4px;
-  shadow-opacity: 0.15;
-  shadow-radius: 12px;
-  elevation: 8;
-  border: 1px solid #f1f5f9;
-  z-index: 1000;
-`
-
-const DropdownItem = styled.TouchableOpacity`
-  flex-direction: row;
-  align-items: center;
-  padding: 12px 16px;
-  background-color: ${(props) => (props.danger ? '#fef2f2' : 'transparent')};
-`
-
-const DropdownItemText = styled.Text`
-  font-size: 16px;
-  font-weight: 600;
-  color: ${(props) => (props.danger ? '#dc2626' : '#1e293b')};
-  margin-left: 12px;
 `
 
 const FloatingActionButton = styled.TouchableOpacity`
@@ -242,16 +97,6 @@ const EmptyStateContainer = styled.View`
   padding: 48px;
 `
 
-const EmptyStateIcon = styled.View`
-  width: 120px;
-  height: 120px;
-  border-radius: 60px;
-  background-color: #f1f5f9;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 24px;
-`
-
 const EmptyStateTitle = styled.Text`
   font-size: 24px;
   font-weight: 700;
@@ -266,73 +111,6 @@ const EmptyStateText = styled.Text`
   text-align: center;
   line-height: 24px;
   margin-bottom: 32px;
-`
-
-const EmptyStateButton = styled.TouchableOpacity`
-  background-color: #3396d3;
-  padding: 16px 32px;
-  border-radius: 16px;
-  shadow-color: #3396d3;
-  shadow-offset: 0px 4px;
-  shadow-opacity: 0.3;
-  shadow-radius: 6px;
-  elevation: 6;
-`
-
-const EmptyStateButtonText = styled.Text`
-  color: white;
-  font-size: 16px;
-  font-weight: 700;
-`
-
-const ErrorContainer = styled.View`
-  flex: 1;
-  justify-content: center;
-  align-items: center;
-  padding: 48px;
-`
-
-const ErrorIcon = styled.View`
-  width: 100px;
-  height: 100px;
-  border-radius: 50px;
-  background-color: #fee2e2;
-  justify-content: center;
-  align-items: center;
-  margin-bottom: 24px;
-`
-
-const ErrorTitle = styled.Text`
-  font-size: 22px;
-  font-weight: 700;
-  color: #dc2626;
-  margin-bottom: 8px;
-  text-align: center;
-`
-
-const ErrorText = styled.Text`
-  font-size: 16px;
-  color: #64748b;
-  text-align: center;
-  margin-bottom: 32px;
-  line-height: 24px;
-`
-
-const RetryButton = styled.TouchableOpacity`
-  background-color: #dc2626;
-  padding: 16px 32px;
-  border-radius: 16px;
-  shadow-color: #dc2626;
-  shadow-offset: 0px 4px;
-  shadow-opacity: 0.3;
-  shadow-radius: 6px;
-  elevation: 6;
-`
-
-const RetryButtonText = styled.Text`
-  color: white;
-  font-size: 16px;
-  font-weight: 700;
 `
 
 // ─── Camera Modal Components ────────────────────────────────
@@ -399,6 +177,37 @@ const ModalCancelText = styled.Text`
   color: #7f8c8d;
 `
 
+const DropdownMenu = styled.View`
+  position: absolute;
+  right: 20px;
+  top: 60px;
+  background-color: white;
+  border-radius: 12px;
+  padding: 8px 0;
+  min-width: 180px;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.15;
+  shadow-radius: 12px;
+  elevation: 8;
+  border: 1px solid #f1f5f9;
+  z-index: 1000;
+`
+
+const DropdownItem = styled.TouchableOpacity`
+  flex-direction: row;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: ${(props) => (props.danger ? '#fef2f2' : 'transparent')};
+`
+
+const DropdownItemText = styled.Text`
+  font-size: 16px;
+  font-weight: 600;
+  color: ${(props) => (props.danger ? '#dc2626' : '#1e293b')};
+  margin-left: 12px;
+`
+
 const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
   <Modal
     visible={visible}
@@ -434,124 +243,9 @@ const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
   </Modal>
 )
 
-// ─── Helper Functions ────────────────────────────────
-const getLastMessageText = (lastMessage) => {
-  if (!lastMessage) return null
-  if (typeof lastMessage === 'string') return lastMessage
-  if (typeof lastMessage === 'object' && lastMessage.content)
-    return lastMessage.content
-  return null
-}
-
-const findUserByAnyId = (users, id) => {
-  if (!users || !id) return null
-  return (
-    users.find((u) => u._id === id || u.id === id || u.firebaseUid === id) ||
-    null
-  )
-}
-
-const getUserColor = (userId) => {
-  const colors = [
-    '#3396d3',
-    '#e74c3c',
-    '#f39c12',
-    '#27ae60',
-    '#9b59b6',
-    '#1abc9c',
-    '#34495e',
-    '#e67e22',
-    '#2ecc71',
-    '#8e44ad',
-    '#16a085',
-    '#f1c40f',
-  ]
-  const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0
-  return colors[index]
-}
-
-const getInitials = (name) => {
-  if (!name) return '?'
-  return name
-    .split(' ')
-    .map((n) => n[0])
-    .join('')
-    .toUpperCase()
-    .substring(0, 2)
-}
-
-// ─── Chat Item Component ────────────────────────────────
-const ChatItemComponent = ({
-  item,
-  onPress,
-  onLongPress,
-  onOptionsPress,
-  users,
-  currentUserId,
-  showDropdown,
-  onDeletePress,
-  selected,
-}) => {
-  const otherParticipants =
-    item.participants?.filter((id) => id !== currentUserId) || []
-  const otherUser = otherParticipants.length
-    ? findUserByAnyId(users, otherParticipants[0])
-    : null
-  const chatName = otherUser?.name || 'Unknown'
-  const lastMsg = item.lastMessage
-  const isOwn = lastMsg?.senderId === currentUserId
-  const preview = lastMsg
-    ? `${isOwn ? 'You' : chatName}: ${getLastMessageText(lastMsg)}`
-    : 'No messages yet - start the conversation!'
-  const avatarColor = getUserColor(
-    otherUser?._id || otherUser?.id || otherUser?.firebaseUid
-  )
-
-  const isWeb = Platform.OS === 'web'
-
-  return (
-    <ChatItemContainer>
-      <ChatItem
-        onPress={() => onPress(item)}
-        onLongPress={!isWeb ? () => onLongPress(item) : undefined}
-        delayLongPress={500}
-        selected={selected}
-      >
-        <ChatAvatar color={avatarColor}>
-          <ChatAvatarText>{getInitials(chatName)}</ChatAvatarText>
-        </ChatAvatar>
-        <ChatInfo>
-          <ChatName>{chatName}</ChatName>
-          <LastMessage numberOfLines={1}>{preview}</LastMessage>
-        </ChatInfo>
-        {isWeb && (
-          <OptionsButton
-            onPress={(e) => {
-              e.stopPropagation()
-              onOptionsPress(item)
-            }}
-          >
-            <Ionicons name="ellipsis-vertical" size={20} color="#64748b" />
-          </OptionsButton>
-        )}
-      </ChatItem>
-      {isWeb && showDropdown && (
-        <DropdownMenu>
-          <DropdownItem danger onPress={onDeletePress}>
-            <Ionicons name="trash-outline" size={20} color="#dc2626" />
-            <DropdownItemText danger>Delete Chat</DropdownItemText>
-          </DropdownItem>
-        </DropdownMenu>
-      )}
-    </ChatItemContainer>
-  )
-}
-
 // ─── Main ChatsScreen ────────────────────────────────
 export default function ChatsScreen({ navigation, route }) {
   const [selectedChatId, setSelectedChatId] = useState(null)
-  const [searchText, setSearchText] = useState('')
-  const [refreshing, setRefreshing] = useState(false)
   const [activeDropdown, setActiveDropdown] = useState(null)
   const [cameraModalVisible, setCameraModalVisible] = useState(false)
   const [uploading, setUploading] = useState(false)
@@ -566,6 +260,7 @@ export default function ChatsScreen({ navigation, route }) {
     users = [],
     reloadChats,
     deleteChat,
+    isUserOnline,
   } = chatsContext || {}
 
   useWebNavigation((type, id) => {
@@ -574,28 +269,14 @@ export default function ChatsScreen({ navigation, route }) {
     }
   })
 
-  // Deep linking: Set selected chat from route
   const routeChatId = route?.params?.chatId
   useEffect(() => {
     if (routeChatId && !shouldShowSidebar) {
-      // Only apply on mobile (web uses URL)
       setSelectedChatId(routeChatId)
     }
   }, [routeChatId])
 
-  // Filter chats
-  const filteredChats = chats.filter((chat) => {
-    if (!searchText) return true
-    const otherParticipants =
-      chat.participants?.filter((id) => id !== user?.uid) || []
-    return otherParticipants.some((id) => {
-      const participant = findUserByAnyId(users, id)
-      return participant?.name?.toLowerCase().includes(searchText.toLowerCase())
-    })
-  })
-
   // ─── Handlers ────────────────────────────────
-
   const handleChatPress = (chat) => {
     const chatId = chat._id || chat.id
     setActiveDropdown(null)
@@ -687,14 +368,6 @@ export default function ChatsScreen({ navigation, route }) {
     }
   }
 
-  const handleRefresh = async () => {
-    if (reloadChats) {
-      setRefreshing(true)
-      await reloadChats()
-      setRefreshing(false)
-    }
-  }
-
   const handleDeleteChat = async (chatId, chatName) => {
     if (!deleteChat)
       return Alert.alert('Error', 'Delete function not available')
@@ -714,16 +387,17 @@ export default function ChatsScreen({ navigation, route }) {
 
   const handleOptionsPress = (chat) => {
     const chatId = chat._id || chat.id
-    setActiveDropdown(activeDropdown === chatId ? null : chatId)
-  }
+    const otherParticipant = chat.participants?.find((id) => id !== user?.uid)
+    const otherUser = users.find(
+      (u) =>
+        u._id === otherParticipant ||
+        u.id === otherParticipant ||
+        u.firebaseUid === otherParticipant
+    )
+    const chatName = otherUser?.name || 'Unknown'
 
-  const confirmDeleteChat = (chatId, chatName) => {
     if (Platform.OS === 'web') {
-      if (
-        window.confirm(`Delete chat with ${chatName}? This cannot be undone.`)
-      ) {
-        handleDeleteChat(chatId, chatName)
-      }
+      setActiveDropdown(activeDropdown === chatId ? null : chatId)
     } else {
       Alert.alert(
         'Delete Chat',
@@ -740,38 +414,7 @@ export default function ChatsScreen({ navigation, route }) {
     }
   }
 
-  // ─── Render Helpers ────────────────────────────────
-  const renderEmptyState = () => (
-    <EmptyStateContainer>
-      <EmptyStateIcon>
-        <Ionicons name="chatbubbles-outline" size={60} color="#94a3b8" />
-      </EmptyStateIcon>
-      <EmptyStateTitle>No messages yet</EmptyStateTitle>
-      <EmptyStateText>
-        Connect with friends and colleagues by starting your first conversation
-      </EmptyStateText>
-      <EmptyStateButton onPress={handleNewChat}>
-        <EmptyStateButtonText>Start Messaging</EmptyStateButtonText>
-      </EmptyStateButton>
-    </EmptyStateContainer>
-  )
-
-  const renderErrorState = () => (
-    <ErrorContainer>
-      <ErrorIcon>
-        <Ionicons name="alert-circle-outline" size={50} color="#dc2626" />
-      </ErrorIcon>
-      <ErrorTitle>Connection Error</ErrorTitle>
-      <ErrorText>
-        Unable to load your conversations. Please check your internet connection
-        and try again.
-      </ErrorText>
-      <RetryButton onPress={handleRefresh}>
-        <RetryButtonText>Try Again</RetryButtonText>
-      </RetryButton>
-    </ErrorContainer>
-  )
-
+  // ─── Render Chat List with SharedChatsSidebar ────────────────────────────────
   const renderChatList = () => {
     if (loading && chats.length === 0) {
       return (
@@ -783,16 +426,6 @@ export default function ChatsScreen({ navigation, route }) {
               <Ionicons name="camera-outline" size={24} color="#94a3b8" />
             </CameraButton>
           </Header>
-          <SearchContainer>
-            <SearchIcon>
-              <Ionicons name="search-outline" size={18} color="#64748b" />
-            </SearchIcon>
-            <SearchInput
-              placeholder="Search messages..."
-              placeholderTextColor="#94a3b8"
-              editable={false}
-            />
-          </SearchContainer>
           <LoadingIndicator
             type="pulse"
             size="large"
@@ -804,8 +437,6 @@ export default function ChatsScreen({ navigation, route }) {
         </Container>
       )
     }
-
-    if (!chatsContext) return renderErrorState()
 
     return (
       <Container>
@@ -820,55 +451,55 @@ export default function ChatsScreen({ navigation, route }) {
             />
           </CameraButton>
         </Header>
-        <SearchContainer>
-          <SearchIcon>
-            <Ionicons name="search-outline" size={18} color="#64748b" />
-          </SearchIcon>
-          <SearchInput
-            placeholder="Search messages..."
-            placeholderTextColor="#94a3b8"
-            value={searchText}
-            onChangeText={setSearchText}
-          />
-        </SearchContainer>
-        <FlatList
-          data={filteredChats}
-          keyExtractor={(item) => (item._id || item.id).toString()}
-          renderItem={({ item }) => {
-            const chatId = item._id || item.id
-            const otherParticipants =
-              item.participants?.filter((id) => id !== user?.uid) || []
-            const otherUser = otherParticipants.length
-              ? findUserByAnyId(users, otherParticipants[0])
-              : null
-            const chatName = otherUser?.name || 'Unknown'
 
-            return (
-              <ChatItemComponent
-                item={item}
-                onPress={handleChatPress}
-                onLongPress={() => confirmDeleteChat(chatId, chatName)}
-                onOptionsPress={handleOptionsPress}
-                currentUserId={user?.uid}
-                users={users}
-                showDropdown={activeDropdown === chatId}
-                onDeletePress={() => confirmDeleteChat(chatId, chatName)}
-                selected={shouldShowSidebar && selectedChatId === chatId}
-              />
-            )
-          }}
-          showsVerticalScrollIndicator={false}
-          contentContainerStyle={{ paddingBottom: 120 }}
-          ListEmptyComponent={renderEmptyState}
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={handleRefresh}
-              colors={['#3396D3']}
-              tintColor="#3396D3"
-            />
-          }
+        {/* ✅ Use SharedChatsSidebar component */}
+        <SharedChatsSidebar
+          chats={chats}
+          selectedChatId={selectedChatId}
+          onSelectChat={handleChatPress}
+          currentUser={user}
+          isUserOnline={isUserOnline}
+          users={users}
+          showOptionsButton={Platform.OS === 'web'}
+          onOptionsPress={handleOptionsPress}
         />
+
+        {/* Show dropdown if active */}
+        {Platform.OS === 'web' && activeDropdown && (
+          <DropdownMenu>
+            <DropdownItem
+              danger
+              onPress={() => {
+                const chat = chats.find(
+                  (c) => (c._id || c.id) === activeDropdown
+                )
+                if (chat) {
+                  const otherParticipant = chat.participants?.find(
+                    (id) => id !== user?.uid
+                  )
+                  const otherUser = users.find(
+                    (u) =>
+                      u._id === otherParticipant ||
+                      u.id === otherParticipant ||
+                      u.firebaseUid === otherParticipant
+                  )
+                  const chatName = otherUser?.name || 'Unknown'
+                  if (
+                    window.confirm(
+                      `Delete chat with ${chatName}? This cannot be undone.`
+                    )
+                  ) {
+                    handleDeleteChat(activeDropdown, chatName)
+                  }
+                }
+              }}
+            >
+              <Ionicons name="trash-outline" size={20} color="#dc2626" />
+              <DropdownItemText danger>Delete Chat</DropdownItemText>
+            </DropdownItem>
+          </DropdownMenu>
+        )}
+
         <FloatingActionButton onPress={handleNewChat}>
           <FABGradient>
             <Ionicons name="add" size={28} color="white" />
