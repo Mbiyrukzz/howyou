@@ -594,16 +594,16 @@ const MessageItem = React.memo(
     const [sound, setSound] = useState(null)
     const [isPlaying, setIsPlaying] = useState(false)
     const [audioDuration, setAudioDuration] = useState(0)
-    const messageRef = useRef(null)
-    const dotsButtonRef = useRef(null)
 
     const isOwn = item.senderId === currentUserId
     const messageId = item._id || item.id
     const isHovered = Platform.OS === 'web' && hoveredMessageId === messageId
+
     const showDate =
       !previousItem ||
       formatMessageDate(previousItem.createdAt) !==
         formatMessageDate(item.createdAt)
+
     const sender = findUserByAnyId(users, item.senderId)
     const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
     const isEdited =
@@ -778,9 +778,13 @@ const MessageItem = React.memo(
             <DateText>{formatMessageDate(item.createdAt)}</DateText>
           </DateSeparator>
         )}
-        <MessageItemWrapper
-          isOwn={isOwn}
-          ref={messageRef}
+        <View
+          style={{
+            flexDirection: isOwn ? 'row-reverse' : 'row',
+            alignItems: 'flex-start',
+            padding: 4,
+            position: 'relative',
+          }}
           onMouseEnter={() => {
             if (Platform.OS === 'web') {
               setHoveredMessageId(messageId)
@@ -791,9 +795,9 @@ const MessageItem = React.memo(
               setHoveredMessageId(null)
             }
           }}
-          style={{ padding: 4, flexDirection: isOwn ? 'row-reverse' : 'row' }}
         >
-          <MessageItemContent>
+          {/* Message Content */}
+          <View style={{ flex: 1 }}>
             <TouchableOpacity
               onLongPress={() => isOwn && onLongPress(item)}
               delayLongPress={500}
@@ -826,29 +830,28 @@ const MessageItem = React.memo(
                 {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
               </MessageBubble>
             </TouchableOpacity>
-          </MessageItemContent>
+          </View>
+
+          {/* Three Dots Button - FIXED VERSION */}
           {Platform.OS === 'web' && isOwn && (
             <View
               style={{
-                position: 'absolute',
-                right: 8,
-                top: 8,
-                opacity: isHovered ? 1 : 0.3, // ✅ Always visible, just more transparent
-                transition: 'opacity 0.2s ease', // Smooth fade
-                pointerEvents: 'auto',
-                zIndex: 10,
+                marginLeft: isOwn ? 0 : 8,
+                marginRight: isOwn ? 8 : 0,
+                opacity: isHovered ? 1 : 0.5,
               }}
             >
               <TouchableOpacity
                 onPress={handleThreeDotsPress}
                 style={{
-                  backgroundColor: isHovered
-                    ? '#e9ecef'
-                    : 'rgba(255, 255, 255, 1)',
+                  backgroundColor: isHovered ? '#e9ecef' : '#f8f9fa',
                   padding: 8,
-                  borderRadius: 4,
+                  borderRadius: 6,
+                  width: 32,
+                  height: 32,
+                  justifyContent: 'center',
+                  alignItems: 'center',
                   cursor: 'pointer',
-                  transition: 'background-color 0.2s ease', // Smooth background change
                 }}
               >
                 <Ionicons
@@ -859,7 +862,7 @@ const MessageItem = React.memo(
               </TouchableOpacity>
             </View>
           )}
-        </MessageItemWrapper>
+        </View>
       </View>
     )
   },
@@ -872,6 +875,13 @@ const MessageItem = React.memo(
     if (prevItem.updatedAt !== nextItem.updatedAt) return false
     if ((prevItem._id || prevItem.id) !== (nextItem._id || nextItem.id))
       return false
+
+    // Re-render if hover state changed
+    const prevHovered =
+      prevProps.hoveredMessageId === (prevItem._id || prevItem.id)
+    const nextHovered =
+      nextProps.hoveredMessageId === (nextItem._id || nextItem.id)
+    if (prevHovered !== nextHovered) return false
 
     // Optional: re-render if files changed
     if ((prevItem.files?.length || 0) !== (nextItem.files?.length || 0))

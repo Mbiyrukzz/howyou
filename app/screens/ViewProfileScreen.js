@@ -1,4 +1,3 @@
-// screens/ViewProfileScreen.js - Enhanced with 3-Column Layout
 import React, { useState, useEffect, useRef } from 'react'
 import {
   View,
@@ -11,7 +10,6 @@ import {
   ActivityIndicator,
   Image,
   Dimensions,
-  FlatList,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
@@ -19,6 +17,7 @@ import { useUser } from '../hooks/useUser'
 import useChatHelpers from '../hooks/useChatHelpers'
 import ChatsContext from '../contexts/ChatsContext'
 import { useWebSidebar } from '../hooks/useWebSidebar'
+import { usePosts } from '../providers/PostsProvider'
 import SharedChatsSidebar from '../components/SharedChatsSidebar'
 
 const { width } = Dimensions.get('window')
@@ -1544,22 +1543,25 @@ export default function ViewProfileScreen({ navigation, route }) {
   const [selectedChat, setSelectedChat] = useState(null)
 
   const { user: currentUser } = useUser()
+  const { createPost } = usePosts()
+
   const {
     findUserById,
     createChat,
     initiateCall,
+    deleteChat,
     chats = [],
     getMessagesForChat,
     loadMessages,
     isUserOnline,
     users = [],
+    getTypingUsersForChat,
   } = React.useContext(ChatsContext) || {}
 
   const { checkUserOnline, getStatusText, getLastSeenText } =
     useChatHelpers(initialChatId)
   const isWebSidebar = useWebSidebar()
 
-  // Load profile (existing logic)
   useEffect(() => {
     const load = async () => {
       try {
@@ -1653,7 +1655,9 @@ export default function ViewProfileScreen({ navigation, route }) {
 
     loadSharedMedia()
   }, [profileUser, currentUser, chats, getMessagesForChat, loadMessages])
-  // Handlers
+
+  /* =================== Handlers =================== */
+
   const handleSelectChat = (chat) => {
     const chatId = chat._id || chat.id
     setSelectedChat(chat)
@@ -1687,6 +1691,37 @@ export default function ViewProfileScreen({ navigation, route }) {
       loadMessages(chatId)
     }
   }
+
+  const handleNewChat = () => {
+    navigation.navigate('NewChats')
+  }
+
+  const handleDeleteChat = async (chatId) => {
+    try {
+      const result = await deleteChat(chatId)
+
+      // Clear selected chat if it was deleted
+      if (result && result.success && activeChatId === chatId) {
+        setActiveChatId(null)
+        setSelectedChat(null)
+      }
+
+      return result
+    } catch (error) {
+      console.error('Failed to delete chat:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  const handleUploadStatus = async (asset) => {
+    try {
+      await createPost(asset)
+    } catch (error) {
+      console.error('Failed to upload status:', error)
+      throw error
+    }
+  }
+
   const handleSendMessage = async () => {
     if (!profileUser || !currentUser?.uid)
       return Alert.alert('Error', 'Cannot send message')
@@ -1763,7 +1798,7 @@ export default function ViewProfileScreen({ navigation, route }) {
   const statusText = getStatusText(userIdForStatus)
   const lastSeenText = getLastSeenText(userIdForStatus)
 
-  // Mobile view (single screen)
+  /* =================== Mobile View =================== */
   if (!isWebSidebar) {
     return (
       <Container>
@@ -1800,7 +1835,7 @@ export default function ViewProfileScreen({ navigation, route }) {
     <Container>
       <StatusBar barStyle="dark-content" backgroundColor="#fff" />
       <ThreeColumnLayout>
-        {/* ✅ Replace ChatsColumn with SharedChatsSidebar */}
+        {/* Complete Self-Contained SharedChatsSidebar */}
         <SharedChatsSidebar
           chats={chats}
           selectedChatId={activeChatId}
@@ -1808,10 +1843,23 @@ export default function ViewProfileScreen({ navigation, route }) {
           currentUser={currentUser}
           isUserOnline={isUserOnline}
           users={users}
-          showOptionsButton={false}
+          onNewChat={handleNewChat}
+          onDeleteChat={handleDeleteChat}
+          onUploadStatus={handleUploadStatus}
+          getTypingUsersForChat={getTypingUsersForChat}
+          showFAB={true}
+          showCameraButton={true}
+          showOptionsButton={true}
         />
 
-        {/* Keep your existing ProfileColumn */}
+        {/*MessagesColumn */}
+        <MessagesColumn
+          chatId={activeChatId}
+          profileUser={profileUser}
+          currentUser={currentUser}
+          navigation={navigation}
+        />
+        {/*ProfileColumn */}
         <ProfileColumn
           profileUser={profileUser}
           loading={loading}
@@ -1827,14 +1875,6 @@ export default function ViewProfileScreen({ navigation, route }) {
           onVoiceCall={handleVoiceCall}
           onVideoCall={handleVideoCall}
           onMediaPress={handleMediaPress}
-        />
-
-        {/* Keep your existing MessagesColumn */}
-        <MessagesColumn
-          chatId={activeChatId}
-          profileUser={profileUser}
-          currentUser={currentUser}
-          navigation={navigation}
         />
       </ThreeColumnLayout>
     </Container>
