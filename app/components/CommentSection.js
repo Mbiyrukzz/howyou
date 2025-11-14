@@ -42,7 +42,7 @@ const CommentContent = styled.View`
   flex: 1;
 `
 
-const CommentBubble = styled.TouchableOpacity`
+const CommentBubble = styled.View`
   background-color: #f8f9fa;
   padding: 12px;
   border-radius: 12px;
@@ -56,6 +56,12 @@ const CommentHeader = styled.View`
   margin-bottom: 6px;
 `
 
+const CommentHeaderLeft = styled.View`
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+`
+
 const CommentUsername = styled.Text`
   font-size: 14px;
   font-weight: 600;
@@ -65,6 +71,11 @@ const CommentUsername = styled.Text`
 const CommentTimestamp = styled.Text`
   font-size: 12px;
   color: #95a5a6;
+  margin-left: 8px;
+`
+
+const OptionsButton = styled.TouchableOpacity`
+  padding: 4px;
 `
 
 const CommentText = styled.Text`
@@ -106,26 +117,6 @@ const RepliesContainer = styled.View`
   padding-left: 12px;
 `
 
-const ReplyInputContainer = styled.View`
-  flex-direction: row;
-  align-items: center;
-  background-color: #fff;
-  padding: 12px;
-  border-top-width: 1px;
-  border-top-color: #e9ecef;
-`
-
-const ReplyInput = styled.TextInput`
-  flex: 1;
-  background-color: #f8f9fa;
-  padding: 12px 16px;
-  border-radius: 24px;
-  font-size: 15px;
-  color: #2c3e50;
-  margin-right: 12px;
-  max-height: 100px;
-`
-
 const AttachButton = styled.TouchableOpacity`
   width: 40px;
   height: 40px;
@@ -134,15 +125,6 @@ const AttachButton = styled.TouchableOpacity`
   justify-content: center;
   align-items: center;
   margin-right: 8px;
-`
-
-const SendButton = styled.TouchableOpacity`
-  width: 44px;
-  height: 44px;
-  border-radius: 22px;
-  background-color: ${(props) => (props.active ? '#3498db' : '#e9ecef')};
-  justify-content: center;
-  align-items: center;
 `
 
 const ImagePreview = styled.View`
@@ -168,37 +150,45 @@ const RemoveImageButton = styled.TouchableOpacity`
   align-items: center;
 `
 
-const EmptyState = styled.Text`
-  font-size: 14px;
-  color: #95a5a6;
-  text-align: center;
-  padding: 20px;
+const EditingContainer = styled.View`
+  background-color: #fff;
+  padding: 12px;
+  border-radius: 12px;
+  margin-bottom: 8px;
+  border: 2px solid #3498db;
 `
 
-const EditingIndicator = styled.View`
-  flex-direction: row;
-  align-items: center;
-  background-color: #fff3cd;
-  padding: 8px 12px;
-  border-radius: 8px;
+const EditingLabel = styled.Text`
+  font-size: 12px;
+  color: #3498db;
+  font-weight: 600;
   margin-bottom: 8px;
 `
 
-const EditingText = styled.Text`
-  flex: 1;
-  font-size: 13px;
-  color: #856404;
-  margin-left: 8px;
+const EditInput = styled.TextInput`
+  font-size: 14px;
+  color: #2c3e50;
+  margin-bottom: 8px;
+  min-height: 40px;
+  max-height: 120px;
 `
 
-const CancelEditButton = styled.TouchableOpacity`
-  padding: 4px 12px;
+const EditActions = styled.View`
+  flex-direction: row;
+  justify-content: flex-end;
+  gap: 8px;
 `
 
-const CancelEditText = styled.Text`
+const EditButton = styled.TouchableOpacity`
+  padding: 8px 16px;
+  border-radius: 8px;
+  background-color: ${(props) => (props.primary ? '#3498db' : '#e9ecef')};
+`
+
+const EditButtonText = styled.Text`
   font-size: 13px;
   font-weight: 600;
-  color: #856404;
+  color: ${(props) => (props.primary ? '#fff' : '#7f8c8d')};
 `
 
 // ─── UTILS ───────────────────────────────────
@@ -336,6 +326,8 @@ const Comment = ({
 }) => {
   const [showReplies, setShowReplies] = useState(true)
   const [showReplyInput, setShowReplyInput] = useState(false)
+  const [isEditing, setIsEditing] = useState(false)
+  const [editText, setEditText] = useState(comment.content || '')
 
   const isOwner = comment.userId === currentUserId
   const hasReplies = comment.replies && comment.replies.length > 0
@@ -345,24 +337,16 @@ const Comment = ({
     setShowReplyInput(false)
   }
 
-  const handleEdit = () => {
-    Alert.prompt(
-      'Edit Comment',
-      'Edit your comment:',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Save',
-          onPress: (text) => {
-            if (text?.trim()) {
-              onEdit(comment._id, text)
-            }
-          },
-        },
-      ],
-      'plain-text',
-      comment.content
-    )
+  const handleSaveEdit = () => {
+    if (editText.trim() && editText !== comment.content) {
+      onEdit(comment._id, editText.trim())
+    }
+    setIsEditing(false)
+  }
+
+  const handleCancelEdit = () => {
+    setEditText(comment.content || '')
+    setIsEditing(false)
   }
 
   const handleDelete = () => {
@@ -380,14 +364,18 @@ const Comment = ({
     )
   }
 
-  const handleLongPress = () => {
-    if (isOwner) {
-      Alert.alert('Comment Options', 'What would you like to do?', [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Edit', onPress: handleEdit },
-        { text: 'Delete', style: 'destructive', onPress: handleDelete },
-      ])
-    }
+  const handleOptionsPress = () => {
+    Alert.alert('Comment Options', 'What would you like to do?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Edit',
+        onPress: () => {
+          setEditText(comment.content || '')
+          setIsEditing(true)
+        },
+      },
+      { text: 'Delete', style: 'destructive', onPress: handleDelete },
+    ])
   }
 
   return (
@@ -398,65 +386,105 @@ const Comment = ({
         </CommentAvatar>
 
         <CommentContent>
-          <CommentBubble onLongPress={handleLongPress} delayLongPress={500}>
-            <CommentHeader>
-              <CommentUsername>{comment.username}</CommentUsername>
-              <CommentTimestamp>
-                {formatTimestamp(comment.createdAt)}
-              </CommentTimestamp>
-            </CommentHeader>
-
-            {comment.content ? (
-              <CommentText>{comment.content}</CommentText>
-            ) : null}
-
-            {comment.files?.[0] && (
-              <CommentImage
-                source={{ uri: comment.files[0].url }}
-                resizeMode="cover"
+          {isEditing ? (
+            <EditingContainer>
+              <EditingLabel>✏️ Editing Comment</EditingLabel>
+              <EditInput
+                value={editText}
+                onChangeText={setEditText}
+                multiline
+                autoFocus
+                maxLength={500}
               />
-            )}
-          </CommentBubble>
+              <EditActions>
+                <EditButton onPress={handleCancelEdit}>
+                  <EditButtonText>Cancel</EditButtonText>
+                </EditButton>
+                <EditButton primary onPress={handleSaveEdit}>
+                  <EditButtonText primary>Save</EditButtonText>
+                </EditButton>
+              </EditActions>
+            </EditingContainer>
+          ) : (
+            <CommentBubble>
+              <CommentHeader>
+                <CommentHeaderLeft>
+                  <CommentUsername>{comment.username}</CommentUsername>
+                  <CommentTimestamp>
+                    {formatTimestamp(comment.createdAt)}
+                  </CommentTimestamp>
+                </CommentHeaderLeft>
+                {isOwner && (
+                  <OptionsButton onPress={handleOptionsPress}>
+                    <Ionicons
+                      name="ellipsis-horizontal"
+                      size={16}
+                      color="#7f8c8d"
+                    />
+                  </OptionsButton>
+                )}
+              </CommentHeader>
 
-          <CommentActions>
-            <CommentActionButton
-              onPress={() => onToggleLike(comment._id, comment.isLiked)}
-            >
-              <Ionicons
-                name={comment.isLiked ? 'heart' : 'heart-outline'}
-                size={16}
-                color={comment.isLiked ? '#e74c3c' : '#7f8c8d'}
-              />
-              <CommentActionText active={comment.isLiked}>
-                {comment.likes || 0}
-              </CommentActionText>
-            </CommentActionButton>
+              {comment.content ? (
+                <CommentText>{comment.content}</CommentText>
+              ) : null}
 
-            {depth < 3 && (
-              <CommentActionButton
-                onPress={() => setShowReplyInput(!showReplyInput)}
-              >
-                <Ionicons name="chatbubble-outline" size={14} color="#7f8c8d" />
-                <CommentActionText>Reply</CommentActionText>
-              </CommentActionButton>
-            )}
-
-            {hasReplies && (
-              <CommentActionButton onPress={() => setShowReplies(!showReplies)}>
-                <Ionicons
-                  name={showReplies ? 'chevron-up' : 'chevron-down'}
-                  size={14}
-                  color="#7f8c8d"
+              {comment.files?.[0] && (
+                <CommentImage
+                  source={{ uri: comment.files[0].url }}
+                  resizeMode="cover"
                 />
-                <CommentActionText>
-                  {comment.replies.length}{' '}
-                  {comment.replies.length === 1 ? 'reply' : 'replies'}
+              )}
+            </CommentBubble>
+          )}
+
+          {!isEditing && (
+            <CommentActions>
+              <CommentActionButton
+                onPress={() => onToggleLike(comment._id, comment.isLiked)}
+              >
+                <Ionicons
+                  name={comment.isLiked ? 'heart' : 'heart-outline'}
+                  size={16}
+                  color={comment.isLiked ? '#e74c3c' : '#7f8c8d'}
+                />
+                <CommentActionText active={comment.isLiked}>
+                  {comment.likes || 0}
                 </CommentActionText>
               </CommentActionButton>
-            )}
-          </CommentActions>
 
-          {showReplyInput && (
+              {depth < 3 && (
+                <CommentActionButton
+                  onPress={() => setShowReplyInput(!showReplyInput)}
+                >
+                  <Ionicons
+                    name="chatbubble-outline"
+                    size={14}
+                    color="#7f8c8d"
+                  />
+                  <CommentActionText>Reply</CommentActionText>
+                </CommentActionButton>
+              )}
+
+              {hasReplies && (
+                <CommentActionButton
+                  onPress={() => setShowReplies(!showReplies)}
+                >
+                  <Ionicons
+                    name={showReplies ? 'chevron-up' : 'chevron-down'}
+                    size={14}
+                    color="#7f8c8d"
+                  />
+                  <CommentActionText>
+                    {comment.replies.length}{' '}
+                    {comment.replies.length === 1 ? 'reply' : 'replies'}
+                  </CommentActionText>
+                </CommentActionButton>
+              )}
+            </CommentActions>
+          )}
+
+          {showReplyInput && !isEditing && (
             <View style={{ marginTop: 8 }}>
               <MiniReplyInput
                 onSubmit={handleReply}
@@ -465,7 +493,7 @@ const Comment = ({
             </View>
           )}
 
-          {hasReplies && showReplies && (
+          {hasReplies && showReplies && !isEditing && (
             <RepliesContainer>
               {comment.replies.map((reply) => (
                 <Comment

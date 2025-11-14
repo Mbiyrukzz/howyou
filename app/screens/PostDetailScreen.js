@@ -12,6 +12,10 @@ import {
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import { usePosts } from '../providers/PostsProvider'
+import { useComments } from '../hooks/useComments'
+import { useUser } from '../hooks/useUser'
+import CommentSection from '../components/CommentSection'
+import * as ImagePicker from 'expo-image-picker'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000'
 
@@ -166,53 +170,6 @@ const SectionTitle = styled.Text`
   margin-bottom: 16px;
 `
 
-const CommentItem = styled.View`
-  flex-direction: row;
-  margin-bottom: 16px;
-`
-
-const CommentAvatar = styled.View`
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
-  background-color: ${(props) => props.color || '#3498db'};
-  justify-content: center;
-  align-items: center;
-  margin-right: 12px;
-`
-
-const CommentAvatarText = styled.Text`
-  color: #fff;
-  font-size: 14px;
-  font-weight: bold;
-`
-
-const CommentContent = styled.View`
-  flex: 1;
-  background-color: #f8f9fa;
-  padding: 12px;
-  border-radius: 12px;
-`
-
-const CommentUsername = styled.Text`
-  font-size: 14px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-bottom: 4px;
-`
-
-const CommentText = styled.Text`
-  font-size: 14px;
-  line-height: 20px;
-  color: #34495e;
-`
-
-const CommentTimestamp = styled.Text`
-  font-size: 12px;
-  color: #95a5a6;
-  margin-top: 6px;
-`
-
 const EmptyComments = styled.Text`
   font-size: 14px;
   color: #95a5a6;
@@ -236,7 +193,18 @@ const CommentInput = styled.TextInput`
   border-radius: 24px;
   font-size: 15px;
   color: #2c3e50;
-  margin-right: 12px;
+  margin-right: 8px;
+  max-height: 100px;
+`
+
+const AttachButton = styled.TouchableOpacity`
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #f8f9fa;
+  justify-content: center;
+  align-items: center;
+  margin-right: 8px;
 `
 
 const SendButton = styled.TouchableOpacity`
@@ -244,6 +212,29 @@ const SendButton = styled.TouchableOpacity`
   height: 44px;
   border-radius: 22px;
   background-color: ${(props) => (props.active ? '#3498db' : '#e9ecef')};
+  justify-content: center;
+  align-items: center;
+`
+
+const ImagePreview = styled.View`
+  position: relative;
+  margin-right: 12px;
+`
+
+const PreviewImage = styled.Image`
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+`
+
+const RemoveImageButton = styled.TouchableOpacity`
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: #e74c3c;
   justify-content: center;
   align-items: center;
 `
@@ -275,12 +266,28 @@ const formatTimestamp = (date) => {
 export default function PostDetailScreen({ route, navigation }) {
   const { postId } = route.params
   const { posts, toggleLike } = usePosts()
+  const { user } = useUser()
+  const {
+    getCommentsForPost,
+    getCommentCount,
+    loadComments,
+    createComment,
+    updateComment,
+    deleteComment,
+    toggleLike: toggleCommentLike,
+    isLoadingComments,
+    sending,
+  } = useComments()
 
   const [post, setPost] = useState(null)
-  const [comments, setComments] = useState([])
   const [loading, setLoading] = useState(true)
   const [commentText, setCommentText] = useState('')
-  const [sending, setSending] = useState(false)
+  const [attachedFiles, setAttachedFiles] = useState([])
+
+  // Get comments from provider
+  const comments = getCommentsForPost(postId)
+  const commentCount = getCommentCount(postId)
+  const loadingComments = isLoadingComments(postId)
 
   useEffect(() => {
     // Find post from provider
@@ -296,32 +303,82 @@ export default function PostDetailScreen({ route, navigation }) {
   }, [postId, posts])
 
   useEffect(() => {
-    // Fetch comments when post is loaded
-    if (post) {
-      fetchComments()
+    // Load comments when post is loaded
+    if (post && user?.uid) {
+      loadComments(postId)
     }
-  }, [post])
+  }, [post, postId, user?.uid])
 
-  const fetchComments = async () => {
-    // TODO: Implement comments endpoint
-    // For now, use empty array
-    setComments([])
+  const handlePickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 0.8,
+      })
+
+      if (!result.canceled && result.assets?.[0]) {
+        setAttachedFiles([result.assets[0]])
+      }
+    } catch (error) {
+      console.error('Failed to pick image:', error)
+      Alert.alert('Error', 'Failed to pick image')
+    }
   }
 
   const handleSendComment = async () => {
-    if (!commentText.trim() || sending) return
+    if ((!commentText.trim() && attachedFiles.length === 0) || sending) return
 
     try {
-      setSending(true)
+      const result = await createComment({
+        postId,
+        content: commentText.trim(),
+        files: attachedFiles,
+        parentId: null,
+      })
 
-      setCommentText('')
-      Alert.alert('Coming Soon', 'Comments feature will be available soon!')
+      if (result.success) {
+        setCommentText('')
+        setAttachedFiles([])
+      } else {
+        Alert.alert('Error', result.error || 'Failed to send comment')
+      }
     } catch (error) {
       console.error('Failed to send comment:', error)
       Alert.alert('Error', 'Failed to send comment')
-    } finally {
-      setSending(false)
     }
+  }
+
+  const handleCreateComment = async (commentData) => {
+    const result = await createComment(commentData)
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to create comment')
+    }
+    return result
+  }
+
+  const handleUpdateComment = async (commentId, content) => {
+    const result = await updateComment(commentId, postId, content)
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to update comment')
+    }
+    return result
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    const result = await deleteComment(commentId, postId)
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to delete comment')
+    }
+    return result
+  }
+
+  const handleToggleCommentLike = async (commentId, currentlyLiked) => {
+    const result = await toggleCommentLike(commentId, postId, currentlyLiked)
+    if (!result.success) {
+      Alert.alert('Error', result.error || 'Failed to toggle like')
+    }
+    return result
   }
 
   const handleLike = async () => {
@@ -397,7 +454,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
               <ActionButton>
                 <Ionicons name="chatbubble-outline" size={20} color="#7f8c8d" />
-                <ActionText>{comments.length}</ActionText>
+                <ActionText>{commentCount}</ActionText>
               </ActionButton>
 
               <ActionButton>
@@ -408,34 +465,46 @@ export default function PostDetailScreen({ route, navigation }) {
           </PostCard>
 
           <CommentsSection>
-            <SectionTitle>Comments</SectionTitle>
+            <SectionTitle>Comments ({commentCount})</SectionTitle>
 
-            {comments.length === 0 ? (
+            {loadingComments ? (
+              <ActivityIndicator
+                size="small"
+                color="#3498db"
+                style={{ padding: 20 }}
+              />
+            ) : comments.length === 0 ? (
               <EmptyComments>
                 No comments yet. Be the first to comment!
               </EmptyComments>
             ) : (
-              comments.map((comment) => (
-                <CommentItem key={comment._id}>
-                  <CommentAvatar color={comment.avatarColor || '#3498db'}>
-                    <CommentAvatarText>
-                      {getInitials(comment.username)}
-                    </CommentAvatarText>
-                  </CommentAvatar>
-                  <CommentContent>
-                    <CommentUsername>{comment.username}</CommentUsername>
-                    <CommentText>{comment.content}</CommentText>
-                    <CommentTimestamp>
-                      {formatTimestamp(comment.createdAt)}
-                    </CommentTimestamp>
-                  </CommentContent>
-                </CommentItem>
-              ))
+              <CommentSection
+                postId={postId}
+                currentUserId={user?.uid}
+                comments={comments}
+                onCreateComment={handleCreateComment}
+                onUpdateComment={handleUpdateComment}
+                onDeleteComment={handleDeleteComment}
+                onToggleLike={handleToggleCommentLike}
+              />
             )}
           </CommentsSection>
         </ScrollView>
 
         <CommentInputContainer>
+          {attachedFiles.length > 0 && (
+            <ImagePreview>
+              <PreviewImage source={{ uri: attachedFiles[0].uri }} />
+              <RemoveImageButton onPress={() => setAttachedFiles([])}>
+                <Ionicons name="close" size={14} color="#fff" />
+              </RemoveImageButton>
+            </ImagePreview>
+          )}
+
+          <AttachButton onPress={handlePickImage}>
+            <Ionicons name="image-outline" size={20} color="#7f8c8d" />
+          </AttachButton>
+
           <CommentInput
             placeholder="Write a comment..."
             placeholderTextColor="#95a5a6"
@@ -444,10 +513,13 @@ export default function PostDetailScreen({ route, navigation }) {
             multiline
             maxLength={500}
           />
+
           <SendButton
-            active={commentText.trim().length > 0}
+            active={commentText.trim().length > 0 || attachedFiles.length > 0}
             onPress={handleSendComment}
-            disabled={!commentText.trim() || sending}
+            disabled={
+              (!commentText.trim() && attachedFiles.length === 0) || sending
+            }
           >
             {sending ? (
               <ActivityIndicator size="small" color="#fff" />
@@ -455,7 +527,11 @@ export default function PostDetailScreen({ route, navigation }) {
               <Ionicons
                 name="send"
                 size={20}
-                color={commentText.trim() ? '#fff' : '#95a5a6'}
+                color={
+                  commentText.trim() || attachedFiles.length > 0
+                    ? '#fff'
+                    : '#95a5a6'
+                }
               />
             )}
           </SendButton>
