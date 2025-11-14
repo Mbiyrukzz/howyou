@@ -18,7 +18,12 @@ const CommentsProvider = ({ children }) => {
   // Handle WebSocket messages for comments
   const handleWebSocketMessage = useCallback(
     (data) => {
-      console.log('📨 Comments WebSocket message:', data.type, data)
+      console.log('\n===== FRONTEND WEBSOCKET MESSAGE =====')
+      console.log('📨 Received:', data.type)
+      console.log('📦 Full data:', JSON.stringify(data, null, 2))
+      console.log('🆔 My UID:', user?.uid)
+      console.log('🆔 Sender ID:', data.senderId || data.userId)
+      console.log('=======================================\n')
 
       switch (data.type) {
         case 'new-comment':
@@ -39,6 +44,7 @@ const CommentsProvider = ({ children }) => {
           break
 
         default:
+          console.warn('⚠️ Unknown comment message type:', data.type)
           break
       }
     },
@@ -48,31 +54,45 @@ const CommentsProvider = ({ children }) => {
   // Initialize WebSocket for posts endpoint
   const { isConnected: wsConnected, send: wsSend } = useWebSocket({
     userId: user?.uid,
-    endpoint: '/posts',
+    endpoint: '/comments',
     onMessage: handleWebSocketMessage,
     enabled: !!user?.uid && isReady,
   })
 
-  // WebSocket handlers
   const handleNewComment = useCallback(
     (data) => {
-      const { comment, postId, senderId } = data
+      const { comment, postId, senderId, userId } = data
+      const actualSenderId = senderId || userId // Handle both field names
 
       console.log('📥 Received new comment:', {
         comment,
         postId,
-        senderId,
+        senderId: actualSenderId,
         myUid: user?.uid,
+        hasPostId: !!postId,
+        currentCommentsForPost: comments[postId]?.length || 0,
       })
 
+      // ✅ Check if postId exists
+      if (!postId) {
+        console.error('❌ No postId in new-comment message!')
+        return
+      }
+
       // Skip if it's our own comment (already added optimistically)
-      if (senderId === user?.uid) {
+      if (actualSenderId === user?.uid) {
         console.log('⏭️ Skipping own comment (already in state)')
         return
       }
 
       setComments((prev) => {
         const postComments = prev[postId] || []
+
+        console.log('📊 Current comments for post:', {
+          postId,
+          count: postComments.length,
+          commentIds: postComments.map((c) => c._id),
+        })
 
         // Check for duplicates
         const isDuplicate = postComments.some((c) => c._id === comment._id)
@@ -84,18 +104,28 @@ const CommentsProvider = ({ children }) => {
 
         // If it's a reply, find the parent and add to its replies
         if (comment.parentId) {
+          console.log('💬 Adding reply to parent:', comment.parentId)
           const updatedComments = addReplyToTree(postComments, comment)
           return { ...prev, [postId]: updatedComments }
         }
 
         // It's a top-level comment
+        console.log('✅ Adding top-level comment')
+        const newComments = [comment, ...postComments]
+
+        console.log('📊 Updated comments for post:', {
+          postId,
+          newCount: newComments.length,
+          newCommentIds: newComments.map((c) => c._id),
+        })
+
         return {
           ...prev,
-          [postId]: [comment, ...postComments],
+          [postId]: newComments,
         }
       })
     },
-    [user?.uid]
+    [user?.uid, comments]
   )
 
   const handleCommentUpdated = useCallback((data) => {
@@ -351,7 +381,7 @@ const CommentsProvider = ({ children }) => {
           if (wsSend && typeof wsSend === 'function') {
             const wsMessage = {
               type: 'new-comment',
-              postId,
+              postId: postId,
               comment: data.comment,
               parentId: parentId || null,
               senderId: user.uid,
