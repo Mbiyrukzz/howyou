@@ -1,4 +1,4 @@
-// screens/PostsScreen.js - Enhanced UI with delete and update functions
+// screens/PostsScreen.js - Enhanced UI with delete, update, and comment functions
 import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
@@ -16,13 +16,16 @@ import {
   TextInput,
   Platform,
   ActivityIndicator,
+  KeyboardAvoidingView,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { usePosts } from '../providers/PostsProvider'
+import { useComments } from '../hooks/useComments'
 import { useWebSidebar } from '../hooks/useWebSidebar'
 import WebSidebarLayout from '../components/WebSidebarLayout'
+import CommentSection from '../components/CommentSection'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -551,6 +554,97 @@ const DangerButtonText = styled.Text`
   margin-left: 6px;
 `
 
+// ─── Comment Input Components ───────────────────────────
+const CommentInputContainer = styled.View`
+  flex-direction: row;
+  align-items: center;
+  background-color: #fff;
+  padding: 12px 16px;
+  border-top-width: 1px;
+  border-top-color: #e9ecef;
+  ${Platform.OS === 'ios' ? 'padding-bottom: 32px;' : ''}
+`
+
+const CommentInputWrapper = styled.View`
+  flex: 1;
+  background-color: #f8f9fa;
+  border-radius: 24px;
+  padding: 8px 16px;
+  margin-right: 12px;
+  flex-direction: row;
+  align-items: center;
+`
+
+const CommentTextInput = styled.TextInput`
+  flex: 1;
+  font-size: 15px;
+  color: #2c3e50;
+  max-height: 100px;
+  padding: 4px 0;
+`
+
+const AttachButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #f8f9fa;
+  justify-content: center;
+  align-items: center;
+  margin-right: 8px;
+`
+
+const SendButton = styled.TouchableOpacity`
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background-color: ${(props) => (props.active ? '#3498db' : '#e9ecef')};
+  justify-content: center;
+  align-items: center;
+`
+
+const ImagePreviewContainer = styled.View`
+  flex-direction: row;
+  padding: 8px 16px;
+  background-color: #fff;
+  border-top-width: 1px;
+  border-top-color: #e9ecef;
+`
+
+const ImagePreview = styled.View`
+  position: relative;
+  margin-right: 8px;
+`
+
+const PreviewImage = styled.Image`
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+`
+
+const RemoveImageButton = styled.TouchableOpacity`
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  width: 24px;
+  height: 24px;
+  border-radius: 12px;
+  background-color: #e74c3c;
+  justify-content: center;
+  align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.2;
+  shadow-radius: 2px;
+  elevation: 3;
+`
+
+const LoadingCommentsText = styled.Text`
+  font-size: 14px;
+  color: #95a5a6;
+  text-align: center;
+  padding: 20px;
+`
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── UTILS ───────────────────────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -790,6 +884,7 @@ const PostMenuModal = ({
     </TouchableWithoutFeedback>
   </Modal>
 )
+
 // ─────────────────────────────────────────────────────────────────────────────
 // ─── MAIN SCREEN COMPONENT ───────────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
@@ -803,13 +898,13 @@ export default function PostsScreen({ navigation, route }) {
     toggleLike,
     updatePost,
     deletePost,
-    deleteStatus, // ✅ Now imported
+    deleteStatus,
     createPost,
     wsConnected,
     connectionState,
     wsReconnect,
-    isPostOwner, // ✅ NEW: Check if user owns post
-    currentUserId, // ✅ NEW: Current user ID
+    isPostOwner,
+    currentUserId,
   } = usePosts()
 
   const [refreshing, setRefreshing] = useState(false)
@@ -948,13 +1043,11 @@ export default function PostsScreen({ navigation, route }) {
     if (!editingPost) return
 
     try {
-      // ✅ Use updatePost from the provider (authenticated)
       await updatePost(editingPost._id, newContent)
 
       setEditModalVisible(false)
       setEditingPost(null)
 
-      // Replace the success Alert with:
       setTimeout(() => {
         if (Platform.OS === 'web') {
           alert('Post updated successfully!')
@@ -981,10 +1074,8 @@ export default function PostsScreen({ navigation, route }) {
 
       console.log('✅ Delete successful')
 
-      // Close modal
       setMenuModalVisible(false)
 
-      // Handle sidebar deselection
       if (selectedPostId === menuSelectedPost._id) {
         setSelectedPostId(null)
         if (typeof window !== 'undefined' && window.history) {
@@ -992,10 +1083,8 @@ export default function PostsScreen({ navigation, route }) {
         }
       }
 
-      // Clear state
       setMenuSelectedPost(null)
 
-      // Show success (use setTimeout to avoid modal conflicts)
       setTimeout(() => {
         if (Platform.OS === 'web') {
           alert('Post deleted successfully!')
@@ -1015,6 +1104,7 @@ export default function PostsScreen({ navigation, route }) {
       setIsDeleting(false)
     }
   }
+
   const HeaderComponent = () => (
     <Header>
       <HeaderTop>
@@ -1093,7 +1183,6 @@ export default function PostsScreen({ navigation, route }) {
                     </PostTimestamp>
                   </PostUserInfo>
 
-                  {/* ✅ FIXED: Only show menu for owned posts */}
                   {isPostOwner(item) && (
                     <PostMenuButton
                       onPress={(e) => {
@@ -1242,7 +1331,115 @@ export default function PostsScreen({ navigation, route }) {
 // ─── POST DETAIL VIEW COMPONENT ──────────────────────────────────────────────
 // ─────────────────────────────────────────────────────────────────────────────
 const PostDetailView = ({ post, onEdit, onDelete, onLike }) => {
-  const { isPostOwner } = usePosts() // ✅ Get ownership check
+  const { isPostOwner, currentUserId } = usePosts()
+  const {
+    loadComments,
+    createComment,
+    updateComment,
+    deleteComment,
+    toggleLike: toggleCommentLike,
+    getCommentsForPost,
+    isLoadingComments,
+    sending,
+  } = useComments()
+
+  const [commentText, setCommentText] = useState('')
+  const [commentFiles, setCommentFiles] = useState([])
+  const [loadedComments, setLoadedComments] = useState(false)
+
+  useEffect(() => {
+    if (post?._id && !loadedComments) {
+      console.log('📥 Loading comments for post:', post._id)
+      loadComments(post._id)
+      setLoadedComments(true)
+    }
+  }, [post?._id, loadedComments, loadComments])
+
+  const comments = getCommentsForPost(post._id)
+  const isLoading = isLoadingComments(post._id)
+
+  const handlePickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+    if (status !== 'granted') {
+      Alert.alert('Permission needed', 'Allow photo access to attach images')
+      return
+    }
+
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.8,
+    })
+
+    if (!result.canceled && result.assets?.[0]) {
+      setCommentFiles([result.assets[0]])
+    }
+  }
+
+  const handleSendComment = async () => {
+    if (!commentText.trim() && commentFiles.length === 0) {
+      return
+    }
+
+    try {
+      const result = await createComment({
+        postId: post._id,
+        content: commentText.trim(),
+        files: commentFiles,
+        parentId: null,
+      })
+
+      // Check if result exists and has success property
+      if (result && result.success) {
+        setCommentText('')
+        setCommentFiles([])
+      } else if (result && result.error) {
+        Alert.alert('Error', result.error)
+      } else {
+        // If createComment doesn't return a result, assume success
+        setCommentText('')
+        setCommentFiles([])
+      }
+    } catch (error) {
+      console.error('Failed to send comment:', error)
+      Alert.alert('Error', error?.message || 'Failed to post comment')
+    }
+  }
+
+  const handleUpdateComment = async (commentId, newContent) => {
+    try {
+      const result = await updateComment(commentId, post._id, newContent)
+      if (result && !result.success && result.error) {
+        Alert.alert('Error', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to update comment:', error)
+      Alert.alert('Error', error?.message || 'Failed to update comment')
+    }
+  }
+
+  const handleDeleteComment = async (commentId) => {
+    try {
+      const result = await deleteComment(commentId, post._id)
+      if (result && !result.success && result.error) {
+        Alert.alert('Error', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to delete comment:', error)
+      Alert.alert('Error', error?.message || 'Failed to delete comment')
+    }
+  }
+
+  const handleToggleCommentLike = async (commentId, isLiked) => {
+    try {
+      const result = await toggleCommentLike(commentId, post._id, isLiked)
+      if (result && !result.success && result.error) {
+        console.error('Failed to toggle like:', result.error)
+      }
+    } catch (error) {
+      console.error('Failed to toggle comment like:', error)
+    }
+  }
 
   return (
     <Container style={{ backgroundColor: '#fff' }}>
@@ -1250,80 +1447,157 @@ const PostDetailView = ({ post, onEdit, onDelete, onLike }) => {
         <PostDetailTitle>Post Details</PostDetailTitle>
       </PostDetailHeader>
 
-      <PostDetailContent>
-        <PostDetailCard>
-          <PostHeader>
-            <PostAvatar color={post.avatarColor || '#3498db'}>
-              <PostAvatarText>{getInitials(post.username)}</PostAvatarText>
-            </PostAvatar>
-            <PostUserInfo>
-              <PostUsername>{post.username}</PostUsername>
-              <PostTimestamp>
-                {new Date(post.createdAt).toLocaleDateString()} at{' '}
-                {new Date(post.createdAt).toLocaleTimeString([], {
-                  hour: '2-digit',
-                  minute: '2-digit',
-                })}
-              </PostTimestamp>
-            </PostUserInfo>
-          </PostHeader>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={{ flex: 1 }}
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+      >
+        <PostDetailContent>
+          <PostDetailCard>
+            <PostHeader>
+              <PostAvatar color={post.avatarColor || '#3498db'}>
+                <PostAvatarText>{getInitials(post.username)}</PostAvatarText>
+              </PostAvatar>
+              <PostUserInfo>
+                <PostUsername>{post.username}</PostUsername>
+                <PostTimestamp>
+                  {new Date(post.createdAt).toLocaleDateString()} at{' '}
+                  {new Date(post.createdAt).toLocaleTimeString([], {
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                </PostTimestamp>
+              </PostUserInfo>
+            </PostHeader>
 
-          <PostDetailText>{post.content}</PostDetailText>
+            <PostDetailText>{post.content}</PostDetailText>
 
-          {post.files?.[0] && (
-            <PostDetailImage>
-              <Image
-                source={{ uri: post.files[0].url }}
-                style={{ width: '100%', height: 400 }}
-                resizeMode="cover"
+            {post.files?.[0] && (
+              <PostDetailImage>
+                <Image
+                  source={{ uri: post.files[0].url }}
+                  style={{ width: '100%', height: 400 }}
+                  resizeMode="cover"
+                />
+              </PostDetailImage>
+            )}
+
+            <PostActions>
+              <ActionButton active={post.isLiked} onPress={onLike}>
+                <Ionicons
+                  name={post.isLiked ? 'heart' : 'heart-outline'}
+                  size={24}
+                  color={post.isLiked ? '#e74c3c' : '#7f8c8d'}
+                />
+                <ActionText active={post.isLiked}>
+                  {post.likes} Likes
+                </ActionText>
+              </ActionButton>
+
+              <ActionButton>
+                <Ionicons name="chatbubble-outline" size={22} color="#7f8c8d" />
+                <ActionText>{comments.length} Comments</ActionText>
+              </ActionButton>
+
+              <ActionButton>
+                <Ionicons name="share-outline" size={22} color="#7f8c8d" />
+                <ActionText>{post.shares || 0} Shares</ActionText>
+              </ActionButton>
+            </PostActions>
+
+            {isPostOwner(post) && (
+              <ActionButtonsRow>
+                <SecondaryButton onPress={onEdit}>
+                  <Ionicons name="create-outline" size={20} color="#7f8c8d" />
+                  <SecondaryButtonText>Edit Post</SecondaryButtonText>
+                </SecondaryButton>
+
+                <DangerButton onPress={onDelete}>
+                  <Ionicons name="trash-outline" size={20} color="#dc3545" />
+                  <DangerButtonText>Delete</DangerButtonText>
+                </DangerButton>
+              </ActionButtonsRow>
+            )}
+          </PostDetailCard>
+
+          <CommentsSection>
+            <CommentsSectionTitle>
+              Comments ({comments.length})
+            </CommentsSectionTitle>
+
+            {isLoading && !loadedComments ? (
+              <LoadingCommentsText>Loading comments...</LoadingCommentsText>
+            ) : comments.length === 0 ? (
+              <EmptyCommentsText>
+                No comments yet. Be the first to comment!
+              </EmptyCommentsText>
+            ) : (
+              <CommentSection
+                postId={post._id}
+                currentUserId={currentUserId}
+                comments={comments}
+                onCreateComment={createComment}
+                onUpdateComment={handleUpdateComment}
+                onDeleteComment={handleDeleteComment}
+                onToggleLike={handleToggleCommentLike}
               />
-            </PostDetailImage>
-          )}
+            )}
+          </CommentsSection>
+        </PostDetailContent>
 
-          <PostActions>
-            <ActionButton active={post.isLiked} onPress={onLike}>
+        {commentFiles.length > 0 && (
+          <ImagePreviewContainer>
+            {commentFiles.map((file, idx) => (
+              <ImagePreview key={idx}>
+                <PreviewImage source={{ uri: file.uri }} />
+                <RemoveImageButton onPress={() => setCommentFiles([])}>
+                  <Ionicons name="close" size={14} color="#fff" />
+                </RemoveImageButton>
+              </ImagePreview>
+            ))}
+          </ImagePreviewContainer>
+        )}
+
+        <CommentInputContainer>
+          <AttachButton onPress={handlePickImage}>
+            <Ionicons name="image-outline" size={20} color="#7f8c8d" />
+          </AttachButton>
+
+          <CommentInputWrapper>
+            <CommentTextInput
+              placeholder="Write a comment..."
+              placeholderTextColor="#95a5a6"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={500}
+              editable={!sending}
+            />
+          </CommentInputWrapper>
+
+          <SendButton
+            active={(commentText.trim() || commentFiles.length > 0) && !sending}
+            onPress={handleSendComment}
+            disabled={
+              (!commentText.trim() && commentFiles.length === 0) || sending
+            }
+          >
+            {sending ? (
+              <ActivityIndicator size="small" color="#fff" />
+            ) : (
               <Ionicons
-                name={post.isLiked ? 'heart' : 'heart-outline'}
-                size={24}
-                color={post.isLiked ? '#e74c3c' : '#7f8c8d'}
+                name="send"
+                size={20}
+                color={
+                  commentText.trim() || commentFiles.length > 0
+                    ? '#fff'
+                    : '#95a5a6'
+                }
               />
-              <ActionText active={post.isLiked}>{post.likes} Likes</ActionText>
-            </ActionButton>
-
-            <ActionButton>
-              <Ionicons name="chatbubble-outline" size={22} color="#7f8c8d" />
-              <ActionText>{post.comments || 0} Comments</ActionText>
-            </ActionButton>
-
-            <ActionButton>
-              <Ionicons name="share-outline" size={22} color="#7f8c8d" />
-              <ActionText>{post.shares || 0} Shares</ActionText>
-            </ActionButton>
-          </PostActions>
-
-          {/* ✅ FIXED: Only show action buttons for owned posts */}
-          {isPostOwner(post) && (
-            <ActionButtonsRow>
-              <SecondaryButton onPress={onEdit}>
-                <Ionicons name="create-outline" size={20} color="#7f8c8d" />
-                <SecondaryButtonText>Edit Post</SecondaryButtonText>
-              </SecondaryButton>
-
-              <DangerButton onPress={onDelete}>
-                <Ionicons name="trash-outline" size={20} color="#dc3545" />
-                <DangerButtonText>Delete</DangerButtonText>
-              </DangerButton>
-            </ActionButtonsRow>
-          )}
-        </PostDetailCard>
-
-        <CommentsSection>
-          <CommentsSectionTitle>Comments</CommentsSectionTitle>
-          <EmptyCommentsText>
-            No comments yet. Be the first to comment!
-          </EmptyCommentsText>
-        </CommentsSection>
-      </PostDetailContent>
+            )}
+          </SendButton>
+        </CommentInputContainer>
+      </KeyboardAvoidingView>
     </Container>
   )
 }

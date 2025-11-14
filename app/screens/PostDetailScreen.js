@@ -313,11 +313,7 @@ export default function PostDetailScreen({ route, navigation }) {
 
     try {
       setSending(true)
-      // TODO: Implement comment creation
-      // const response = await apiPost(`${API_URL}/posts/${postId}/comments`, {
-      //   content: commentText.trim(),
-      // })
-      // setComments([response.comment, ...comments])
+
       setCommentText('')
       Alert.alert('Coming Soon', 'Comments feature will be available soon!')
     } catch (error) {
