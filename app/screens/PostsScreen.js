@@ -1,4 +1,4 @@
-// screens/PostsScreen.js - Enhanced UI with delete, update, and comment functions
+// screens/PostsScreen.js - WITH COMMENTS PREVIEW
 import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
@@ -29,9 +29,6 @@ import CommentSection from '../components/CommentSection'
 
 const { width: screenWidth } = Dimensions.get('window')
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── STYLED COMPONENTS ───────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
 const Container = styled.View`
   flex: 1;
   background-color: #f8f9fa;
@@ -289,6 +286,40 @@ const ActionText = styled.Text`
   margin-left: 6px;
 `
 
+// ✅ Comments Preview Styled Components
+const CommentsPreviewContainer = styled.View`
+  padding: 12px 16px;
+  border-top-width: 1px;
+  border-top-color: #e9ecef;
+  background-color: #fafbfc;
+`
+
+const CommentPreviewItem = styled.View`
+  margin-bottom: 8px;
+`
+
+const CommentPreviewText = styled.Text`
+  font-size: 13px;
+  color: #2c3e50;
+  line-height: 18px;
+`
+
+const CommentPreviewUsername = styled.Text`
+  font-weight: 600;
+  color: #3498db;
+`
+
+const ViewAllCommentsButton = styled.TouchableOpacity`
+  padding: 8px 0;
+  align-items: center;
+`
+
+const ViewAllCommentsText = styled.Text`
+  font-size: 13px;
+  font-weight: 600;
+  color: #3498db;
+`
+
 const FloatingActionButton = styled.TouchableOpacity`
   position: absolute;
   right: 20px;
@@ -306,7 +337,6 @@ const FloatingActionButton = styled.TouchableOpacity`
   elevation: 8;
 `
 
-// ─── Modal Components ────────────────────────────────
 const ModalOverlay = styled.View`
   flex: 1;
   background-color: rgba(0, 0, 0, 0.5);
@@ -370,7 +400,6 @@ const ModalCancelText = styled.Text`
   color: #7f8c8d;
 `
 
-// ─── Edit Modal Components ───────────────────────────
 const EditModalContent = styled.View`
   background-color: #fff;
   border-radius: 20px;
@@ -435,7 +464,6 @@ const EditModalButtonText = styled.Text`
   color: ${(props) => (props.primary ? '#fff' : '#7f8c8d')};
 `
 
-// ─── Post Detail Components ──────────────────────────
 const PostDetailHeader = styled.View`
   padding: 20px;
   border-bottom-width: 1px;
@@ -554,7 +582,6 @@ const DangerButtonText = styled.Text`
   margin-left: 6px;
 `
 
-// ─── Comment Input Components ───────────────────────────
 const CommentInputContainer = styled.View`
   flex-direction: row;
   align-items: center;
@@ -645,9 +672,6 @@ const LoadingCommentsText = styled.Text`
   padding: 20px;
 `
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── UTILS ───────────────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
 const getInitials = (name) =>
   name
     ?.split(' ')
@@ -656,9 +680,38 @@ const getInitials = (name) =>
     .toUpperCase()
     .substring(0, 2)
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── STORY COMPONENT ─────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
+// ✅ NEW: Comments Preview Component
+const CommentsPreview = ({ postId, onViewAll }) => {
+  const { getCommentsForPost } = useComments()
+  const comments = getCommentsForPost(postId) || []
+
+  if (comments.length === 0) return null
+
+  const previewComments = comments.slice(0, 2)
+  const hasMore = comments.length > 2
+
+  return (
+    <CommentsPreviewContainer>
+      {previewComments.map((comment) => (
+        <CommentPreviewItem key={comment._id}>
+          <CommentPreviewText>
+            <CommentPreviewUsername>{comment.username}</CommentPreviewUsername>{' '}
+            {comment.content}
+          </CommentPreviewText>
+        </CommentPreviewItem>
+      ))}
+
+      {hasMore && (
+        <ViewAllCommentsButton onPress={onViewAll}>
+          <ViewAllCommentsText>
+            View all {comments.length} comments
+          </ViewAllCommentsText>
+        </ViewAllCommentsButton>
+      )}
+    </CommentsPreviewContainer>
+  )
+}
+
 const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
   const hasStory = statusCount > 0
 
@@ -706,9 +759,6 @@ const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── STATUS ACTION MODAL ─────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
 const StatusActionModal = ({
   visible,
   onClose,
@@ -752,9 +802,6 @@ const StatusActionModal = ({
   </Modal>
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── EDIT POST MODAL ─────────────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
 const EditPostModal = ({ visible, post, onClose, onSave }) => {
   const [content, setContent] = useState(post?.content || '')
   const [saving, setSaving] = useState(false)
@@ -829,7 +876,6 @@ const EditPostModal = ({ visible, post, onClose, onSave }) => {
   )
 }
 
-// ─── POST MENU MODAL ─────────────────────────────────────────────────────────
 const PostMenuModal = ({
   visible,
   post,
@@ -885,9 +931,6 @@ const PostMenuModal = ({
   </Modal>
 )
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── MAIN SCREEN COMPONENT ───────────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
 export default function PostsScreen({ navigation, route }) {
   const {
     posts,
@@ -907,6 +950,8 @@ export default function PostsScreen({ navigation, route }) {
     currentUserId,
   } = usePosts()
 
+  const { loadComments, getCommentsForPost } = useComments()
+
   const [refreshing, setRefreshing] = useState(false)
   const [modalVisible, setModalVisible] = useState(false)
   const [editModalVisible, setEditModalVisible] = useState(false)
@@ -924,6 +969,16 @@ export default function PostsScreen({ navigation, route }) {
       setSelectedPostId(route.params.postId)
     }
   }, [route?.params?.postId])
+
+  // ✅ Load comments for all visible posts
+  useEffect(() => {
+    if (isWebSidebar && posts && posts.length > 0) {
+      console.log('📥 Loading comments for', posts.length, 'posts')
+      posts.forEach((post) => {
+        loadComments(post._id)
+      })
+    }
+  }, [isWebSidebar, posts])
 
   const yourStory = {
     _id: 'your-story',
@@ -1154,6 +1209,7 @@ export default function PostsScreen({ navigation, route }) {
         ListHeaderComponent={HeaderComponent}
         renderItem={({ item }) => {
           const isSelected = isWebSidebar && selectedPostId === item._id
+          const comments = getCommentsForPost(item._id) || []
 
           return (
             <TouchableOpacity
@@ -1233,7 +1289,7 @@ export default function PostsScreen({ navigation, route }) {
                       size={18}
                       color="#7f8c8d"
                     />
-                    <ActionText>{item.comments || 0}</ActionText>
+                    <ActionText>{comments.length}</ActionText>
                   </ActionButton>
 
                   <ActionButton onPress={(e) => e.stopPropagation()}>
@@ -1241,6 +1297,14 @@ export default function PostsScreen({ navigation, route }) {
                     <ActionText>{item.shares || 0}</ActionText>
                   </ActionButton>
                 </PostActions>
+
+                {/* ✅ Comments Preview - Only in Web Sidebar Mode */}
+                {isWebSidebar && (
+                  <CommentsPreview
+                    postId={item._id}
+                    onViewAll={() => handlePostPress(item)}
+                  />
+                )}
               </PostCard>
             </TouchableOpacity>
           )
@@ -1327,9 +1391,6 @@ export default function PostsScreen({ navigation, route }) {
   )
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// ─── POST DETAIL VIEW COMPONENT ──────────────────────────────────────────────
-// ─────────────────────────────────────────────────────────────────────────────
 const PostDetailView = ({ post, onEdit, onDelete, onLike }) => {
   const { isPostOwner, currentUserId } = usePosts()
   const {
@@ -1389,14 +1450,12 @@ const PostDetailView = ({ post, onEdit, onDelete, onLike }) => {
         parentId: null,
       })
 
-      // Check if result exists and has success property
       if (result && result.success) {
         setCommentText('')
         setCommentFiles([])
       } else if (result && result.error) {
         Alert.alert('Error', result.error)
       } else {
-        // If createComment doesn't return a result, assume success
         setCommentText('')
         setCommentFiles([])
       }

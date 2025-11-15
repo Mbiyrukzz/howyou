@@ -1,4 +1,4 @@
-// screens/StatusViewerScreen.js - FIXED DELETE
+// screens/StatusViewerScreen.js - FIXED Video Playback
 import React, { useState, useEffect, useRef } from 'react'
 import {
   View,
@@ -28,6 +28,28 @@ const StatusImage = styled.Image`
 const VideoContainer = styled.View`
   width: 100%;
   height: 100%;
+  background-color: #000;
+  justify-content: center;
+  align-items: center;
+`
+
+const LoadingContainer = styled.View`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.7);
+  z-index: 5;
+`
+
+const LoadingText = styled.Text`
+  color: #fff;
+  font-size: 16px;
+  margin-top: 16px;
+  font-weight: 500;
 `
 
 const ProgressBarContainer = styled.View`
@@ -105,11 +127,27 @@ const Timestamp = styled.Text`
 
 const CloseButton = styled.TouchableOpacity`
   padding: 8px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+  align-items: center;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.3);
 `
 
 const DeleteButton = styled.TouchableOpacity`
   padding: 8px;
   margin-left: 8px;
+  background-color: rgba(220, 53, 69, 0.8);
+  border-radius: 20px;
+  width: 40px;
+  height: 40px;
+  justify-content: center;
+  align-items: center;
+  border-width: 1px;
+  border-color: rgba(255, 255, 255, 0.3);
 `
 
 const Caption = styled.Text`
@@ -129,6 +167,7 @@ const PauseIndicator = styled.View`
   top: 50%;
   left: 50%;
   transform: translateX(-30px) translateY(-30px);
+  z-index: 6;
 `
 
 const StatusCounter = styled.Text`
@@ -164,14 +203,12 @@ export default function StatusViewerScreen({ route, navigation }) {
   const { status, statuses: passedStatuses, userName } = route.params
   const { statuses, myStatus, deleteStatus } = usePosts()
 
-  console.log('StatusViewer params:', { status, passedStatuses, userName })
-  console.log('myStatus from provider:', myStatus)
-
-  // ✅ LOCAL STATE: Manage the status list locally so we can update it after deletion
   const [localStatusList, setLocalStatusList] = useState([])
   const [isViewingOwnStatus, setIsViewingOwnStatus] = useState(false)
+  const [videoLoading, setVideoLoading] = useState(true)
+  const [videoError, setVideoError] = useState(false)
 
-  // ✅ Initialize local state from props/provider
+  // Initialize local state
   useEffect(() => {
     let statusList = []
     let isOwn = false
@@ -197,7 +234,6 @@ export default function StatusViewerScreen({ route, navigation }) {
       }
     }
 
-    console.log('Setting local status list:', statusList.length)
     setLocalStatusList(statusList)
     setIsViewingOwnStatus(isOwn)
   }, [status, passedStatuses, myStatus, statuses])
@@ -211,19 +247,84 @@ export default function StatusViewerScreen({ route, navigation }) {
   )
   const [progress, setProgress] = useState(0)
   const [isPaused, setIsPaused] = useState(false)
+  const [videoDuration, setVideoDuration] = useState(0)
   const videoRef = useRef(null)
   const timerRef = useRef(null)
+  const progressIntervalRef = useRef(null)
 
   const currentStatus = localStatusList[currentIndex]
 
-  const DURATION = 5000
+  const DURATION = 5000 // Only for images
+  const VIDEO_NATURAL_DURATION = true // Let video play its full length
+
+  // Reset video state when changing status
+  useEffect(() => {
+    setVideoLoading(true)
+    setVideoError(false)
+    setProgress(0)
+    setIsPaused(false)
+    setVideoDuration(0)
+    console.log('🔄 Status changed, resetting video state')
+  }, [currentIndex])
+
+  // ✅ FIX: Ensure audio permissions and proper setup
+  useEffect(() => {
+    const setupAudio = async () => {
+      try {
+        // Import Audio from expo-av
+        const { Audio } = await import('expo-av')
+
+        // Set audio mode for video playback
+        await Audio.setAudioModeAsync({
+          playsInSilentModeIOS: true,
+          allowsRecordingIOS: false,
+          staysActiveInBackground: false,
+          shouldDuckAndroid: true,
+          playThroughEarpieceAndroid: false,
+        })
+        console.log('🔊 Audio mode configured for video playback')
+      } catch (error) {
+        console.error('❌ Failed to setup audio:', error)
+      }
+    }
+
+    setupAudio()
+  }, [])
 
   useEffect(() => {
     if (!currentStatus) return
 
     setProgress(0)
-    setIsPaused(false)
 
+    // Check if current status is a video
+    const isVideoContent =
+      currentStatus.fileType?.startsWith('video/') ||
+      currentStatus.fileType === 'video' ||
+      currentStatus.fileUrl?.includes('/videos/') ||
+      currentStatus.fileUrl?.endsWith('.mp4')
+
+    console.log('⏱️ Setting up timer for:', isVideoContent ? 'VIDEO' : 'IMAGE')
+
+    if (isVideoContent) {
+      // Video handles its own progression through onPlaybackStatusUpdate
+      console.log('🎥 Video status - playback will control progression')
+
+      // ✅ FIX: Ensure video ref is ready and playing
+      if (videoRef.current) {
+        videoRef.current
+          .playAsync()
+          .then(() => {
+            console.log('▶️ Video playback started')
+          })
+          .catch((error) => {
+            console.error('❌ Failed to start video:', error)
+          })
+      }
+
+      return
+    }
+
+    // Timer only for images
     const startTime = Date.now()
     timerRef.current = setInterval(() => {
       if (isPaused) return
@@ -234,12 +335,16 @@ export default function StatusViewerScreen({ route, navigation }) {
       setProgress(newProgress)
 
       if (newProgress >= 1) {
+        console.log('📸 Image timer finished')
         goToNext()
       }
     }, 50)
 
     return () => {
-      if (timerRef.current) clearInterval(timerRef.current)
+      if (timerRef.current) {
+        clearInterval(timerRef.current)
+        timerRef.current = null
+      }
     }
   }, [currentIndex, isPaused, currentStatus])
 
@@ -263,51 +368,46 @@ export default function StatusViewerScreen({ route, navigation }) {
     const { locationX } = e.nativeEvent
     const third = SCREEN_WIDTH / 3
 
+    console.log('👆 Tap detected at:', locationX, 'isPaused:', isPaused)
+
     if (locationX < third) {
+      console.log('⬅️ Previous tap')
       goToPrev()
     } else if (locationX > 2 * third) {
+      console.log('➡️ Next tap')
       goToNext()
     } else {
+      console.log('⏯️ Pause/Resume tap, new state:', !isPaused)
       setIsPaused(!isPaused)
+
+      // If it's a video, manually pause/play it
+      if (videoRef.current) {
+        if (!isPaused) {
+          console.log('⏸️ Pausing video')
+          videoRef.current.pauseAsync()
+        } else {
+          console.log('▶️ Resuming video')
+          videoRef.current.playAsync()
+        }
+      }
     }
   }
 
   const handleDelete = () => {
     if (!currentStatus) return
 
-    console.log('🗑️ Delete button clicked for status:', currentStatus._id)
-
     if (Platform.OS === 'web') {
-      // Use window.confirm for web
       const confirmed = window.confirm(
         'Are you sure you want to delete this status? This action cannot be undone.'
       )
-
-      if (confirmed) {
-        console.log('✅ User confirmed delete')
-        performDelete()
-      } else {
-        console.log('❌ User cancelled delete')
-      }
+      if (confirmed) performDelete()
     } else {
-      // Use Alert.alert for mobile (this actually works on mobile)
       Alert.alert(
         'Delete Status',
         'Are you sure you want to delete this status? This action cannot be undone.',
         [
-          {
-            text: 'Cancel',
-            style: 'cancel',
-            onPress: () => console.log('❌ User cancelled delete'),
-          },
-          {
-            text: 'Delete',
-            style: 'destructive',
-            onPress: () => {
-              console.log('✅ User confirmed delete')
-              performDelete()
-            },
-          },
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Delete', style: 'destructive', onPress: performDelete },
         ]
       )
     }
@@ -317,26 +417,11 @@ export default function StatusViewerScreen({ route, navigation }) {
     if (!currentStatus) return
 
     try {
-      console.log('═══════════════════════════════════')
-      console.log('🗑️ STARTING DELETE PROCESS')
-      console.log('═══════════════════════════════════')
-      console.log('Status ID:', currentStatus._id)
-      console.log('deleteStatus function:', typeof deleteStatus)
+      await deleteStatus(currentStatus._id)
 
-      // Call the API
-      const result = await deleteStatus(currentStatus._id)
-
-      console.log('✅ API Response:', result)
-      console.log('✅ Status deleted successfully')
-
-      // Update local state
       const newList = localStatusList.filter((s) => s._id !== currentStatus._id)
-      console.log('Updated list length:', newList.length)
 
-      // If no more statuses, go back
       if (newList.length === 0) {
-        console.log('No more statuses, navigating back')
-
         if (Platform.OS === 'web') {
           alert('Status deleted successfully!')
         } else {
@@ -345,41 +430,21 @@ export default function StatusViewerScreen({ route, navigation }) {
           ])
           return
         }
-
         navigation.goBack()
         return
       }
 
-      // Update the local list
       setLocalStatusList(newList)
-
-      // Adjust current index if needed
       if (currentIndex >= newList.length) {
         setCurrentIndex(newList.length - 1)
       }
-
-      console.log('✅ Local state updated successfully')
-      console.log(
-        'New current index:',
-        currentIndex >= newList.length ? newList.length - 1 : currentIndex
-      )
-      console.log('═══════════════════════════════════')
     } catch (error) {
-      console.log('═══════════════════════════════════')
-      console.log('❌ DELETE FAILED')
-      console.log('═══════════════════════════════════')
-      console.error('Error type:', error.constructor.name)
-      console.error('Error message:', error.message)
-      console.error('Error stack:', error.stack)
-      console.log('═══════════════════════════════════')
-
+      const message =
+        'Failed to delete status: ' + (error.message || 'Unknown error')
       if (Platform.OS === 'web') {
-        alert('Failed to delete status: ' + (error.message || 'Unknown error'))
+        alert(message)
       } else {
-        Alert.alert(
-          'Error',
-          'Failed to delete status: ' + (error.message || 'Unknown error')
-        )
+        Alert.alert('Error', message)
       }
     }
   }
@@ -392,63 +457,83 @@ export default function StatusViewerScreen({ route, navigation }) {
     )
   }
 
-  const isVideo = currentStatus.fileType?.startsWith('video/')
+  // ✅ FIX: Check for both 'video/' and 'video' formats
+  const isVideo =
+    currentStatus.fileType?.startsWith('video/') ||
+    currentStatus.fileType === 'video' ||
+    currentStatus.fileUrl?.includes('/videos/') ||
+    currentStatus.fileUrl?.endsWith('.mp4') ||
+    currentStatus.fileUrl?.endsWith('.mov') ||
+    currentStatus.fileUrl?.endsWith('.avi')
+
+  console.log('📹 Rendering status:', {
+    isVideo,
+    fileUrl: currentStatus.fileUrl,
+    fileType: currentStatus.fileType,
+    urlCheck: currentStatus.fileUrl?.includes('/videos/'),
+  })
 
   return (
     <Container>
+      {/* ✅ FIX: Separate header from tap area so buttons work */}
+
+      {/* Progress Bars */}
+      <ProgressBarContainer>
+        {localStatusList.map((_, i) => (
+          <ProgressSegment key={i}>
+            <ProgressFill
+              progress={
+                i < currentIndex ? 1 : i === currentIndex ? progress : 0
+              }
+            />
+          </ProgressSegment>
+        ))}
+      </ProgressBarContainer>
+
+      {/* Header - Outside tap area */}
+      <Header>
+        <Avatar color={currentStatus.userAvatarColor || '#3498db'}>
+          <AvatarText>
+            {getInitials(currentStatus.userName || userName || 'You')}
+          </AvatarText>
+        </Avatar>
+        <UserInfo>
+          <Username>
+            {isViewingOwnStatus
+              ? 'Your Story'
+              : currentStatus.userName || userName || 'Unknown'}
+          </Username>
+          <Timestamp>{formatTimestamp(currentStatus.createdAt)}</Timestamp>
+        </UserInfo>
+
+        {localStatusList.length > 1 && (
+          <StatusCounter>
+            {currentIndex + 1}/{localStatusList.length}
+          </StatusCounter>
+        )}
+
+        {isViewingOwnStatus && (
+          <DeleteButton onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={24} color="#fff" />
+          </DeleteButton>
+        )}
+
+        <CloseButton
+          onPress={() => {
+            console.log('❌ Close button pressed')
+            navigation.goBack()
+          }}
+        >
+          <Ionicons name="close" size={24} color="#fff" />
+        </CloseButton>
+      </Header>
+
+      {/* Tappable area for navigation and pause */}
       <TouchableOpacity
         activeOpacity={1}
         onPress={handleTap}
         style={{ flex: 1 }}
       >
-        {/* Progress Bars */}
-        <ProgressBarContainer>
-          {localStatusList.map((_, i) => (
-            <ProgressSegment key={i}>
-              <ProgressFill
-                progress={
-                  i < currentIndex ? 1 : i === currentIndex ? progress : 0
-                }
-              />
-            </ProgressSegment>
-          ))}
-        </ProgressBarContainer>
-
-        {/* Header */}
-        <Header>
-          <Avatar color={currentStatus.userAvatarColor || '#3498db'}>
-            <AvatarText>
-              {getInitials(currentStatus.userName || userName || 'You')}
-            </AvatarText>
-          </Avatar>
-          <UserInfo>
-            <Username>
-              {isViewingOwnStatus
-                ? 'Your Story'
-                : currentStatus.userName || userName || 'Unknown'}
-            </Username>
-            <Timestamp>{formatTimestamp(currentStatus.createdAt)}</Timestamp>
-          </UserInfo>
-
-          {/* Status counter */}
-          {localStatusList.length > 1 && (
-            <StatusCounter>
-              {currentIndex + 1}/{localStatusList.length}
-            </StatusCounter>
-          )}
-
-          {/* Delete button only for own status */}
-          {isViewingOwnStatus && (
-            <DeleteButton onPress={handleDelete}>
-              <Ionicons name="trash-outline" size={24} color="#fff" />
-            </DeleteButton>
-          )}
-
-          <CloseButton onPress={() => navigation.goBack()}>
-            <Ionicons name="close" size={28} color="#fff" />
-          </CloseButton>
-        </Header>
-
         {/* Media */}
         {isVideo ? (
           <VideoContainer>
@@ -459,16 +544,77 @@ export default function StatusViewerScreen({ route, navigation }) {
               volume={1.0}
               isMuted={false}
               resizeMode="contain"
-              shouldPlay={!isPaused}
+              shouldPlay={!isPaused && !videoLoading}
               isLooping={false}
               useNativeControls={false}
-              style={{ width: '100%', height: '100%' }}
+              style={{
+                width: '100%',
+                height: '100%',
+              }}
+              videoStyle={{
+                width: '100%',
+                height: '100%',
+              }}
+              onLoadStart={() => {
+                console.log('🎬 Video loading started')
+                setVideoLoading(true)
+                setVideoError(false)
+              }}
+              onLoad={(status) => {
+                console.log('✅ Video loaded successfully:', status)
+                setVideoLoading(false)
+                setVideoError(false)
+              }}
+              onReadyForDisplay={(event) => {
+                console.log('🎥 Video ready for display:', event)
+                setVideoLoading(false)
+              }}
+              onError={(error) => {
+                console.error('❌ Video error:', error)
+                setVideoLoading(false)
+                setVideoError(true)
+              }}
               onPlaybackStatusUpdate={(status) => {
-                if (status.didJustFinish) {
-                  goToNext()
+                if (status.isLoaded) {
+                  if (status.didJustFinish) {
+                    console.log('🏁 Video finished')
+                    goToNext()
+                  }
+                  if (status.isPlaying && videoLoading) {
+                    console.log('▶️ Video is playing, hiding loader')
+                    setVideoLoading(false)
+                  }
                 }
               }}
             />
+
+            {videoLoading && !videoError && (
+              <LoadingContainer>
+                <ActivityIndicator size="large" color="#fff" />
+                <LoadingText>Loading video...</LoadingText>
+              </LoadingContainer>
+            )}
+
+            {videoError && (
+              <LoadingContainer>
+                <Ionicons name="alert-circle-outline" size={48} color="#fff" />
+                <LoadingText>Failed to load video</LoadingText>
+                <TouchableOpacity
+                  onPress={() => {
+                    setVideoError(false)
+                    setVideoLoading(true)
+                  }}
+                  style={{
+                    marginTop: 16,
+                    padding: 12,
+                    backgroundColor: 'rgba(255,255,255,0.2)',
+                    borderRadius: 8,
+                  }}
+                >
+                  <LoadingText>Tap to retry</LoadingText>
+                </TouchableOpacity>
+              </LoadingContainer>
+            )}
           </VideoContainer>
         ) : (
           <StatusImage
@@ -481,7 +627,7 @@ export default function StatusViewerScreen({ route, navigation }) {
         {currentStatus.caption && <Caption>{currentStatus.caption}</Caption>}
 
         {/* Pause Indicator */}
-        {isPaused && (
+        {isPaused && !videoLoading && !videoError && (
           <PauseIndicator>
             <Ionicons name="pause" size={60} color="rgba(255,255,255,0.8)" />
           </PauseIndicator>
