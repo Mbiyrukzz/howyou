@@ -12,6 +12,8 @@ import styled from 'styled-components/native'
 import { Video } from 'expo-av'
 import { Ionicons } from '@expo/vector-icons'
 import { usePosts } from '../providers/PostsProvider'
+import { useStatusViews } from '../hooks/useStatusViews'
+import { StatusViewersModal } from '../components/StatusViewersModal'
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window')
 
@@ -203,6 +205,9 @@ export default function StatusViewerScreen({ route, navigation }) {
   const { status, statuses: passedStatuses, userName } = route.params
   const { statuses, myStatus, deleteStatus } = usePosts()
 
+  const { markStatusViewed } = useStatusViews()
+  const [viewersModalVisible, setViewersModalVisible] = useState(false)
+
   const [localStatusList, setLocalStatusList] = useState([])
   const [isViewingOwnStatus, setIsViewingOwnStatus] = useState(false)
   const [videoLoading, setVideoLoading] = useState(true)
@@ -393,6 +398,17 @@ export default function StatusViewerScreen({ route, navigation }) {
     }
   }
 
+  useEffect(() => {
+    if (currentStatus && !isViewingOwnStatus) {
+      // Mark as viewed after a short delay to ensure user actually saw it
+      const timer = setTimeout(() => {
+        markStatusViewed(currentStatus._id)
+      }, 1000)
+
+      return () => clearTimeout(timer)
+    }
+  }, [currentStatus, isViewingOwnStatus, markStatusViewed])
+
   const handleDelete = () => {
     if (!currentStatus) return
 
@@ -518,6 +534,25 @@ export default function StatusViewerScreen({ route, navigation }) {
           </DeleteButton>
         )}
 
+        {isViewingOwnStatus && (
+          <TouchableOpacity
+            style={{
+              padding: 8,
+              marginLeft: 8,
+              backgroundColor: 'rgba(52, 152, 219, 0.8)',
+              borderRadius: 20,
+              width: 40,
+              height: 40,
+              justifyContent: 'center',
+              alignItems: 'center',
+              borderWidth: 1,
+              borderColor: 'rgba(255, 255, 255, 0.3)',
+            }}
+            onPress={() => setViewersModalVisible(true)}
+          >
+            <Ionicons name="eye-outline" size={24} color="#fff" />
+          </TouchableOpacity>
+        )}
         <CloseButton
           onPress={() => {
             console.log('❌ Close button pressed')
@@ -633,6 +668,11 @@ export default function StatusViewerScreen({ route, navigation }) {
           </PauseIndicator>
         )}
       </TouchableOpacity>
+      <StatusViewersModal
+        visible={viewersModalVisible}
+        statusId={currentStatus?._id}
+        onClose={() => setViewersModalVisible(false)}
+      />
     </Container>
   )
 }

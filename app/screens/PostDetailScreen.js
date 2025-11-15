@@ -1,4 +1,4 @@
-// screens/PostDetailScreen.js
+// screens/PostDetailScreen.js - FIXED
 import React, { useState, useEffect } from 'react'
 import {
   ScrollView,
@@ -178,12 +178,15 @@ const EmptyComments = styled.Text`
 `
 
 const CommentInputContainer = styled.View`
-  flex-direction: row;
-  align-items: center;
   background-color: #fff;
   padding: 12px 20px;
   border-top-width: 1px;
   border-top-color: #e9ecef;
+`
+
+const InputRow = styled.View`
+  flex-direction: row;
+  align-items: center;
 `
 
 const CommentInput = styled.TextInput`
@@ -216,25 +219,33 @@ const SendButton = styled.TouchableOpacity`
   align-items: center;
 `
 
+const ImagePreviewContainer = styled.View`
+  padding: 8px 0;
+  margin-bottom: 8px;
+`
+
 const ImagePreview = styled.View`
   position: relative;
-  margin-right: 12px;
+  width: 80px;
+  height: 80px;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #ecf0f1;
 `
 
 const PreviewImage = styled.Image`
-  width: 60px;
-  height: 60px;
-  border-radius: 8px;
+  width: 100%;
+  height: 100%;
 `
 
 const RemoveImageButton = styled.TouchableOpacity`
   position: absolute;
-  top: -8px;
-  right: -8px;
+  top: 4px;
+  right: 4px;
   width: 24px;
   height: 24px;
   border-radius: 12px;
-  background-color: #e74c3c;
+  background-color: rgba(231, 76, 60, 0.9);
   justify-content: center;
   align-items: center;
 `
@@ -311,23 +322,77 @@ export default function PostDetailScreen({ route, navigation }) {
 
   const handlePickImage = async () => {
     try {
+      // Request permission first
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync()
+
+      if (status !== 'granted') {
+        Alert.alert(
+          'Permission needed',
+          'Please allow access to your photo library'
+        )
+        return
+      }
+
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
+        aspect: [4, 3],
         quality: 0.8,
       })
 
+      console.log('Image picker result:', result)
+
       if (!result.canceled && result.assets?.[0]) {
-        setAttachedFiles([result.assets[0]])
+        const asset = result.assets[0]
+
+        // Validate file size (max 5MB)
+        if (asset.fileSize && asset.fileSize > 5 * 1024 * 1024) {
+          Alert.alert(
+            'File too large',
+            'Please select an image smaller than 5MB'
+          )
+          return
+        }
+
+        // Extract filename from URI
+        const uriParts = asset.uri.split('/')
+        const fileName = uriParts[uriParts.length - 1]
+
+        setAttachedFiles([
+          {
+            uri: asset.uri,
+            name: fileName,
+            type:
+              asset.type === 'image'
+                ? 'image/jpeg'
+                : asset.mimeType || 'image/jpeg',
+            width: asset.width,
+            height: asset.height,
+          },
+        ])
+
+        console.log('Image attached:', {
+          uri: asset.uri,
+          name: fileName,
+          type: asset.type,
+        })
       }
     } catch (error) {
       console.error('Failed to pick image:', error)
-      Alert.alert('Error', 'Failed to pick image')
+      Alert.alert('Error', 'Failed to pick image. Please try again.')
     }
   }
 
   const handleSendComment = async () => {
-    if ((!commentText.trim() && attachedFiles.length === 0) || sending) return
+    if ((!commentText.trim() && attachedFiles.length === 0) || sending) {
+      return
+    }
+
+    console.log('Sending comment:', {
+      hasText: !!commentText.trim(),
+      filesCount: attachedFiles.length,
+      files: attachedFiles,
+    })
 
     try {
       const result = await createComment({
@@ -337,6 +402,8 @@ export default function PostDetailScreen({ route, navigation }) {
         parentId: null,
       })
 
+      console.log('Comment creation result:', result)
+
       if (result.success) {
         setCommentText('')
         setAttachedFiles([])
@@ -345,7 +412,7 @@ export default function PostDetailScreen({ route, navigation }) {
       }
     } catch (error) {
       console.error('Failed to send comment:', error)
-      Alert.alert('Error', 'Failed to send comment')
+      Alert.alert('Error', 'Failed to send comment. Please try again.')
     }
   }
 
@@ -409,6 +476,7 @@ export default function PostDetailScreen({ route, navigation }) {
     <KeyboardAvoidingView
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={{ flex: 1 }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
     >
       <Container>
         <Header>
@@ -418,7 +486,7 @@ export default function PostDetailScreen({ route, navigation }) {
           <HeaderTitle>Post</HeaderTitle>
         </Header>
 
-        <ScrollView>
+        <ScrollView showsVerticalScrollIndicator={false}>
           <PostCard>
             <PostHeader>
               <PostAvatar color={post.avatarColor || '#3498db'}>
@@ -493,48 +561,60 @@ export default function PostDetailScreen({ route, navigation }) {
 
         <CommentInputContainer>
           {attachedFiles.length > 0 && (
-            <ImagePreview>
-              <PreviewImage source={{ uri: attachedFiles[0].uri }} />
-              <RemoveImageButton onPress={() => setAttachedFiles([])}>
-                <Ionicons name="close" size={14} color="#fff" />
-              </RemoveImageButton>
-            </ImagePreview>
+            <ImagePreviewContainer>
+              <ImagePreview>
+                <PreviewImage
+                  source={{ uri: attachedFiles[0].uri }}
+                  resizeMode="cover"
+                />
+                <RemoveImageButton onPress={() => setAttachedFiles([])}>
+                  <Ionicons name="close" size={16} color="#fff" />
+                </RemoveImageButton>
+              </ImagePreview>
+            </ImagePreviewContainer>
           )}
 
-          <AttachButton onPress={handlePickImage}>
-            <Ionicons name="image-outline" size={20} color="#7f8c8d" />
-          </AttachButton>
-
-          <CommentInput
-            placeholder="Write a comment..."
-            placeholderTextColor="#95a5a6"
-            value={commentText}
-            onChangeText={setCommentText}
-            multiline
-            maxLength={500}
-          />
-
-          <SendButton
-            active={commentText.trim().length > 0 || attachedFiles.length > 0}
-            onPress={handleSendComment}
-            disabled={
-              (!commentText.trim() && attachedFiles.length === 0) || sending
-            }
-          >
-            {sending ? (
-              <ActivityIndicator size="small" color="#fff" />
-            ) : (
+          <InputRow>
+            <AttachButton onPress={handlePickImage} disabled={sending}>
               <Ionicons
-                name="send"
+                name="image-outline"
                 size={20}
-                color={
-                  commentText.trim() || attachedFiles.length > 0
-                    ? '#fff'
-                    : '#95a5a6'
-                }
+                color={sending ? '#bdc3c7' : '#7f8c8d'}
               />
-            )}
-          </SendButton>
+            </AttachButton>
+
+            <CommentInput
+              placeholder="Write a comment..."
+              placeholderTextColor="#95a5a6"
+              value={commentText}
+              onChangeText={setCommentText}
+              multiline
+              maxLength={500}
+              editable={!sending}
+            />
+
+            <SendButton
+              active={commentText.trim().length > 0 || attachedFiles.length > 0}
+              onPress={handleSendComment}
+              disabled={
+                (!commentText.trim() && attachedFiles.length === 0) || sending
+              }
+            >
+              {sending ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <Ionicons
+                  name="send"
+                  size={20}
+                  color={
+                    commentText.trim() || attachedFiles.length > 0
+                      ? '#fff'
+                      : '#95a5a6'
+                  }
+                />
+              )}
+            </SendButton>
+          </InputRow>
         </CommentInputContainer>
       </Container>
     </KeyboardAvoidingView>

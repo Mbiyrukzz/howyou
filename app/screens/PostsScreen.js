@@ -1,4 +1,4 @@
-// screens/PostsScreen.js - WITH COMMENTS PREVIEW
+// screens/PostsScreen.js - WITH COMMENTS PREVIEW ON ALL DEVICES
 import React, { useEffect, useRef, useState } from 'react'
 import {
   FlatList,
@@ -680,7 +680,7 @@ const getInitials = (name) =>
     .toUpperCase()
     .substring(0, 2)
 
-// ✅ NEW: Comments Preview Component
+// ✅ NEW: Comments Preview Component - NOW AVAILABLE ON ALL DEVICES
 const CommentsPreview = ({ postId, onViewAll }) => {
   const { getCommentsForPost } = useComments()
   const comments = getCommentsForPost(postId) || []
@@ -970,15 +970,15 @@ export default function PostsScreen({ navigation, route }) {
     }
   }, [route?.params?.postId])
 
-  // ✅ Load comments for all visible posts
+  // ✅ Load comments for all visible posts - NOW FOR ALL DEVICES
   useEffect(() => {
-    if (isWebSidebar && posts && posts.length > 0) {
+    if (posts && posts.length > 0) {
       console.log('📥 Loading comments for', posts.length, 'posts')
       posts.forEach((post) => {
         loadComments(post._id)
       })
     }
-  }, [isWebSidebar, posts])
+  }, [posts])
 
   const yourStory = {
     _id: 'your-story',
@@ -1298,13 +1298,11 @@ export default function PostsScreen({ navigation, route }) {
                   </ActionButton>
                 </PostActions>
 
-                {/* ✅ Comments Preview - Only in Web Sidebar Mode */}
-                {isWebSidebar && (
-                  <CommentsPreview
-                    postId={item._id}
-                    onViewAll={() => handlePostPress(item)}
-                  />
-                )}
+                {/* ✅ Comments Preview - NOW AVAILABLE ON ALL DEVICES (Mobile & Web) */}
+                <CommentsPreview
+                  postId={item._id}
+                  onViewAll={() => handlePostPress(item)}
+                />
               </PostCard>
             </TouchableOpacity>
           )

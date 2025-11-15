@@ -64,6 +64,10 @@ export const PostsProvider = ({ children }) => {
           handleStatusDeleted(data)
           break
 
+        case 'status-viewed':
+          handleStatusViewed(data)
+          break
+
         case 'user-online':
           handleUserOnline(data)
           break
@@ -289,6 +293,25 @@ export const PostsProvider = ({ children }) => {
     },
     [user?.uid]
   )
+
+  const handleStatusViewed = useCallback((data) => {
+    const { statusId, viewer, viewCount } = data
+    console.log(
+      '👁️ Status viewed notification:',
+      statusId,
+      'by:',
+      viewer.userName
+    )
+
+    // Update view count in myStatus
+    setMyStatus((prev) =>
+      (prev || []).map((status) =>
+        status._id === statusId
+          ? { ...status, viewCount: viewCount || (status.viewCount || 0) + 1 }
+          : status
+      )
+    )
+  }, [])
 
   const handleUserOnline = useCallback((data) => {
     setOnlineUsers((prev) => new Set([...prev, data.userId]))

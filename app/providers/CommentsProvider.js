@@ -1,14 +1,15 @@
-// providers/CommentsProvider.js - FIXED
+// providers/CommentsProvider.js - FIXED FILE UPLOADS
 import React, { useEffect, useState, useCallback, useRef } from 'react'
 import CommentsContext from '../contexts/CommentsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
+import { Platform } from 'react-native'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000'
 
 const CommentsProvider = ({ children }) => {
-  const [comments, setComments] = useState({}) // ✅ FIXED: Initialize as object
+  const [comments, setComments] = useState({})
   const [loading, setLoading] = useState({})
   const [sending, setSending] = useState(false)
 
@@ -62,7 +63,7 @@ const CommentsProvider = ({ children }) => {
   const handleNewComment = useCallback(
     (data) => {
       const { comment, postId, senderId, userId } = data
-      const actualSenderId = senderId || userId // Handle both field names
+      const actualSenderId = senderId || userId
 
       console.log('📥 Received new comment:', {
         comment,
@@ -73,7 +74,6 @@ const CommentsProvider = ({ children }) => {
         currentCommentsForPost: comments[postId]?.length || 0,
       })
 
-      // ✅ Check if postId exists
       if (!postId) {
         console.error('❌ No postId in new-comment message!')
         return
@@ -87,14 +87,6 @@ const CommentsProvider = ({ children }) => {
 
       setComments((prev) => {
         const postComments = prev[postId] || []
-
-        console.log('📊 Current comments for post:', {
-          postId,
-          count: postComments.length,
-          commentIds: postComments.map((c) => c._id),
-        })
-
-        // Check for duplicates
         const isDuplicate = postComments.some((c) => c._id === comment._id)
 
         if (isDuplicate) {
@@ -112,12 +104,6 @@ const CommentsProvider = ({ children }) => {
         // It's a top-level comment
         console.log('✅ Adding top-level comment')
         const newComments = [comment, ...postComments]
-
-        console.log('📊 Updated comments for post:', {
-          postId,
-          newCount: newComments.length,
-          newCommentIds: newComments.map((c) => c._id),
-        })
 
         return {
           ...prev,
@@ -270,7 +256,7 @@ const CommentsProvider = ({ children }) => {
         content,
         filesCount: files.length,
         parentId,
-        parentIdType: typeof parentId,
+        files: files.map((f) => ({ uri: f.uri, name: f.name, type: f.type })),
       })
 
       if (!isReady || !user?.uid) {
@@ -290,10 +276,17 @@ const CommentsProvider = ({ children }) => {
 
         if (files.length > 0) {
           console.log('📎 Creating comment with files...')
+
+          // Get auth token
+          const token = await user.getIdToken()
+
+          // Create FormData
           const formData = new FormData()
+
+          // Add content
           formData.append('content', content?.trim() || '')
 
-          // ✅ FIX: Convert ObjectId to string if it's an object
+          // Add parentId if exists (convert ObjectId to string)
           if (parentId) {
             const parentIdStr =
               typeof parentId === 'object' && parentId._id
@@ -303,21 +296,42 @@ const CommentsProvider = ({ children }) => {
             console.log('📎 Parent ID being sent:', parentIdStr)
           }
 
+          // Add files with proper React Native format
           for (let i = 0; i < files.length; i++) {
             const file = files[i]
-            const fileObject = {
+
+            console.log('📎 Processing file:', {
               uri: file.uri,
-              name: file.name || `file_${Date.now()}_${i}.jpg`,
-              type: file.type || file.mimeType || 'image/jpeg',
+              name: file.name,
+              type: file.type,
+            })
+
+            // For React Native, we need to create a proper file object
+            const fileToUpload = {
+              uri:
+                Platform.OS === 'ios'
+                  ? file.uri.replace('file://', '')
+                  : file.uri,
+              name: file.name || `image_${Date.now()}_${i}.jpg`,
+              type: file.type || 'image/jpeg',
             }
-            formData.append('files', fileObject)
+
+            console.log('📎 File to upload:', fileToUpload)
+
+            formData.append('files', fileToUpload)
           }
 
-          const token = await user.getIdToken()
+          console.log(
+            '📡 Sending FormData to:',
+            `${API_URL}/posts/${postId}/comments`
+          )
+
+          // Make fetch request with FormData
           const response = await fetch(`${API_URL}/posts/${postId}/comments`, {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${token}`,
+              // Don't set Content-Type - let the browser set it with boundary
             },
             body: formData,
           })
@@ -325,16 +339,25 @@ const CommentsProvider = ({ children }) => {
           console.log('📡 Response status:', response.status)
 
           if (!response.ok) {
-            const errorData = await response.json().catch(() => ({}))
-            console.error('❌ API error:', errorData)
+            const errorText = await response.text()
+            console.error('❌ API error response:', errorText)
+
+            let errorData
+            try {
+              errorData = JSON.parse(errorText)
+            } catch {
+              errorData = { error: `HTTP ${response.status}: ${errorText}` }
+            }
+
             throw new Error(errorData.error || `HTTP ${response.status}`)
           }
 
           data = await response.json()
+          console.log('✅ Comment with files created:', data)
         } else {
           console.log('💬 Creating text-only comment...')
 
-          // ✅ FIX: Convert ObjectId to string if it's an object
+          // Text-only comment - use regular POST
           const payload = {
             content: content.trim(),
           }
@@ -375,7 +398,6 @@ const CommentsProvider = ({ children }) => {
           console.log('📡 Broadcasting new comment via WebSocket...', {
             wsConnected,
             hasSend: !!wsSend,
-            sendType: typeof wsSend,
           })
 
           if (wsSend && typeof wsSend === 'function') {
@@ -389,18 +411,13 @@ const CommentsProvider = ({ children }) => {
             console.log('📡 Sending WebSocket message:', wsMessage)
             wsSend(wsMessage)
             console.log('✅ WebSocket broadcast sent')
-          } else {
-            console.warn('⚠️ wsSend not available:', {
-              wsConnected,
-              wsSend: !!wsSend,
-              type: typeof wsSend,
-            })
           }
         }
 
         return data
       } catch (error) {
         console.error('❌ createComment error:', error)
+        console.error('❌ Error stack:', error.stack)
         return {
           success: false,
           error: error.message || 'Failed to create comment',
