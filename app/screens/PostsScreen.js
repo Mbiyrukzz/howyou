@@ -26,6 +26,7 @@ import { useComments } from '../hooks/useComments'
 import { useWebSidebar } from '../hooks/useWebSidebar'
 import WebSidebarLayout from '../components/WebSidebarLayout'
 import CommentSection from '../components/CommentSection'
+import { useStatusViews } from '../hooks/useStatusViews'
 
 const { width: screenWidth } = Dimensions.get('window')
 
@@ -130,7 +131,14 @@ const StoryAvatar = styled.View`
   justify-content: center;
   align-items: center;
   border-width: ${(props) => (props.hasStory ? '3px' : '2.5px')};
-  border-color: ${(props) => (props.hasStory ? '#e74c3c' : '#e9ecef')};
+  border-color: ${(props) => {
+    // If viewed, always show gray
+    if (props.isViewed) return '#808080'
+    // If has story, show red/color
+    if (props.hasStory) return '#0f4ce8ff'
+    // Default gray for no story
+    return '#e9ecef'
+  }};
 `
 
 const StoryImageContainer = styled.View`
@@ -713,13 +721,27 @@ const CommentsPreview = ({ postId, onViewAll }) => {
 }
 
 const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
+  const { hasViewed, checkIfViewed } = useStatusViews()
+
+  // Check if status has been viewed on mount
+  useEffect(() => {
+    if (!isYourStory && item.statuses?.[0]?._id) {
+      checkIfViewed(item.statuses[0]._id)
+    }
+  }, [item, isYourStory, checkIfViewed])
+
   const hasStory = statusCount > 0
+  const isViewed = !isYourStory && hasViewed(item.statuses?.[0]?._id)
 
   return (
     <StoryItem onPress={() => onPress(item)}>
       <StoryAvatarContainer>
         {hasStory && item.fileUrl ? (
-          <StoryAvatar hasStory={true} color={item.userAvatarColor}>
+          <StoryAvatar
+            hasStory={true}
+            color={item.userAvatarColor}
+            isViewed={isViewed} // ✅ NEW: Pass viewed state
+          >
             <StoryImageContainer>
               <Image
                 source={{ uri: item.fileUrl }}
@@ -732,6 +754,7 @@ const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
           <StoryAvatar
             color={item.userAvatarColor || '#2ecc71'}
             hasStory={false}
+            isViewed={isViewed} // ✅ NEW: Pass viewed state
           >
             <StoryAvatarText>
               {getInitials(item.userName || item.name)}
@@ -745,7 +768,8 @@ const StoryComponent = ({ item, onPress, isYourStory, statusCount }) => {
           </AddStoryButton>
         )}
 
-        {statusCount > 1 && (
+        {/* ✅ UPDATED: Hide badge if viewed */}
+        {!isViewed && statusCount > 1 && (
           <StatusBadge>
             <StatusBadgeText>{statusCount}</StatusBadgeText>
           </StatusBadge>

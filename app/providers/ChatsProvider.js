@@ -23,18 +23,21 @@ const ChatsProvider = ({ children }) => {
   const { isReady, get, put, post, del } = useAuthedRequest()
   const { user } = useUser()
   const typingTimeoutRef = useRef({})
-
-  // Handle WebSocket messages
   const handleWebSocketMessage = useCallback(
     (data) => {
-      console.log('📨 WebSocket message received:', data.type)
+      console.log('📨 [ChatsProvider] WebSocket message:', data.type, {
+        from: data.from,
+        to: data.to,
+        userId: data.userId,
+      })
 
       switch (data.type) {
-        case 'connected':
-          console.log('✅ WebSocket connection confirmed')
-          if (data.onlineUsers) {
-            setOnlineUsers(new Set(data.onlineUsers))
-          }
+        case 'call_accepted':
+          console.log('📞 [ChatsProvider] Call accepted notification:', {
+            from: data.from,
+            callId: data.callId,
+          })
+          // Don't do anything here - CallScreen handles it
           break
 
         case 'incoming_call':
@@ -240,6 +243,23 @@ const ChatsProvider = ({ children }) => {
         return msg
       })
 
+      // ✅ FIX: Update chat list if this was the last message
+      const lastMsg = updatedMessages[updatedMessages.length - 1]
+      if (lastMsg && (lastMsg._id || lastMsg.id) === messageId) {
+        setChats((prevChats) =>
+          prevChats.map((chat) =>
+            (chat._id || chat.id) === chatId
+              ? {
+                  ...chat,
+                  lastMessage:
+                    message.content?.substring(0, 50) || 'Sent an attachment',
+                  lastActivity: message.updatedAt || lastMsg.createdAt,
+                }
+              : chat
+          )
+        )
+      }
+
       return {
         ...prevMessages,
         [chatId]: updatedMessages,
@@ -247,28 +267,25 @@ const ChatsProvider = ({ children }) => {
     })
   }, [])
 
-  const handleMessageDeleted = useCallback(
-    (data) => {
-      const { chatId, messageId } = data
+  const handleMessageDeleted = useCallback((data) => {
+    const { chatId, messageId } = data
 
-      setMessages((prev) => {
-        const updated = { ...prev }
-        if (updated[chatId]) {
-          updated[chatId] = updated[chatId].filter(
-            (msg) => (msg._id || msg.id) !== messageId
-          )
-        }
-        return updated
-      })
+    setMessages((prev) => {
+      const updated = { ...prev }
+      if (updated[chatId]) {
+        updated[chatId] = updated[chatId].filter(
+          (msg) => (msg._id || msg.id) !== messageId
+        )
 
-      setChats((prev) =>
-        prev.map((chat) => {
-          if ((chat._id || chat.id) === chatId) {
-            const remaining =
-              messages[chatId]?.filter((m) => (m._id || m.id) !== messageId) ||
-              []
-            if (remaining.length > 0) {
-              const last = remaining[remaining.length - 1]
+        // ✅ FIX: Update chats immediately with filtered messages
+        setChats((prevChats) =>
+          prevChats.map((chat) => {
+            if ((chat._id || chat.id) !== chatId) return chat
+
+            const remainingMessages = updated[chatId]
+
+            if (remainingMessages.length > 0) {
+              const last = remainingMessages[remainingMessages.length - 1]
               return {
                 ...chat,
                 lastMessage:
@@ -276,14 +293,19 @@ const ChatsProvider = ({ children }) => {
                 lastActivity: last.createdAt,
               }
             }
-            return { ...chat, lastMessage: '', lastActivity: new Date() }
-          }
-          return chat
-        })
-      )
-    },
-    [messages]
-  )
+
+            // ✅ FIX: Empty string instead of "No conversation"
+            return {
+              ...chat,
+              lastMessage: '',
+              lastActivity: chat.lastActivity || new Date(),
+            }
+          })
+        )
+      }
+      return updated
+    })
+  }, [])
 
   const handleMessageDelivered = useCallback((data) => {
     const { chatId, messageId } = data
@@ -657,31 +679,42 @@ const ChatsProvider = ({ children }) => {
         const response = await del(`${API_URL}/delete-message/${messageId}`)
 
         if (response.success) {
-          setMessages((prev) => ({
-            ...prev,
-            [chatId]: (prev[chatId] || []).filter(
-              (msg) => (msg._id || msg.id) !== messageId
-            ),
-          }))
+          // ✅ FIX: Update states correctly
+          setMessages((prev) => {
+            const updated = {
+              ...prev,
+              [chatId]: (prev[chatId] || []).filter(
+                (msg) => (msg._id || msg.id) !== messageId
+              ),
+            }
 
-          setChats((prev) =>
-            prev.map((chat) => {
-              if ((chat._id || chat.id) !== chatId) return chat
-              const remaining = (messages[chatId] || []).filter(
-                (m) => (m._id || m.id) !== messageId
-              )
-              if (remaining.length > 0) {
-                const last = remaining[remaining.length - 1]
+            // Update chats with new filtered messages
+            setChats((prevChats) =>
+              prevChats.map((chat) => {
+                if ((chat._id || chat.id) !== chatId) return chat
+
+                const remaining = updated[chatId] || []
+
+                if (remaining.length > 0) {
+                  const last = remaining[remaining.length - 1]
+                  return {
+                    ...chat,
+                    lastMessage:
+                      last.content?.substring(0, 50) || 'Sent an attachment',
+                    lastActivity: last.createdAt,
+                  }
+                }
+
                 return {
                   ...chat,
-                  lastMessage:
-                    last.content?.substring(0, 50) || 'Sent an attachment',
-                  lastActivity: last.createdAt,
+                  lastMessage: '',
+                  lastActivity: chat.lastActivity || new Date(),
                 }
-              }
-              return { ...chat, lastMessage: '', lastActivity: new Date() }
-            })
-          )
+              })
+            )
+
+            return updated
+          })
         }
 
         return response
@@ -690,7 +723,7 @@ const ChatsProvider = ({ children }) => {
         return { success: false, error: error.message || 'Failed to delete' }
       }
     },
-    [isReady, del, user?.uid, messages]
+    [isReady, del, user?.uid]
   )
 
   const updateLastSeen = useCallback(

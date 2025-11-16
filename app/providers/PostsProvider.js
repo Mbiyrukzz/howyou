@@ -307,9 +307,23 @@ export const PostsProvider = ({ children }) => {
     setMyStatus((prev) =>
       (prev || []).map((status) =>
         status._id === statusId
-          ? { ...status, viewCount: viewCount || (status.viewCount || 0) + 1 }
+          ? {
+              ...status,
+              viewCount: viewCount || (status.viewCount || 0) + 1,
+              hasViewed: true, // Add this flag
+            }
           : status
       )
+    )
+
+    // Also update in statuses array
+    setStatuses((prevStatuses) =>
+      prevStatuses.map((group) => ({
+        ...group,
+        statuses: group.statuses.map((status) =>
+          status._id === statusId ? { ...status, hasViewed: true } : status
+        ),
+      }))
     )
   }, [])
 

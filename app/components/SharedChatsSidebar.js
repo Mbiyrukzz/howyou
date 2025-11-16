@@ -657,7 +657,7 @@ export default function SharedChatsSidebar({
     let typingText = ''
     if (isTyping) {
       if (typingUsers.length === 1) {
-        typingText = `${typingUsers[0].name || 'Someone'} is typing...`
+        typingText = ` Typing...`
       } else {
         typingText = `${typingUsers.length} people are typing...`
       }

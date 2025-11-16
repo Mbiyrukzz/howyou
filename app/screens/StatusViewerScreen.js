@@ -400,9 +400,9 @@ export default function StatusViewerScreen({ route, navigation }) {
 
   useEffect(() => {
     if (currentStatus && !isViewingOwnStatus) {
-      // Mark as viewed after a short delay to ensure user actually saw it
       const timer = setTimeout(() => {
         markStatusViewed(currentStatus._id)
+        // This will now update the viewedStatuses Set in the hook
       }, 1000)
 
       return () => clearTimeout(timer)

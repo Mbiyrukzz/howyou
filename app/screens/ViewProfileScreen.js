@@ -19,6 +19,7 @@ import ChatsContext from '../contexts/ChatsContext'
 import { useWebSidebar } from '../hooks/useWebSidebar'
 import { usePosts } from '../providers/PostsProvider'
 import SharedChatsSidebar from '../components/SharedChatsSidebar'
+import { EnhancedMessageBubble } from '../components/EnhancedMessageBubble'
 
 const { width } = Dimensions.get('window')
 const MEDIA_ITEM_SIZE = (width - 64) / 3
@@ -1224,6 +1225,8 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
     loadMessages,
     sendMessage,
     isUserOnline,
+    updateMessage, // Add this
+    deleteMessage, // Add this
     getTypingUsersForChat,
     sendTypingIndicator,
     initiateCall,
@@ -1297,6 +1300,46 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
     }
   }
 
+  const handleUpdateMessage = async (messageId, newContent) => {
+    try {
+      if (!updateMessage) {
+        return { success: false, error: 'Update not available' }
+      }
+
+      const result = await updateMessage(chatId, messageId, newContent)
+      return result
+    } catch (error) {
+      console.error('Update message error:', error)
+      return { success: false, error: error.message }
+    }
+  }
+
+  const handleDeleteMessage = async (messageId) => {
+    try {
+      if (!deleteMessage) {
+        Alert.alert('Error', 'Delete feature is not available')
+        return { success: false, error: 'Delete not available' }
+      }
+
+      console.log('🗑️ Deleting message:', { chatId, messageId }) // Debug log
+
+      const result = await deleteMessage(chatId, messageId)
+
+      console.log('🗑️ Delete result:', result) // Debug log
+
+      if (result.success) {
+        // Success - message was deleted
+        return result
+      } else {
+        Alert.alert('Error', result.error || 'Failed to delete message')
+        return result
+      }
+    } catch (error) {
+      console.error('Delete message error:', error)
+      Alert.alert('Error', 'Failed to delete message')
+      return { success: false, error: error.message }
+    }
+  }
   const handleTyping = (text) => {
     setMessageText(text)
     if (sendTypingIndicator) {
@@ -1348,35 +1391,16 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
     }
   }
 
-  const renderMessage = ({ item }) => {
-    const isOwn = item.senderId === currentUser?.uid
-    const hasImage =
-      item.files &&
-      item.files.length > 0 &&
-      item.files[0].mimetype?.startsWith('image/')
-
-    return (
-      <MessageBubble isOwn={isOwn}>
-        <MessageContent isOwn={isOwn}>
-          {item.content && (
-            <MessageText isOwn={isOwn}>{item.content}</MessageText>
-          )}
-          {hasImage && (
-            <MessageImage>
-              <Image
-                source={{ uri: item.files[0].url }}
-                style={{ width: '100%', height: '100%' }}
-                resizeMode="cover"
-              />
-            </MessageImage>
-          )}
-        </MessageContent>
-        <MessageTime isOwn={isOwn}>
-          {formatMessageTime(item.createdAt)}
-        </MessageTime>
-      </MessageBubble>
-    )
-  }
+  const renderMessage = ({ item }) => (
+    <EnhancedMessageBubble
+      item={item}
+      currentUser={currentUser}
+      onUpdateMessage={handleUpdateMessage}
+      onDeleteMessage={handleDeleteMessage}
+      formatMessageTime={formatMessageTime}
+      Image={Image}
+    />
+  )
 
   if (!chatId || !profileUser) {
     return (

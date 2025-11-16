@@ -7,6 +7,7 @@ export const useStatusViews = () => {
   const { isReady, get, post: postRequest } = useAuthedRequest()
   const [viewsData, setViewsData] = useState({}) // Map<statusId, views[]>
   const [loading, setLoading] = useState({}) // Map<statusId, boolean>
+  const [viewedStatuses, setViewedStatuses] = useState(new Set()) // NEW: Track viewed statuses
 
   // Mark status as viewed
   const markStatusViewed = useCallback(
@@ -22,6 +23,8 @@ export const useStatusViews = () => {
 
         if (response.success) {
           console.log('✅ Status viewed, count:', response.viewCount)
+          // NEW: Add to viewed set
+          setViewedStatuses((prev) => new Set([...prev, statusId]))
           return response
         }
       } catch (error) {
@@ -81,6 +84,33 @@ export const useStatusViews = () => {
     }
   }, [isReady, get])
 
+  // NEW: Check if current user has viewed a status
+  const checkIfViewed = useCallback(
+    async (statusId) => {
+      if (!isReady || !statusId) return false
+
+      try {
+        const response = await get(`${API_URL}/status/${statusId}/has-viewed`)
+        if (response.hasViewed) {
+          setViewedStatuses((prev) => new Set([...prev, statusId]))
+        }
+        return response.hasViewed
+      } catch (error) {
+        console.error('Failed to check viewed status:', error)
+        return false
+      }
+    },
+    [isReady, get]
+  )
+
+  // NEW: Check if a status has been viewed (local state)
+  const hasViewed = useCallback(
+    (statusId) => {
+      return viewedStatuses.has(statusId)
+    },
+    [viewedStatuses]
+  )
+
   // Get views for specific status
   const getViewsForStatus = useCallback(
     (statusId) => {
@@ -103,5 +133,9 @@ export const useStatusViews = () => {
     getMyStatusViewsSummary,
     getViewsForStatus,
     isLoadingViews,
+
+    checkIfViewed,
+    hasViewed,
+    viewedStatuses,
   }
 }

@@ -405,41 +405,59 @@ const CallScreen = () => {
   }, [user?.uid, chatId, navigation])
 
   const handleWebSocketMessage = async (data) => {
-    console.log('📨 CallScreen received:', data.type)
+    console.log('📨 CallScreen received:', data.type, {
+      from: data.from,
+      userId: data.userId,
+      myUid: user?.uid,
+      isIncoming,
+    })
 
     switch (data.type) {
       case 'connected':
         console.log('✅ WebSocket connection confirmed on /signaling')
-
-        // ✅ FIX: If you connected AFTER answering, create offer immediately
-        if (isIncoming && callAnswered && !pcRef.current) {
-          console.log('📞 Late connection detected, setting up call now...')
-          setTimeout(async () => {
-            if (!pcRef.current) {
-              await setupCall()
-              await createOffer()
-            }
-          }, 500)
+        // If caller and already setup, we're ready but wait for recipient to join
+        if (!isIncoming && pcRef.current && localStreamRef.current) {
+          console.log('📞 Caller is ready and waiting for recipient to join...')
         }
         break
 
       case 'user-joined':
-        // When remote user joins the signaling channel
+        // Remote user joined the signaling channel
         if (data.userId !== user?.uid) {
           console.log('👤 Remote user joined /signaling:', data.userId)
           stopRingtones()
           clearRingTimer()
 
-          // ✅ Caller creates offer when recipient joins
-          if (!isIncoming) {
+          // ✅ ONLY CALLER creates offer when recipient joins
+          if (!isIncoming && pcRef.current && localStreamRef.current) {
             console.log('📞 Caller creating offer for newly joined user...')
-            // Small delay to ensure recipient's peer connection is ready
+            console.log('📊 Peer connection state:', {
+              signalingState: pcRef.current.signalingState,
+              iceConnectionState: pcRef.current.iceConnectionState,
+              connectionState: pcRef.current.connectionState,
+              hasLocalDescription: !!pcRef.current.localDescription,
+            })
+
+            // Add delay to ensure recipient has setup their peer connection
             setTimeout(async () => {
               if (pcRef.current && !pcRef.current.localDescription) {
+                console.log('📞 Creating offer now...')
                 await createOffer()
+              } else {
+                console.warn(
+                  '⚠️ Skipping offer creation - already has local description'
+                )
               }
-            }, 500)
+            }, 1500)
+          } else if (isIncoming) {
+            console.log('📞 Answerer ready, waiting for offer...')
+            console.log('📊 Answerer peer connection state:', {
+              signalingState: pcRef.current?.signalingState,
+              ready: !!pcRef.current && !!localStreamRef.current,
+            })
           }
+        } else {
+          console.log('⏭️ Ignoring own user-joined event')
         }
         break
 
@@ -448,48 +466,35 @@ const CallScreen = () => {
         if (data.userId !== user?.uid) {
           console.log('👤 User already in room:', data.userId)
 
-          // ✅ If you're the answerer and joining late, create offer
-          if (isIncoming && callAnswered) {
+          // ✅ If answerer joining late, create offer
+          if (
+            isIncoming &&
+            callAnswered &&
+            pcRef.current &&
+            localStreamRef.current
+          ) {
             console.log('📞 Answerer creating offer for existing user...')
             setTimeout(async () => {
               if (pcRef.current && !pcRef.current.localDescription) {
                 await createOffer()
               }
-            }, 500)
+            }, 1500)
           }
         }
         break
 
-      case 'call-answered':
       case 'call_accepted':
+      case 'call-answered':
         if (data.from !== user?.uid) {
-          console.log('✅ Call accepted by recipient')
+          console.log('✅ Call accepted by recipient:', data.from)
           stopRingtones()
           clearRingTimer()
           setCallStatus('connecting')
 
-          // The recipient will join /signaling and trigger user-joined event
-          // which will cause the caller to create an offer
+          // ✅ Caller should now wait for recipient to join signaling
+          // The offer will be created when 'user-joined' is received
+          console.log('📞 Waiting for recipient to join signaling channel...')
         }
-        break
-
-      case 'call_rejected':
-      case 'call-rejected':
-        console.log('📵 Call rejected by recipient')
-        stopRingtones()
-        clearRingTimer()
-        cleanup()
-
-        Alert.alert(
-          'Call Declined',
-          `${data.recipientName || 'The other person'} declined your call`,
-          [{ text: 'OK', onPress: () => navigation.goBack() }],
-          { cancelable: false }
-        )
-
-        setTimeout(() => {
-          navigation.goBack()
-        }, 100)
         break
 
       case 'webrtc-offer':
@@ -505,7 +510,6 @@ const CallScreen = () => {
           await handleAnswer(data.answer)
         }
         break
-
       case 'webrtc-ice-candidate':
         if (data.from !== user?.uid) {
           console.log('🧊 Received ICE candidate')
@@ -563,7 +567,6 @@ const CallScreen = () => {
     }
   }
 
-  // ✅ Update handleAnswerCall to ensure proper setup
   const handleAnswerCall = async () => {
     console.log('📞 User answering call...')
 
@@ -573,7 +576,15 @@ const CallScreen = () => {
     setCallStatus('connecting')
 
     try {
-      // ✅ Step 1: Notify backend that call was accepted
+      // ✅ Step 1: Setup local media and peer connection FIRST
+      console.log('📹 Setting up local media and peer connection...')
+      await setupCall()
+
+      // ✅ Step 2: Wait a moment for everything to be ready
+      await new Promise((resolve) => setTimeout(resolve, 1000))
+
+      // ✅ Step 3: Then notify backend
+      console.log('📡 Notifying backend of call acceptance...')
       const response = await fetch(
         `http://localhost:5000/answer-call/${route.params?.callId}`,
         {
@@ -595,19 +606,7 @@ const CallScreen = () => {
         return
       }
 
-      console.log('✅ Backend notified of call acceptance')
-
-      // ✅ Step 2: Setup local media FIRST before connecting to signaling
-      console.log('📹 Setting up local media...')
-      await setupCall()
-
-      // ✅ Step 3: Wait for WebSocket to /signaling to connect
-      // The useEffect will handle the connection
-      // Once connected, we'll receive 'connected' event and create offer
-
-      console.log(
-        '✅ Call answer complete, waiting for signaling connection...'
-      )
+      console.log('✅ Call answer complete')
     } catch (error) {
       console.error('❌ Error answering call:', error)
       Alert.alert('Error', 'Failed to answer call')
@@ -699,7 +698,11 @@ const CallScreen = () => {
       }
 
       const constraints = {
-        audio: true,
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
         video:
           callType === 'video'
             ? {
@@ -718,13 +721,26 @@ const CallScreen = () => {
         stream = await mediaDevices.getUserMedia(constraints)
       }
 
+      // ✅ Verify tracks are enabled
+      stream.getTracks().forEach((track) => {
+        console.log(
+          '🎤 Track obtained:',
+          track.kind,
+          'enabled:',
+          track.enabled,
+          'readyState:',
+          track.readyState
+        )
+        // Ensure tracks are enabled
+        track.enabled = true
+      })
+
       return stream
     } catch (error) {
       console.error('❌ getUserMedia error:', error)
       throw error
     }
   }
-
   const getScreenShareStream = async () => {
     if (Platform.OS !== 'web') {
       Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
@@ -758,15 +774,36 @@ const CallScreen = () => {
       const pc = new RTCPeerConnection(iceServers)
       pcRef.current = pc
 
+      // ✅ Add tracks with verification
       if (localStreamRef.current) {
-        localStreamRef.current.getTracks().forEach((track) => {
+        const tracks = localStreamRef.current.getTracks()
+        console.log('🎤 Adding tracks to peer connection:', tracks.length)
+
+        tracks.forEach((track) => {
+          console.log('🎤 Adding track:', track.kind, 'enabled:', track.enabled)
           pc.addTrack(track, localStreamRef.current)
         })
+
+        // Verify tracks were added
+        const senders = pc.getSenders()
+        console.log('✅ Tracks added, senders count:', senders.length)
       }
 
+      // ✅ Handle remote tracks - simplified
       pc.ontrack = (event) => {
-        console.log('🎥 Received remote track')
+        console.log(
+          '🎥 Received remote track:',
+          event.track.kind,
+          'enabled:',
+          event.track.enabled
+        )
+
         if (event.streams && event.streams[0]) {
+          console.log(
+            '📺 Setting remote stream with',
+            event.streams[0].getTracks().length,
+            'tracks'
+          )
           setRemoteStream(event.streams[0])
           setCallStatus('connected')
           setIsConnected(true)
@@ -778,6 +815,7 @@ const CallScreen = () => {
 
       pc.onicecandidate = (event) => {
         if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
+          console.log('🧊 Sending ICE candidate:', event.candidate.type)
           wsRef.current.send(
             JSON.stringify({
               type: 'webrtc-ice-candidate',
@@ -793,6 +831,7 @@ const CallScreen = () => {
         console.log('📶 Connection state:', pc.connectionState)
         switch (pc.connectionState) {
           case 'connected':
+            console.log('✅ Peer connection established')
             setCallStatus('connected')
             setIsConnected(true)
             stopRingtones()
@@ -800,20 +839,24 @@ const CallScreen = () => {
             startCallTimer()
             break
           case 'disconnected':
+            console.log('⚠️ Peer connection disconnected')
+            break
           case 'failed':
-            handleEndCall()
+            console.log('❌ Peer connection failed')
+            Alert.alert(
+              'Connection Failed',
+              'Unable to establish call connection. Please try again.',
+              [{ text: 'OK', onPress: handleEndCall }]
+            )
             break
         }
       }
 
       pc.oniceconnectionstatechange = () => {
         console.log('🧊 ICE connection state:', pc.iceConnectionState)
-        if (pc.iceConnectionState === 'connected') {
-          setCallStatus('connected')
-          setIsConnected(true)
-          stopRingtones()
-          clearRingTimer()
-          startCallTimer()
+        if (pc.iceConnectionState === 'failed') {
+          console.error('❌ ICE connection failed - attempting restart')
+          pc.restartIce()
         }
       }
 
@@ -846,6 +889,30 @@ const CallScreen = () => {
         return
       }
 
+      // ✅ CRITICAL: Verify tracks are added and enabled
+      const senders = pcRef.current.getSenders()
+      const audioSenders = senders.filter((s) => s.track?.kind === 'audio')
+      const videoSenders = senders.filter((s) => s.track?.kind === 'video')
+
+      console.log('📡 Senders check:', {
+        total: senders.length,
+        audio: audioSenders.length,
+        video: videoSenders.length,
+        audioEnabled: audioSenders[0]?.track?.enabled,
+        videoEnabled: videoSenders[0]?.track?.enabled,
+      })
+
+      // Verify we have at least audio
+      if (audioSenders.length === 0) {
+        console.error('❌ No audio track - re-adding tracks')
+        localStreamRef.current.getTracks().forEach((track) => {
+          console.log('🎤 Re-adding track:', track.kind, track.enabled)
+          pcRef.current.addTrack(track, localStreamRef.current)
+        })
+        // Wait a moment after adding tracks
+        await new Promise((resolve) => setTimeout(resolve, 500))
+      }
+
       console.log('📞 Creating WebRTC offer...')
 
       const offer = await pcRef.current.createOffer({
@@ -864,6 +931,7 @@ const CallScreen = () => {
             offer,
             to: remoteUserId,
             chatId,
+            from: user?.uid,
           })
         )
         console.log('✅ Offer sent successfully')
@@ -872,8 +940,10 @@ const CallScreen = () => {
       }
     } catch (error) {
       console.error('❌ Create offer error:', error)
+      Alert.alert('Connection Error', 'Failed to establish call connection')
     }
   }
+
   const handleOffer = async (offer) => {
     try {
       if (!pcRef.current) {
@@ -1143,7 +1213,36 @@ const CallScreen = () => {
       .toString()
       .padStart(2, '0')}`
   }
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('beforeRemove', (e) => {
+      // ✅ Only prevent navigation if call is actually connected
+      // Allow navigation during ringing/connecting states
+      if (isConnected && callStatus === 'connected') {
+        e.preventDefault()
 
+        Alert.alert('End Call', 'Are you sure you want to end this call?', [
+          { text: "Don't end", style: 'cancel' },
+          {
+            text: 'End Call',
+            style: 'destructive',
+            onPress: () => {
+              handleEndCall()
+              // Allow navigation after ending call
+              setTimeout(() => {
+                navigation.dispatch(e.data.action)
+              }, 100)
+            },
+          },
+        ])
+      } else {
+        // ✅ Allow navigation during ringing/connecting
+        // But still cleanup
+        cleanup()
+      }
+    })
+
+    return unsubscribe
+  }, [navigation, isConnected, callStatus])
   const renderLocalVideo = () => {
     if (!localStream && !screenStreamRef.current) return null
 
