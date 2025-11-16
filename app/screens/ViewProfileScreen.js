@@ -1306,10 +1306,20 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
         return { success: false, error: 'Update not available' }
       }
 
-      const result = await updateMessage(chatId, messageId, newContent)
+      // ✅ Fixed: Correct parameter order (messageId, chatId, newContent)
+      const result = await updateMessage(messageId, chatId, newContent)
+
+      if (result.success) {
+        // Optionally show success feedback
+        console.log('✅ Message updated successfully')
+      } else {
+        Alert.alert('Error', result.error || 'Failed to update message')
+      }
+
       return result
     } catch (error) {
       console.error('Update message error:', error)
+      Alert.alert('Error', 'Failed to update message')
       return { success: false, error: error.message }
     }
   }
@@ -1321,14 +1331,15 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
         return { success: false, error: 'Delete not available' }
       }
 
-      console.log('🗑️ Deleting message:', { chatId, messageId }) // Debug log
+      console.log('🗑️ Deleting message:', { chatId, messageId })
 
-      const result = await deleteMessage(chatId, messageId)
+      // ✅ Fixed: Correct parameter order (messageId, chatId)
+      const result = await deleteMessage(messageId, chatId)
 
-      console.log('🗑️ Delete result:', result) // Debug log
+      console.log('🗑️ Delete result:', result)
 
       if (result.success) {
-        // Success - message was deleted
+        console.log('✅ Message deleted successfully')
         return result
       } else {
         Alert.alert('Error', result.error || 'Failed to delete message')

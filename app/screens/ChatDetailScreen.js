@@ -576,6 +576,7 @@ const findUserByAnyId = (users, targetId) => {
       (u.id && u.id.toString()) === targetId
   )
 }
+// Replace the existing MessageItem component in ChatDetailScreen.js with this updated version
 
 const MessageItem = React.memo(
   ({
@@ -594,6 +595,7 @@ const MessageItem = React.memo(
     const [sound, setSound] = useState(null)
     const [isPlaying, setIsPlaying] = useState(false)
     const [audioDuration, setAudioDuration] = useState(0)
+    const [showOptions, setShowOptions] = useState(false)
 
     const isOwn = item.senderId === currentUserId
     const messageId = item._id || item.id
@@ -744,6 +746,16 @@ const MessageItem = React.memo(
         .filter(Boolean)
     }
 
+    // Handle long press for mobile
+    const handleMessageLongPress = () => {
+      if (isOwn && Platform.OS !== 'web') {
+        setShowOptions(true)
+        setTimeout(() => setShowOptions(false), 200)
+        onLongPress(item)
+      }
+    }
+
+    // Handle three dots press for web
     const handleThreeDotsPress = (e) => {
       console.log('🔘 ThreeDotsButton clicked!', {
         platform: Platform.OS,
@@ -752,22 +764,16 @@ const MessageItem = React.memo(
       })
 
       if (Platform.OS === 'web') {
-        // Prevent event bubbling
         if (e && e.stopPropagation) {
           e.stopPropagation()
         }
 
-        // Get click position directly from event
         const clickX =
           e?.nativeEvent?.pageX || e?.pageX || window.innerWidth - 200
         const clickY = e?.nativeEvent?.pageY || e?.pageY || 150
 
         console.log('📍 Click position:', { clickX, clickY })
-
-        // Call parent handler with position
         onThreeDotsPress(item, { x: clickX, y: clickY })
-      } else {
-        onThreeDotsPress(item, null)
       }
     }
 
@@ -796,13 +802,66 @@ const MessageItem = React.memo(
             }
           }}
         >
+          {/* Three Dots Button for Web - shown on hover */}
+          {Platform.OS === 'web' && isOwn && (
+            <View
+              style={{
+                marginLeft: isOwn ? 0 : 8,
+                marginRight: isOwn ? 8 : 0,
+                opacity: isHovered ? 1 : 0,
+                transition: 'opacity 0.2s',
+              }}
+            >
+              <TouchableOpacity
+                onPress={handleThreeDotsPress}
+                style={{
+                  backgroundColor: isHovered ? '#e9ecef' : '#f8f9fa',
+                  padding: 8,
+                  borderRadius: 16,
+                  width: 32,
+                  height: 32,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  cursor: 'pointer',
+                  shadowColor: '#000',
+                  shadowOffset: { width: 0, height: 2 },
+                  shadowOpacity: 0.15,
+                  shadowRadius: 3,
+                  elevation: 3,
+                }}
+              >
+                <Ionicons
+                  name="ellipsis-vertical"
+                  size={16}
+                  color={isHovered ? '#2c3e50' : '#7f8c8d'}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+
           {/* Message Content */}
           <View style={{ flex: 1 }}>
             <TouchableOpacity
-              onLongPress={() => isOwn && onLongPress(item)}
+              onLongPress={handleMessageLongPress}
               delayLongPress={500}
               activeOpacity={0.9}
             >
+              {/* Long press visual feedback */}
+              {showOptions && (
+                <View
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    bottom: 0,
+                    backgroundColor: 'rgba(52, 152, 219, 0.1)',
+                    borderRadius: 18,
+                    zIndex: 1,
+                  }}
+                />
+              )}
+
               <MessageBubble isOwn={isOwn}>
                 {item.content && item.content.trim().length > 0 && (
                   <MessageText isOwn={isOwn}>{item.content.trim()}</MessageText>
@@ -831,37 +890,6 @@ const MessageItem = React.memo(
               </MessageBubble>
             </TouchableOpacity>
           </View>
-
-          {/* Three Dots Button - FIXED VERSION */}
-          {Platform.OS === 'web' && isOwn && (
-            <View
-              style={{
-                marginLeft: isOwn ? 0 : 8,
-                marginRight: isOwn ? 8 : 0,
-                opacity: isHovered ? 1 : 0.5,
-              }}
-            >
-              <TouchableOpacity
-                onPress={handleThreeDotsPress}
-                style={{
-                  backgroundColor: isHovered ? '#e9ecef' : '#f8f9fa',
-                  padding: 8,
-                  borderRadius: 6,
-                  width: 32,
-                  height: 32,
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  cursor: 'pointer',
-                }}
-              >
-                <Ionicons
-                  name="ellipsis-vertical"
-                  size={18}
-                  color={isHovered ? '#2c3e50' : '#95a5a6'}
-                />
-              </TouchableOpacity>
-            </View>
-          )}
         </View>
       </View>
     )
@@ -870,24 +898,21 @@ const MessageItem = React.memo(
     const prevItem = prevProps.item
     const nextItem = nextProps.item
 
-    // Re-render if content or updatedAt changed
     if (prevItem.content !== nextItem.content) return false
     if (prevItem.updatedAt !== nextItem.updatedAt) return false
     if ((prevItem._id || prevItem.id) !== (nextItem._id || nextItem.id))
       return false
 
-    // Re-render if hover state changed
     const prevHovered =
       prevProps.hoveredMessageId === (prevItem._id || prevItem.id)
     const nextHovered =
       nextProps.hoveredMessageId === (nextItem._id || nextItem.id)
     if (prevHovered !== nextHovered) return false
 
-    // Optional: re-render if files changed
     if ((prevItem.files?.length || 0) !== (nextItem.files?.length || 0))
       return false
 
-    return true // Block render
+    return true
   }
 )
 
