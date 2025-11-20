@@ -1,5 +1,6 @@
-// providers/PostsProvider.js - Fixed version
+// providers/PostsProvider.js - FIXED MOBILE FILE UPLOADS
 import React, { useEffect, useState, useCallback, useContext } from 'react'
+import { Platform } from 'react-native'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import PostsContext from '../contexts/PostsContext'
 import { useUser } from '../hooks/useUser'
@@ -303,20 +304,18 @@ export const PostsProvider = ({ children }) => {
       viewer.userName
     )
 
-    // Update view count in myStatus
     setMyStatus((prev) =>
       (prev || []).map((status) =>
         status._id === statusId
           ? {
               ...status,
               viewCount: viewCount || (status.viewCount || 0) + 1,
-              hasViewed: true, // Add this flag
+              hasViewed: true,
             }
           : status
       )
     )
 
-    // Also update in statuses array
     setStatuses((prevStatuses) =>
       prevStatuses.map((group) => ({
         ...group,
@@ -378,8 +377,20 @@ export const PostsProvider = ({ children }) => {
   }, [fetchPosts, fetchStatuses, fetchMyStatus])
 
   // ─── Create Post or Status ────────────────────────────────
+  // ✅ FIXED: Proper FormData handling for mobile image uploads
   const createPost = async (contentOrAsset, files = []) => {
-    if (!isReady) throw new Error('Auth not ready')
+    if (!isReady || !user?.uid) throw new Error('Auth not ready')
+
+    console.log('═══════════════════════════════════')
+    console.log('🔍 CREATE POST/STATUS CALLED')
+    console.log('Platform:', Platform.OS)
+    console.log('contentOrAsset type:', typeof contentOrAsset)
+    console.log('files count:', files.length)
+    console.log('═══════════════════════════════════')
+
+    // Get auth token
+    const token = await user.getIdToken()
+    console.log('✅ Got auth token')
 
     const isMediaObject =
       typeof contentOrAsset === 'object' &&
@@ -387,14 +398,22 @@ export const PostsProvider = ({ children }) => {
       contentOrAsset.uri
 
     if (isMediaObject) {
+      // ============================================
       // STATUS CREATION
+      // ============================================
       const asset = contentOrAsset
-      const formData = new FormData()
+      console.log('📸 STATUS CREATION')
+      console.log('Asset URI:', asset.uri)
+      console.log('Asset type:', asset.type)
+      console.log('Asset fileName:', asset.fileName)
 
+      const formData = new FormData()
       const isWeb =
-        typeof window !== 'undefined' && asset.uri.startsWith('blob:')
+        Platform.OS === 'web' || (asset.uri && asset.uri.startsWith('blob:'))
 
       if (isWeb) {
+        console.log('🌐 Web status upload')
+        // Web: Convert blob to file
         const response = await fetch(asset.uri)
         const blob = await response.blob()
         const fileType = blob.type || asset.type || 'image/jpeg'
@@ -402,54 +421,213 @@ export const PostsProvider = ({ children }) => {
         const fileName = asset.fileName || `status-${Date.now()}.${extension}`
         const file = new File([blob], fileName, { type: fileType })
         formData.append('files', file)
+        console.log('Added file to FormData:', { fileName, fileType })
       } else {
-        const fileType =
-          asset.type ||
-          (asset.uri.endsWith('.mp4') ? 'video/mp4' : 'image/jpeg')
+        console.log('📱 Mobile status upload')
+        // Mobile: Determine file type from URI or asset
+        let fileType = asset.type || asset.mimeType || 'image/jpeg'
+
+        // If no type provided, infer from URI extension
+        if (!fileType || fileType === 'image') {
+          if (
+            asset.uri.toLowerCase().includes('.mp4') ||
+            asset.uri.toLowerCase().includes('.mov')
+          ) {
+            fileType = 'video/mp4'
+          } else if (asset.uri.toLowerCase().includes('.png')) {
+            fileType = 'image/png'
+          } else {
+            fileType = 'image/jpeg'
+          }
+        }
+
+        const extension = fileType.includes('video')
+          ? 'mp4'
+          : fileType.includes('png')
+          ? 'png'
+          : 'jpg'
+        const fileName = asset.fileName || `status-${Date.now()}.${extension}`
+
+        // Clean URI for iOS
+        let cleanUri = asset.uri
+        if (Platform.OS === 'ios' && cleanUri.startsWith('file://')) {
+          cleanUri = cleanUri.replace('file://', '')
+        }
+
+        console.log('Mobile file details:', {
+          originalUri: asset.uri,
+          cleanUri,
+          fileName,
+          fileType,
+          platform: Platform.OS,
+        })
+
+        // React Native FormData format
         formData.append('files', {
-          uri: asset.uri,
-          name:
-            asset.fileName ||
-            `status-${Date.now()}.${
-              fileType.includes('video') ? 'mp4' : 'jpg'
-            }`,
+          uri: cleanUri,
+          name: fileName,
           type: fileType,
         })
       }
 
-      const data = await post(`${API_URL}/status`, formData, true)
-      setMyStatus((prev) => [data.status, ...(prev || [])])
-      return data.status
+      console.log('📤 Uploading status to:', `${API_URL}/status`)
+
+      try {
+        const response = await fetch(`${API_URL}/status`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            // Don't set Content-Type - let FormData set it with boundary
+          },
+          body: formData,
+        })
+
+        console.log('📡 Status response status:', response.status)
+
+        if (!response.ok) {
+          const errorText = await response.text()
+          console.error('❌ Status error response:', errorText)
+
+          let errorData
+          try {
+            errorData = JSON.parse(errorText)
+          } catch {
+            errorData = { error: `HTTP ${response.status}: ${errorText}` }
+          }
+
+          throw new Error(errorData.error || `HTTP ${response.status}`)
+        }
+
+        const data = await response.json()
+        console.log('✅ Status uploaded successfully:', data.status?._id)
+
+        setMyStatus((prev) => [data.status, ...(prev || [])])
+        return data.status
+      } catch (error) {
+        console.error('❌ Status upload failed:', error)
+        console.error('Error details:', {
+          message: error.message,
+          name: error.name,
+          stack: error.stack,
+        })
+        throw error
+      }
     }
 
+    // ============================================
     // POST CREATION
+    // ============================================
     const content = contentOrAsset
-    const fd = new FormData()
-    fd.append('content', content)
+    console.log('📝 POST CREATION')
+    console.log('Content:', content?.substring(0, 50) + '...')
+    console.log('Files count:', files.length)
+
+    const formData = new FormData()
+    formData.append('content', content)
+
+    const isWeb = Platform.OS === 'web'
 
     for (let i = 0; i < files.length; i++) {
       const f = files[i]
-      const isWeb = typeof window !== 'undefined' && f.uri?.startsWith('blob:')
+      const fileIsBlob = f.uri?.startsWith('blob:')
 
-      if (isWeb) {
+      console.log(`Processing file ${i}:`, {
+        uri: f.uri?.substring(0, 50) + '...',
+        name: f.name,
+        type: f.type,
+        isBlob: fileIsBlob,
+      })
+
+      if (isWeb && fileIsBlob) {
+        console.log(`🌐 Web file ${i}`)
+        // Web: Convert blob to file
         const response = await fetch(f.uri)
         const blob = await response.blob()
         const fileType = blob.type || f.type || 'image/jpeg'
         const fileName = f.name || `post_${Date.now()}_${i}.jpg`
         const file = new File([blob], fileName, { type: fileType })
-        fd.append('files', file)
+        formData.append('files', file)
+        console.log(`Added web file ${i}:`, { fileName, fileType })
       } else {
-        fd.append('files', {
-          uri: f.uri,
-          name: f.name || `post_${Date.now()}_${i}`,
-          type: f.type || f.mimeType || 'image/jpeg',
+        console.log(`📱 Mobile file ${i}`)
+        // Mobile: Determine file type
+        let fileType = f.type || f.mimeType || 'image/jpeg'
+
+        // Infer from URI if needed
+        if (!fileType || fileType === 'image') {
+          if (f.uri.toLowerCase().includes('.png')) {
+            fileType = 'image/png'
+          } else {
+            fileType = 'image/jpeg'
+          }
+        }
+
+        const extension = fileType.includes('png') ? 'png' : 'jpg'
+        const fileName = f.name || `post_${Date.now()}_${i}.${extension}`
+
+        // Clean URI for iOS
+        let cleanUri = f.uri
+        if (Platform.OS === 'ios' && cleanUri.startsWith('file://')) {
+          cleanUri = cleanUri.replace('file://', '')
+        }
+
+        console.log(`Mobile file ${i} details:`, {
+          originalUri: f.uri,
+          cleanUri,
+          fileName,
+          fileType,
+        })
+
+        formData.append('files', {
+          uri: cleanUri,
+          name: fileName,
+          type: fileType,
         })
       }
     }
 
-    const data = await post(`${API_URL}/posts`, fd, true)
-    setPosts((p) => [data.post, ...p])
-    return data.post
+    console.log('📤 Creating post at:', `${API_URL}/posts`)
+
+    try {
+      const response = await fetch(`${API_URL}/posts`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          // Don't set Content-Type - let FormData set it with boundary
+        },
+        body: formData,
+      })
+
+      console.log('📡 Post response status:', response.status)
+
+      if (!response.ok) {
+        const errorText = await response.text()
+        console.error('❌ Post error response:', errorText)
+
+        let errorData
+        try {
+          errorData = JSON.parse(errorText)
+        } catch {
+          errorData = { error: `HTTP ${response.status}: ${errorText}` }
+        }
+
+        throw new Error(errorData.error || `HTTP ${response.status}`)
+      }
+
+      const data = await response.json()
+      console.log('✅ Post created successfully:', data.post?._id)
+
+      setPosts((p) => [data.post, ...p])
+      return data.post
+    } catch (error) {
+      console.error('❌ Post creation failed:', error)
+      console.error('Error details:', {
+        message: error.message,
+        name: error.name,
+        stack: error.stack,
+      })
+      throw error
+    }
   }
 
   // ─── Update Post ────────────────────────────────
@@ -458,7 +636,6 @@ export const PostsProvider = ({ children }) => {
 
     console.log('📝 Updating post:', postId, 'with content:', newContent)
 
-    // Optimistic update
     setPosts((p) =>
       p.map((x) =>
         x._id === postId
@@ -474,13 +651,11 @@ export const PostsProvider = ({ children }) => {
 
       console.log('✅ Post updated successfully')
 
-      // Update with server response
       setPosts((p) => p.map((x) => (x._id === postId ? data.post : x)))
 
       return data.post
     } catch (e) {
       console.error('❌ Update post error:', e)
-      // Rollback on error
       await refetch()
       throw e
     }
@@ -522,46 +697,18 @@ export const PostsProvider = ({ children }) => {
 
   // ─── Delete Post ────────────────────────────────
   const deletePost = async (postId) => {
-    console.log('═══════════════════════════════════')
-    console.log('🔍 DELETE POST CALLED')
-    console.log('═══════════════════════════════════')
-    console.log('postId:', postId)
-    console.log('isReady:', isReady)
-    console.log('API_URL:', API_URL)
-    console.log('Full URL:', `${API_URL}/posts/${postId}`)
-    console.log('del function type:', typeof del)
-    console.log('posts count:', posts.length)
+    if (!isReady) throw new Error('Auth not ready')
 
-    if (!isReady) {
-      console.log('❌ Auth not ready!')
-      throw new Error('Auth not ready')
-    }
-
-    // Optimistic update
     const deletedPost = posts.find((p) => p._id === postId)
-    console.log('Found post to delete:', !!deletedPost)
-
     setPosts((p) => p.filter((x) => x._id !== postId))
-    console.log('Optimistically removed from state')
 
     try {
-      console.log('📡 Calling del() function...')
       const result = await del(`${API_URL}/posts/${postId}`)
-      console.log('✅ API Response:', result)
       console.log('✅ Post deleted successfully')
-      console.log('═══════════════════════════════════')
       return result
     } catch (e) {
-      console.log('❌ DELETE FAILED')
-      console.error('Error:', e)
-      console.error('Error type:', e.constructor.name)
-      console.error('Error message:', e.message)
-      console.error('Error stack:', e.stack)
-      console.log('═══════════════════════════════════')
-
-      // Rollback on error
+      console.error('❌ Delete post error:', e)
       if (deletedPost) {
-        console.log('Rolling back...')
         setPosts((p) => [deletedPost, ...p])
       }
       throw e
@@ -570,46 +717,18 @@ export const PostsProvider = ({ children }) => {
 
   // ─── Delete Status ────────────────────────────────
   const deleteStatus = async (statusId) => {
-    console.log('═══════════════════════════════════')
-    console.log('🔍 DELETE STATUS CALLED')
-    console.log('═══════════════════════════════════')
-    console.log('statusId:', statusId)
-    console.log('isReady:', isReady)
-    console.log('API_URL:', API_URL)
-    console.log('Full URL:', `${API_URL}/status/${statusId}`)
-    console.log('del function type:', typeof del)
-    console.log('myStatus count:', myStatus?.length || 0)
+    if (!isReady) throw new Error('Auth not ready')
 
-    if (!isReady) {
-      console.log('❌ Auth not ready!')
-      throw new Error('Auth not ready')
-    }
-
-    // Optimistic update
     const deletedStatus = (myStatus || []).find((s) => s._id === statusId)
-    console.log('Found status to delete:', !!deletedStatus)
-
     setMyStatus((prev) => (prev || []).filter((x) => x._id !== statusId))
-    console.log('Optimistically removed from state')
 
     try {
-      console.log('📡 Calling del() function...')
       const response = await del(`${API_URL}/status/${statusId}`)
-      console.log('✅ API Response:', response)
       console.log('✅ Status deleted successfully')
-      console.log('═══════════════════════════════════')
       return response
     } catch (e) {
-      console.log('❌ DELETE FAILED')
-      console.error('Error:', e)
-      console.error('Error type:', e.constructor.name)
-      console.error('Error message:', e.message)
-      console.error('Error stack:', e.stack)
-      console.log('═══════════════════════════════════')
-
-      // Rollback on error
+      console.error('❌ Delete status error:', e)
       if (deletedStatus) {
-        console.log('Rolling back...')
         setMyStatus((prev) => [deletedStatus, ...(prev || [])])
       }
       throw new Error(e.message || 'Failed to delete status')
@@ -620,7 +739,6 @@ export const PostsProvider = ({ children }) => {
   const isPostOwner = useCallback(
     (post) => {
       if (!user?.uid || !post) return false
-      // Check both userId and user._id fields for compatibility
       return post.userId === user.uid || post.user?._id === user.uid
     },
     [user?.uid]
