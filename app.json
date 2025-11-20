@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "HowYou",
-    "slug": "HowYou",
+    "name": "PeepGram",
+    "slug": "PeepGram",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/android-chrome-192x192.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -14,22 +14,33 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.HowYou"
+      "bundleIdentifier": "com.anonymous.PeepGram"
     },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "edgeToEdgeEnabled": true,
-      "package": "com.anonymous.HowYou"
-    },
+  "android": {
+  "adaptiveIcon": {
+    "foregroundImage": "./assets/android-chrome-192x192.png",
+    "backgroundColor": "#ffffff"
+  },
+  "edgeToEdgeEnabled": true,
+  "package": "com.anonymous.PeepGram",
+  "usesCleartextTraffic": true,
+  "permissions": [
+    "android.permission.RECORD_AUDIO",
+    "android.permission.MODIFY_AUDIO_SETTINGS"
+  ]
+},
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon-32x32.png"
     },
     "plugins": [
       "expo-video",
       "expo-audio"
-    ]
+    ],
+    "extra": {
+      "apiUrl": "${API_URL}",
+      "eas": {
+        "projectId": "67fcb371-70dc-42dd-8584-3d7b0f32990c"
+      }
+    }
   }
 }

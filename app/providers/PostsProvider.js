@@ -5,7 +5,7 @@ import PostsContext from '../contexts/PostsContext'
 import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.230.214.87:5000'
 
 export const PostsProvider = ({ children }) => {
   const { isReady, get, post, put, del } = useAuthedRequest()

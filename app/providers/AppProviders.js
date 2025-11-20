@@ -8,9 +8,7 @@ const AppProviders = ({ children }) => {
   return (
     <ChatsProvider>
       <CommentsProvider>
-        <PostsProvider>
-          <ContactsProvider>{children}</ContactsProvider>
-        </PostsProvider>
+        <PostsProvider>{children}</PostsProvider>
       </CommentsProvider>
     </ChatsProvider>
   )

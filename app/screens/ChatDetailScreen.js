@@ -576,7 +576,56 @@ const findUserByAnyId = (users, targetId) => {
       (u.id && u.id.toString()) === targetId
   )
 }
-// Replace the existing MessageItem component in ChatDetailScreen.js with this updated version
+
+const MessageStatusIndicator = React.memo(({ status, isOwn }) => {
+  if (!isOwn) return null
+
+  const getStatusIcon = () => {
+    switch (status) {
+      case 'read':
+        return (
+          <View
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              marginLeft: 4,
+            }}
+          >
+            <Ionicons name="eye" size={12} color="rgba(255,255,255,0.8)" />
+            <Ionicons
+              name="checkmark-done"
+              size={12}
+              color="rgba(255,255,255,0.8)"
+              style={{ marginLeft: 2 }}
+            />
+          </View>
+        )
+      case 'delivered':
+        return (
+          <View style={{ marginLeft: 4 }}>
+            <Ionicons
+              name="checkmark-done"
+              size={12}
+              color="rgba(255,255,255,0.8)"
+            />
+          </View>
+        )
+      case 'sent':
+      default:
+        return (
+          <View style={{ marginLeft: 4 }}>
+            <Ionicons
+              name="checkmark"
+              size={12}
+              color="rgba(255,255,255,0.8)"
+            />
+          </View>
+        )
+    }
+  }
+
+  return getStatusIcon()
+})
 
 const MessageItem = React.memo(
   ({
@@ -802,7 +851,7 @@ const MessageItem = React.memo(
             }
           }}
         >
-          {/* Three Dots Button for Web - shown on hover */}
+          {/* Three Dots Button for Web */}
           {Platform.OS === 'web' && isOwn && (
             <View
               style={{
@@ -846,7 +895,6 @@ const MessageItem = React.memo(
               delayLongPress={500}
               activeOpacity={0.9}
             >
-              {/* Long press visual feedback */}
               {showOptions && (
                 <View
                   style={{
@@ -877,6 +925,7 @@ const MessageItem = React.memo(
                     flexDirection: 'row',
                     alignItems: 'center',
                     marginTop: 4,
+                    justifyContent: isOwn ? 'space-between' : 'flex-start',
                   }}
                 >
                   <MessageTime isOwn={isOwn}>{timeString}</MessageTime>
@@ -885,8 +934,9 @@ const MessageItem = React.memo(
                       (edited)
                     </MessageEditedLabel>
                   )}
+                  {/* ✅ Add message status indicator */}
+                  <MessageStatusIndicator status={item.status} isOwn={isOwn} />
                 </View>
-                {isOwn && <MessageStatus>✓✓ sent</MessageStatus>}
               </MessageBubble>
             </TouchableOpacity>
           </View>
@@ -900,6 +950,7 @@ const MessageItem = React.memo(
 
     if (prevItem.content !== nextItem.content) return false
     if (prevItem.updatedAt !== nextItem.updatedAt) return false
+    if (prevItem.status !== nextItem.status) return false // ✅ Check status changes
     if ((prevItem._id || prevItem.id) !== (nextItem._id || nextItem.id))
       return false
 
@@ -1029,10 +1080,13 @@ export default function ChatDetailScreen({
     sendMessage: contextSendMessage,
     updateMessage,
     deleteMessage,
+    chatMessages = [],
+    markMessagesAsDelivered,
+    markMessagesAsRead,
     initiateCall,
     getCallHistory,
-    getMessagesForChat, // ✅ This gets messages from context
-    loadLastSeenData, // ✅ Add this
+    getMessagesForChat,
+    loadLastSeenData,
   } = chatsContext || {}
 
   const messages = getMessagesForChat(chatId) || []
@@ -1091,6 +1145,113 @@ export default function ChatDetailScreen({
       })
     }
   }, [otherUser, getLastSeen, getLastSeenText, checkUserOnline])
+
+  // Debug delivered messages
+  useEffect(() => {
+    const markAsDelivered = async () => {
+      if (!chatId || !messages.length || !markMessagesAsDelivered) {
+        console.log('⏭️ Skipping delivered - missing deps:', {
+          chatId: !!chatId,
+          messagesLength: messages.length,
+          hasMarkFunction: !!markMessagesAsDelivered,
+        })
+        return
+      }
+
+      // Get undelivered messages from other users
+      const undeliveredMessages = messages
+        .filter((msg) => {
+          const isOwnMessage = msg.senderId === user?.uid
+          const needsDelivery = !msg.status || msg.status === 'sent'
+          const notAlreadyDelivered = !(msg.deliveredBy || []).includes(
+            user?.uid
+          )
+
+          console.log('📬 Message delivery check:', {
+            msgId: msg._id || msg.id,
+            isOwnMessage,
+            needsDelivery,
+            notAlreadyDelivered,
+            currentStatus: msg.status,
+            deliveredBy: msg.deliveredBy,
+          })
+
+          return !isOwnMessage && needsDelivery && notAlreadyDelivered
+        })
+        .map((msg) => msg._id || msg.id)
+
+      if (undeliveredMessages.length > 0) {
+        console.log(
+          '📬 Marking messages as delivered:',
+          undeliveredMessages.length,
+          undeliveredMessages
+        )
+        const result = await markMessagesAsDelivered(
+          chatId,
+          undeliveredMessages
+        )
+        console.log('📬 Mark delivered result:', result)
+      } else {
+        console.log('📬 No messages to mark as delivered')
+      }
+    }
+
+    markAsDelivered()
+  }, [messages.length, chatId, markMessagesAsDelivered, user?.uid])
+
+  // Debug read messages
+  useEffect(() => {
+    const markAsRead = async () => {
+      if (!chatId || !messages.length || !markMessagesAsRead) {
+        console.log('⏭️ Skipping read - missing deps:', {
+          chatId: !!chatId,
+          messagesLength: messages.length,
+          hasMarkFunction: !!markMessagesAsRead,
+        })
+        return
+      }
+
+      // Get unread messages from other users
+      const unreadMessages = messages
+        .filter((msg) => {
+          const isOwnMessage = msg.senderId === user?.uid
+          const needsRead = msg.status !== 'read'
+          const notAlreadyRead = !(msg.readBy || []).includes(user?.uid)
+
+          console.log('👁️ Message read check:', {
+            msgId: msg._id || msg.id,
+            isOwnMessage,
+            needsRead,
+            notAlreadyRead,
+            currentStatus: msg.status,
+            readBy: msg.readBy,
+          })
+
+          return !isOwnMessage && needsRead && notAlreadyRead
+        })
+        .map((msg) => msg._id || msg.id)
+
+      if (unreadMessages.length > 0) {
+        console.log(
+          '👁️ Marking messages as read:',
+          unreadMessages.length,
+          unreadMessages
+        )
+
+        // Debounce to avoid too many API calls
+        const timeoutId = setTimeout(async () => {
+          const result = await markMessagesAsRead(chatId, unreadMessages)
+          console.log('👁️ Mark read result:', result)
+        }, 1000)
+
+        return () => clearTimeout(timeoutId)
+      } else {
+        console.log('👁️ No messages to mark as read')
+      }
+    }
+
+    markAsRead()
+  }, [messages, chatId, markMessagesAsRead, user?.uid])
 
   // Update the text input to use typing indicators
   const handleMessageChange = (text) => {

@@ -5,7 +5,7 @@ import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://localhost:5000'
+const API_URL = 'http://10.230.214.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -83,7 +83,7 @@ const ChatsProvider = ({ children }) => {
           break
 
         case 'message-read':
-          handleMessageRead(data)
+          handleMessagesRead(data)
           break
 
         case 'typing':
@@ -307,28 +307,94 @@ const ChatsProvider = ({ children }) => {
     })
   }, [])
 
+  // Add these FIXED handlers to your ChatsProvider.js
+  // Replace the existing handleMessageDelivered and handleMessagesRead functions
+
   const handleMessageDelivered = useCallback((data) => {
-    const { chatId, messageId } = data
-    setMessages((prev) => ({
-      ...prev,
-      [chatId]: (prev[chatId] || []).map((msg) =>
-        (msg._id || msg.id) === messageId
-          ? { ...msg, delivered: true, deliveredAt: data.timestamp }
-          : msg
-      ),
-    }))
+    const { chatId, messageId, deliveredBy, timestamp } = data
+
+    console.log(`✅ [WS] Message ${messageId} delivered by ${deliveredBy}`)
+
+    setMessages((prev) => {
+      const chatMessages = prev[chatId] || []
+
+      // Check if message exists
+      const messageExists = chatMessages.some(
+        (msg) => (msg._id || msg.id) === messageId
+      )
+
+      if (!messageExists) {
+        console.warn(`⚠️ Message ${messageId} not found in chat ${chatId}`)
+        return prev
+      }
+
+      const updated = {
+        ...prev,
+        [chatId]: chatMessages.map((msg) => {
+          const msgId = msg._id || msg.id
+          if (msgId === messageId) {
+            console.log(`✅ [WS] Updating message ${msgId} to delivered`)
+            return {
+              ...msg,
+              status: 'delivered',
+              deliveredAt: timestamp,
+              deliveredBy: [...(msg.deliveredBy || []), deliveredBy],
+            }
+          }
+          return msg
+        }),
+      }
+
+      console.log(
+        `✅ [WS] Updated messages for chat ${chatId}:`,
+        updated[chatId]?.length
+      )
+      return updated
+    })
   }, [])
 
-  const handleMessageRead = useCallback((data) => {
-    const { chatId, messageId } = data
-    setMessages((prev) => ({
-      ...prev,
-      [chatId]: (prev[chatId] || []).map((msg) =>
-        (msg._id || msg.id) === messageId
-          ? { ...msg, read: true, readAt: data.timestamp }
-          : msg
-      ),
-    }))
+  const handleMessagesRead = useCallback((data) => {
+    const { chatId, messageIds, readBy, timestamp } = data
+
+    console.log(`👁️ [WS] ${messageIds.length} messages read by ${readBy}`)
+
+    setMessages((prev) => {
+      const chatMessages = prev[chatId] || []
+
+      // Filter out non-existent message IDs
+      const validMessageIds = messageIds.filter((id) =>
+        chatMessages.some((msg) => (msg._id || msg.id) === id)
+      )
+
+      if (validMessageIds.length === 0) {
+        console.warn(
+          `⚠️ No valid messages found for read update in chat ${chatId}`
+        )
+        return prev
+      }
+
+      const updated = {
+        ...prev,
+        [chatId]: chatMessages.map((msg) => {
+          const msgId = msg._id || msg.id
+          if (validMessageIds.includes(msgId)) {
+            console.log(`👁️ [WS] Updating message ${msgId} to read`)
+            return {
+              ...msg,
+              status: 'read',
+              readAt: timestamp,
+              readBy: [...(msg.readBy || []), readBy],
+            }
+          }
+          return msg
+        }),
+      }
+
+      console.log(
+        `👁️ [WS] Updated ${validMessageIds.length} messages for chat ${chatId}`
+      )
+      return updated
+    })
   }, [])
 
   const handleLastSeenUpdate = useCallback((data) => {
@@ -512,7 +578,6 @@ const ChatsProvider = ({ children }) => {
       if (!isReady || !chatId) {
         return { success: false, error: 'Invalid parameters' }
       }
-
       try {
         let data
 
@@ -600,9 +665,18 @@ const ChatsProvider = ({ children }) => {
         }
 
         if (data.success && data.message) {
+          // ✅ Add initial status
+          const messageWithStatus = {
+            ...data.message,
+            status: 'sent', // Initial status
+            sentAt: new Date().toISOString(),
+            deliveredBy: [],
+            readBy: [],
+          }
+
           setMessages((prev) => ({
             ...prev,
-            [chatId]: [...(prev[chatId] || []), data.message],
+            [chatId]: [...(prev[chatId] || []), messageWithStatus],
           }))
 
           const chat = chats.find((c) => (c._id || c.id) === chatId)
@@ -724,6 +798,117 @@ const ChatsProvider = ({ children }) => {
       }
     },
     [isReady, del, user?.uid]
+  )
+
+  const markMessagesAsDelivered = useCallback(
+    async (chatId, messageIds) => {
+      if (!isReady || !user?.uid) {
+        console.log('❌ markMessagesAsDelivered - Auth not ready')
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      console.log('📬 markMessagesAsDelivered called:', {
+        chatId,
+        messageIds,
+        count: messageIds.length,
+      })
+
+      try {
+        const data = await post(
+          `${API_URL}/mark-messages-delivered/${chatId}`,
+          {
+            messageIds,
+          }
+        )
+
+        console.log('📬 Backend response:', data)
+
+        if (data.success) {
+          console.log('📬 Updating local state for delivered messages')
+          // Update local state immediately
+          setMessages((prev) => ({
+            ...prev,
+            [chatId]: (prev[chatId] || []).map((msg) => {
+              const msgId = msg._id || msg.id
+              if (messageIds.includes(msgId) && msg.senderId !== user.uid) {
+                console.log('📬 Updating message to delivered:', msgId)
+                return {
+                  ...msg,
+                  status: 'delivered',
+                  deliveredAt: new Date().toISOString(),
+                  deliveredBy: [...(msg.deliveredBy || []), user.uid],
+                }
+              }
+              return msg
+            }),
+          }))
+        }
+
+        return data
+      } catch (error) {
+        console.error('markMessagesAsDelivered error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to mark messages as delivered',
+        }
+      }
+    },
+    [isReady, post, user?.uid]
+  )
+  const markMessagesAsRead = useCallback(
+    async (chatId, messageIds = null) => {
+      if (!isReady || !user?.uid) {
+        console.log('❌ markMessagesAsRead - Auth not ready')
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      console.log('👁️ markMessagesAsRead called:', {
+        chatId,
+        messageIds,
+        count: messageIds?.length,
+      })
+
+      try {
+        const body = messageIds ? { messageIds } : {}
+        const data = await post(`${API_URL}/mark-messages-read/${chatId}`, body)
+
+        console.log('👁️ Backend response:', data)
+
+        if (data.success) {
+          console.log('👁️ Updating local state for read messages')
+          // Update local state immediately
+          setMessages((prev) => ({
+            ...prev,
+            [chatId]: (prev[chatId] || []).map((msg) => {
+              const msgId = msg._id || msg.id
+              const shouldMark = messageIds
+                ? messageIds.includes(msgId)
+                : msg.senderId !== user.uid
+
+              if (shouldMark) {
+                console.log('👁️ Updating message to read:', msgId)
+                return {
+                  ...msg,
+                  status: 'read',
+                  readAt: new Date().toISOString(),
+                  readBy: [...(msg.readBy || []), user.uid],
+                }
+              }
+              return msg
+            }),
+          }))
+        }
+
+        return data
+      } catch (error) {
+        console.error('markMessagesAsRead error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to mark messages as read',
+        }
+      }
+    },
+    [isReady, post, user?.uid]
   )
 
   const updateLastSeen = useCallback(
@@ -1008,12 +1193,16 @@ const ChatsProvider = ({ children }) => {
     loadUsers,
     createChat,
     deleteChat,
+    chatMessages: messages,
 
     loadMessages,
     sendMessage,
     updateMessage,
     deleteMessage,
     getMessagesForChat,
+
+    markMessagesAsDelivered,
+    markMessagesAsRead,
 
     updateLastSeen,
     getLastSeen,

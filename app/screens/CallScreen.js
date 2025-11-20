@@ -11,7 +11,7 @@ import {
 import { useRoute, useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
-import { Video } from 'expo-video'
+import { Video } from 'expo-av'
 import { Audio } from 'expo-av'
 import { Camera } from 'expo-camera'
 import * as MediaLibrary from 'expo-media-library'
@@ -31,12 +31,14 @@ if (Platform.OS === 'web') {
   RTCSessionDescription = WebRTC.RTCSessionDescription
   RTCIceCandidate = WebRTC.RTCIceCandidate
   mediaDevices = WebRTC.mediaDevices
+  var { RTCView } = WebRTC
 }
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
 
-const SIGNALING_URL = 'ws://localhost:5000'
-const RING_TIMEOUT = 40000 // 40 seconds
+const SIGNALING_URL =
+  Platform.OS === 'web' ? 'ws://localhost:5000' : 'ws://10.230.214.87:5000'
+const RING_TIMEOUT = 40000
 
 const iceServers = {
   iceServers: [
@@ -85,11 +87,12 @@ const CallScreen = () => {
   const ringTimerRef = useRef(null)
   const ringtoneRef = useRef(null)
   const ringbackToneRef = useRef(null)
-
   const isStoppingRingtones = useRef(false)
   const isRingtonesSetup = useRef(false)
+  const setupInProgress = useRef(false)
+  const isCleaningUp = useRef(false)
 
-  // Initialize ring timer and sounds
+  // =================== RINGTONES ===================
   useEffect(() => {
     setupRingtones()
 
@@ -102,7 +105,7 @@ const CallScreen = () => {
     }
 
     return () => {
-      stopRingtones() // safe now
+      stopRingtones()
       clearRingTimer()
     }
   }, [])
@@ -132,7 +135,7 @@ const CallScreen = () => {
       ringbackToneRef.current = ringback
     } catch (error) {
       console.error('Setup ringtones error:', error)
-      isRingtonesSetup.current = false // allow retry if needed
+      isRingtonesSetup.current = false
     }
   }
 
@@ -192,6 +195,7 @@ const CallScreen = () => {
     }
   }
 
+  // =================== CALL HANDLERS ===================
   const handleRejectCall = useCallback(async () => {
     console.log('📵 User rejecting call...')
 
@@ -199,7 +203,6 @@ const CallScreen = () => {
     clearRingTimer()
 
     try {
-      // ✅ Notify backend that call was rejected
       const response = await fetch(
         `http://localhost:5000/answer-call/${route.params?.callId}`,
         {
@@ -215,7 +218,6 @@ const CallScreen = () => {
       const data = await response.json()
       console.log('✅ Call rejection sent:', data)
 
-      // Send WebSocket notification to caller
       if (wsRef.current?.readyState === WebSocket.OPEN) {
         wsRef.current.send(
           JSON.stringify({
@@ -235,7 +237,6 @@ const CallScreen = () => {
     navigation.goBack()
   }, [route.params?.callId, user, chatId, remoteUserId, navigation])
 
-  // Update handleEndCall to use proper reason:
   const handleEndCall = useCallback(() => {
     console.log('🔴 Ending call')
 
@@ -256,13 +257,11 @@ const CallScreen = () => {
 
     cleanup()
 
-    // Small delay to ensure cleanup completes
     setTimeout(() => {
       navigation.goBack()
     }, 100)
   }, [chatId, user?.uid, remoteUserId, callAnswered, navigation])
 
-  // Update handleCallTimeout:
   const handleCallTimeout = useCallback(() => {
     console.log('⏰ Handling call timeout')
     stopRingtones()
@@ -288,15 +287,68 @@ const CallScreen = () => {
       [{ text: 'OK', onPress: () => navigation.goBack() }],
       { cancelable: false }
     )
-
-    setTimeout(() => {
-      navigation.goBack()
-    }, 100)
   }, [chatId, user?.uid, remoteUserId, navigation])
 
+  const handleCallEnded = (reason) => {
+    console.log('📵 Call ended:', reason)
+    stopRingtones()
+    clearRingTimer()
+    cleanup()
+
+    Alert.alert(
+      'Call Ended',
+      reason || 'The call has ended',
+      [{ text: 'OK', onPress: () => navigation.goBack() }],
+      { cancelable: false }
+    )
+  }
+
+  const handleAnswerCall = async () => {
+    console.log('📞 ANSWERER: User answering call...')
+
+    stopRingtones()
+    clearRingTimer()
+    setCallAnswered(true)
+    setCallStatus('connecting')
+
+    try {
+      console.log('📡 ANSWERER: Notifying backend of call acceptance...')
+      const response = await fetch(
+        `http://10.230.214.87:5000/answer-call/${route.params?.callId}`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${await user.getIdToken()}`,
+          },
+          body: JSON.stringify({ accepted: true }),
+        }
+      )
+
+      const data = await response.json()
+
+      if (!data.success) {
+        console.error('❌ Failed to answer call:', data.error)
+        Alert.alert('Error', 'Failed to answer call')
+        navigation.goBack()
+        return
+      }
+
+      console.log('✅ Backend notified successfully')
+      console.log('📹 ANSWERER: Setting up media...')
+
+      // Setup will happen in the useEffect
+    } catch (error) {
+      console.error('❌ Error answering call:', error)
+      Alert.alert('Error', 'Failed to answer call')
+      navigation.goBack()
+    }
+  }
+
+  // =================== SETUP CALL - SINGLE EFFECT ===================
   useEffect(() => {
-    // ✅ Only setup immediately if NOT incoming OR already answered
-    if (!isIncoming || callAnswered) {
+    // ✅ ONLY setup if we should (not incoming OR already answered)
+    if ((!isIncoming || callAnswered) && !setupInProgress.current) {
       setupCall()
     }
 
@@ -309,21 +361,53 @@ const CallScreen = () => {
     )
 
     return () => {
-      cleanup()
       backHandler.remove()
     }
-  }, [callAnswered])
+  }, [callAnswered, isIncoming])
 
+  const setupCall = async () => {
+    if (setupInProgress.current) {
+      console.log('⚠️ Setup already in progress, skipping')
+      return
+    }
+
+    setupInProgress.current = true
+    console.log('🎬 Starting call setup...')
+
+    try {
+      await requestPermissions()
+      const stream = await getUserMedia()
+
+      setLocalStream(stream)
+      localStreamRef.current = stream
+
+      // ✅ Wait a moment for state to settle
+      await new Promise((resolve) => setTimeout(resolve, 300))
+
+      await createPeerConnection()
+
+      console.log('✅ Call setup complete')
+    } catch (error) {
+      console.error('❌ Setup call error:', error)
+      Alert.alert(
+        'Setup Error',
+        'Failed to initialize call. Please check permissions.',
+        [{ text: 'OK', onPress: handleEndCall }]
+      )
+    } finally {
+      setupInProgress.current = false
+    }
+  }
+
+  // =================== WEBSOCKET CONNECTION ===================
   useEffect(() => {
     if (!user?.uid || !chatId) {
-      console.warn(
-        '🕓 Waiting for user or chatId before connecting call WebSocket...'
-      )
+      console.warn('🕓 Waiting for user or chatId...')
       return
     }
 
     const wsUrl = `${SIGNALING_URL}/signaling?userId=${user.uid}&chatId=${chatId}`
-    console.log('🔌 Connecting call WebSocket to:', wsUrl)
+    console.log('🔌 Connecting WebSocket:', wsUrl)
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
@@ -331,10 +415,9 @@ const CallScreen = () => {
     let intentionalClose = false
 
     ws.onopen = () => {
-      console.log('✅ Call WebSocket connected to /signaling')
+      console.log('✅ WebSocket connected')
       setCallWsConnected(true)
 
-      // Join the call room
       ws.send(
         JSON.stringify({
           type: 'join-call',
@@ -343,21 +426,7 @@ const CallScreen = () => {
         })
       )
 
-      // ✅ If caller and already setup, wait a moment then create offer
-      if (!isIncoming && pcRef.current && localStreamRef.current) {
-        console.log('📞 Caller connected, waiting for recipient to join...')
-        // The offer will be created when we receive 'user-joined' event
-      }
-
-      // ✅ If answerer just connected after accepting, create offer
-      if (isIncoming && callAnswered && pcRef.current) {
-        console.log('📞 Answerer connected, creating offer...')
-        setTimeout(() => {
-          if (pcRef.current && !pcRef.current.localDescription) {
-            createOffer()
-          }
-        }, 1000)
-      }
+      console.log('👤 Joined as:', isIncoming ? 'ANSWERER' : 'CALLER')
     }
 
     ws.onmessage = async (event) => {
@@ -365,35 +434,28 @@ const CallScreen = () => {
         const data = JSON.parse(event.data)
         await handleWebSocketMessage(data)
       } catch (error) {
-        console.error('❌ Call WebSocket message error:', error)
+        console.error('❌ WebSocket message error:', error)
       }
     }
 
     ws.onerror = (error) => {
-      console.error('❌ Call WebSocket error:', error)
+      console.error('❌ WebSocket error:', error)
       setCallWsConnected(false)
     }
 
     ws.onclose = (event) => {
-      console.log('🔴 Call WebSocket disconnected:', {
-        code: event.code,
-        reason: event.reason,
-        clean: event.wasClean,
-        intentional: intentionalClose,
-      })
+      console.log('🔴 WebSocket disconnected:', event.code)
       setCallWsConnected(false)
 
-      if (!intentionalClose && event.code !== 1000) {
-        Alert.alert(
-          'Connection Lost',
-          'Call connection was lost. Please try again.',
-          [{ text: 'OK', onPress: () => navigation.goBack() }]
-        )
+      if (!intentionalClose && event.code !== 1000 && event.code !== 1006) {
+        Alert.alert('Connection Lost', 'Call connection was lost.', [
+          { text: 'OK', onPress: () => navigation.goBack() },
+        ])
       }
     }
 
     return () => {
-      console.log('🧹 Cleaning up call WebSocket')
+      console.log('🧹 Cleaning up WebSocket')
       intentionalClose = true
       if (
         ws.readyState === WebSocket.OPEN ||
@@ -402,114 +464,61 @@ const CallScreen = () => {
         ws.close(1000, 'Component unmount')
       }
     }
-  }, [user?.uid, chatId, navigation])
+  }, [user?.uid, chatId, navigation, isIncoming])
 
   const handleWebSocketMessage = async (data) => {
-    console.log('📨 CallScreen received:', data.type, {
-      from: data.from,
-      userId: data.userId,
-      myUid: user?.uid,
-      isIncoming,
-    })
+    console.log('📨 Received:', data.type)
 
     switch (data.type) {
-      case 'connected':
-        console.log('✅ WebSocket connection confirmed on /signaling')
-        // If caller and already setup, we're ready but wait for recipient to join
-        if (!isIncoming && pcRef.current && localStreamRef.current) {
-          console.log('📞 Caller is ready and waiting for recipient to join...')
-        }
-        break
-
       case 'user-joined':
-        // Remote user joined the signaling channel
-        if (data.userId !== user?.uid) {
-          console.log('👤 Remote user joined /signaling:', data.userId)
-          stopRingtones()
-          clearRingTimer()
-
-          // ✅ ONLY CALLER creates offer when recipient joins
-          if (!isIncoming && pcRef.current && localStreamRef.current) {
-            console.log('📞 Caller creating offer for newly joined user...')
-            console.log('📊 Peer connection state:', {
-              signalingState: pcRef.current.signalingState,
-              iceConnectionState: pcRef.current.iceConnectionState,
-              connectionState: pcRef.current.connectionState,
-              hasLocalDescription: !!pcRef.current.localDescription,
-            })
-
-            // Add delay to ensure recipient has setup their peer connection
-            setTimeout(async () => {
-              if (pcRef.current && !pcRef.current.localDescription) {
-                console.log('📞 Creating offer now...')
-                await createOffer()
-              } else {
-                console.warn(
-                  '⚠️ Skipping offer creation - already has local description'
-                )
-              }
-            }, 1500)
-          } else if (isIncoming) {
-            console.log('📞 Answerer ready, waiting for offer...')
-            console.log('📊 Answerer peer connection state:', {
-              signalingState: pcRef.current?.signalingState,
-              ready: !!pcRef.current && !!localStreamRef.current,
-            })
-          }
-        } else {
-          console.log('⏭️ Ignoring own user-joined event')
-        }
-        break
-
       case 'user-already-in-room':
-        // When you join and someone is already there
         if (data.userId !== user?.uid) {
-          console.log('👤 User already in room:', data.userId)
-
-          // ✅ If answerer joining late, create offer
-          if (
-            isIncoming &&
-            callAnswered &&
-            pcRef.current &&
-            localStreamRef.current
-          ) {
-            console.log('📞 Answerer creating offer for existing user...')
-            setTimeout(async () => {
-              if (pcRef.current && !pcRef.current.localDescription) {
-                await createOffer()
-              }
-            }, 1500)
-          }
-        }
-        break
-
-      case 'call_accepted':
-      case 'call-answered':
-        if (data.from !== user?.uid) {
-          console.log('✅ Call accepted by recipient:', data.from)
+          console.log('👤 Remote user ready:', data.userId)
           stopRingtones()
           clearRingTimer()
-          setCallStatus('connecting')
 
-          // ✅ Caller should now wait for recipient to join signaling
-          // The offer will be created when 'user-joined' is received
-          console.log('📞 Waiting for recipient to join signaling channel...')
+          // ✅ ONLY caller creates offer, and ONLY after ensuring setup is complete
+          if (!isIncoming) {
+            console.log('📞 CALLER: Will create offer...')
+
+            // Wait for setup to complete
+            const waitForSetup = setInterval(() => {
+              if (
+                !setupInProgress.current &&
+                pcRef.current &&
+                localStreamRef.current
+              ) {
+                clearInterval(waitForSetup)
+
+                setTimeout(async () => {
+                  if (pcRef.current && !pcRef.current.localDescription) {
+                    console.log('📞 Creating offer now...')
+                    await createOffer()
+                  }
+                }, 500)
+              }
+            }, 100)
+
+            // Timeout after 5 seconds
+            setTimeout(() => clearInterval(waitForSetup), 5000)
+          }
         }
         break
 
       case 'webrtc-offer':
         if (data.from !== user?.uid) {
-          console.log('📞 Received WebRTC offer')
+          console.log('📞 ANSWERER: Received offer')
           await handleOffer(data.offer)
         }
         break
 
       case 'webrtc-answer':
         if (data.from !== user?.uid) {
-          console.log('📞 Received WebRTC answer')
+          console.log('📞 CALLER: Received answer')
           await handleAnswer(data.answer)
         }
         break
+
       case 'webrtc-ice-candidate':
         if (data.from !== user?.uid) {
           console.log('🧊 Received ICE candidate')
@@ -531,17 +540,12 @@ const CallScreen = () => {
         cleanup()
 
         let endMessage = 'The call has ended'
-
         if (data.reason === 'timeout') {
           endMessage = 'Call was not answered'
+        } else if (data.reason === 'rejected') {
+          endMessage = 'Call was declined'
         } else if (data.reason === 'user_ended') {
           endMessage = 'Call ended by other user'
-        } else if (data.duration) {
-          const mins = Math.floor(data.duration / 60)
-          const secs = data.duration % 60
-          endMessage = `Call duration: ${mins}:${secs
-            .toString()
-            .padStart(2, '0')}`
         }
 
         Alert.alert(
@@ -550,134 +554,16 @@ const CallScreen = () => {
           [{ text: 'OK', onPress: () => navigation.goBack() }],
           { cancelable: false }
         )
-
-        setTimeout(() => {
-          navigation.goBack()
-        }, 100)
         break
-
-      case 'screen-sharing':
-        if (data.from !== user?.uid) {
-          console.log('📺 Remote user toggled screen sharing:', data.enabled)
-        }
-        break
-
-      default:
-        console.log('⚠️ Unknown message type:', data.type)
     }
   }
 
-  const handleAnswerCall = async () => {
-    console.log('📞 User answering call...')
-
-    stopRingtones()
-    clearRingTimer()
-    setCallAnswered(true)
-    setCallStatus('connecting')
-
-    try {
-      // ✅ Step 1: Setup local media and peer connection FIRST
-      console.log('📹 Setting up local media and peer connection...')
-      await setupCall()
-
-      // ✅ Step 2: Wait a moment for everything to be ready
-      await new Promise((resolve) => setTimeout(resolve, 1000))
-
-      // ✅ Step 3: Then notify backend
-      console.log('📡 Notifying backend of call acceptance...')
-      const response = await fetch(
-        `http://localhost:5000/answer-call/${route.params?.callId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${await user.getIdToken()}`,
-          },
-          body: JSON.stringify({ accepted: true }),
-        }
-      )
-
-      const data = await response.json()
-
-      if (!data.success) {
-        console.error('❌ Failed to answer call:', data.error)
-        Alert.alert('Error', 'Failed to answer call')
-        navigation.goBack()
-        return
-      }
-
-      console.log('✅ Call answer complete')
-    } catch (error) {
-      console.error('❌ Error answering call:', error)
-      Alert.alert('Error', 'Failed to answer call')
-      navigation.goBack()
-    }
-  }
-  // Add a helper function for call ended scenarios:
-  const handleCallEnded = (reason) => {
-    console.log('📵 Call ended:', reason)
-    stopRingtones()
-    clearRingTimer()
-    cleanup()
-
-    Alert.alert(
-      'Call Ended',
-      reason || 'The call has ended',
-      [{ text: 'OK', onPress: () => navigation.goBack() }],
-      { cancelable: false }
-    )
-
-    setTimeout(() => {
-      navigation.goBack()
-    }, 100)
-  }
-  // Initialize media and WebRTC
-  useEffect(() => {
-    if (!isIncoming || callAnswered) {
-      setupCall()
-    }
-
-    const backHandler = BackHandler.addEventListener(
-      'hardwareBackPress',
-      () => {
-        handleEndCall()
-        return true
-      }
-    )
-
-    return () => {
-      cleanup()
-      backHandler.remove()
-    }
-  }, [callAnswered])
-
-  const setupCall = async () => {
-    try {
-      await requestPermissions()
-      const stream = await getUserMedia()
-      setLocalStream(stream)
-      localStreamRef.current = stream
-      await createPeerConnection()
-
-      console.log('✅ Call setup complete, media and peer connection ready')
-
-      // ✅ Don't create offer here - wait for user-joined event
-    } catch (error) {
-      console.error('❌ Setup call error:', error)
-      Alert.alert(
-        'Setup Error',
-        'Failed to initialize call. Please check permissions.',
-        [{ text: 'OK', onPress: handleEndCall }]
-      )
-    }
-  }
+  // =================== WEBRTC FUNCTIONS ===================
   const requestPermissions = async () => {
     if (Platform.OS !== 'web') {
       const { status: cameraStatus } =
         await Camera.requestCameraPermissionsAsync()
       const { status: micStatus } = await Audio.requestPermissionsAsync()
-      const { status: mediaStatus } =
-        await MediaLibrary.requestPermissionsAsync()
 
       if (cameraStatus !== 'granted' || micStatus !== 'granted') {
         throw new Error('Camera or microphone permissions denied')
@@ -721,17 +607,8 @@ const CallScreen = () => {
         stream = await mediaDevices.getUserMedia(constraints)
       }
 
-      // ✅ Verify tracks are enabled
       stream.getTracks().forEach((track) => {
-        console.log(
-          '🎤 Track obtained:',
-          track.kind,
-          'enabled:',
-          track.enabled,
-          'readyState:',
-          track.readyState
-        )
-        // Ensure tracks are enabled
+        console.log('🎤 Track:', track.kind, 'enabled:', track.enabled)
         track.enabled = true
       })
 
@@ -741,69 +618,29 @@ const CallScreen = () => {
       throw error
     }
   }
-  const getScreenShareStream = async () => {
-    if (Platform.OS !== 'web') {
-      Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
-      return null
-    }
-
-    try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
-        video: {
-          width: { ideal: 1280 },
-          height: { ideal: 720 },
-          frameRate: { ideal: 30 },
-        },
-        audio: false,
-      })
-
-      stream.getVideoTracks()[0].onended = () => {
-        stopScreenSharing()
-      }
-
-      return stream
-    } catch (error) {
-      console.error('❌ getDisplayMedia error:', error)
-      Alert.alert('Error', 'Failed to start screen sharing.')
-      return null
-    }
-  }
 
   const createPeerConnection = async () => {
     try {
       const pc = new RTCPeerConnection(iceServers)
       pcRef.current = pc
 
-      // ✅ Add tracks with verification
+      // ✅ Add tracks
       if (localStreamRef.current) {
         const tracks = localStreamRef.current.getTracks()
-        console.log('🎤 Adding tracks to peer connection:', tracks.length)
+        console.log('🎤 Adding tracks:', tracks.length)
 
         tracks.forEach((track) => {
-          console.log('🎤 Adding track:', track.kind, 'enabled:', track.enabled)
+          console.log('🎤 Adding:', track.kind)
           pc.addTrack(track, localStreamRef.current)
         })
-
-        // Verify tracks were added
-        const senders = pc.getSenders()
-        console.log('✅ Tracks added, senders count:', senders.length)
       }
 
-      // ✅ Handle remote tracks - simplified
+      // ✅ Handle remote tracks
       pc.ontrack = (event) => {
-        console.log(
-          '🎥 Received remote track:',
-          event.track.kind,
-          'enabled:',
-          event.track.enabled
-        )
+        console.log('🎥 Received remote track:', event.track.kind)
 
         if (event.streams && event.streams[0]) {
-          console.log(
-            '📺 Setting remote stream with',
-            event.streams[0].getTracks().length,
-            'tracks'
-          )
+          console.log('📺 Setting remote stream')
           setRemoteStream(event.streams[0])
           setCallStatus('connected')
           setIsConnected(true)
@@ -815,7 +652,6 @@ const CallScreen = () => {
 
       pc.onicecandidate = (event) => {
         if (event.candidate && wsRef.current?.readyState === WebSocket.OPEN) {
-          console.log('🧊 Sending ICE candidate:', event.candidate.type)
           wsRef.current.send(
             JSON.stringify({
               type: 'webrtc-ice-candidate',
@@ -829,33 +665,25 @@ const CallScreen = () => {
 
       pc.onconnectionstatechange = () => {
         console.log('📶 Connection state:', pc.connectionState)
-        switch (pc.connectionState) {
-          case 'connected':
-            console.log('✅ Peer connection established')
-            setCallStatus('connected')
-            setIsConnected(true)
-            stopRingtones()
-            clearRingTimer()
-            startCallTimer()
-            break
-          case 'disconnected':
-            console.log('⚠️ Peer connection disconnected')
-            break
-          case 'failed':
-            console.log('❌ Peer connection failed')
-            Alert.alert(
-              'Connection Failed',
-              'Unable to establish call connection. Please try again.',
-              [{ text: 'OK', onPress: handleEndCall }]
-            )
-            break
+
+        if (pc.connectionState === 'connected') {
+          setCallStatus('connected')
+          setIsConnected(true)
+          stopRingtones()
+          clearRingTimer()
+          startCallTimer()
+        } else if (pc.connectionState === 'failed') {
+          Alert.alert(
+            'Connection Failed',
+            'Unable to establish call connection.',
+            [{ text: 'OK', onPress: handleEndCall }]
+          )
         }
       }
 
       pc.oniceconnectionstatechange = () => {
-        console.log('🧊 ICE connection state:', pc.iceConnectionState)
+        console.log('🧊 ICE state:', pc.iceConnectionState)
         if (pc.iceConnectionState === 'failed') {
-          console.error('❌ ICE connection failed - attempting restart')
           pc.restartIce()
         }
       }
@@ -867,64 +695,24 @@ const CallScreen = () => {
     }
   }
 
-  const startCallTimer = () => {
-    callStartTime.current = Date.now()
-    durationInterval.current = setInterval(() => {
-      if (callStartTime.current) {
-        const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000)
-        setCallDuration(elapsed)
-      }
-    }, 1000)
-  }
-
   const createOffer = async () => {
     try {
-      if (!pcRef.current) {
-        console.error('❌ Cannot create offer: No peer connection')
+      if (!pcRef.current || !localStreamRef.current) {
+        console.error('❌ Cannot create offer: missing pc or stream')
         return
       }
 
-      if (!localStreamRef.current) {
-        console.error('❌ Cannot create offer: No local stream')
-        return
-      }
-
-      // ✅ CRITICAL: Verify tracks are added and enabled
       const senders = pcRef.current.getSenders()
-      const audioSenders = senders.filter((s) => s.track?.kind === 'audio')
-      const videoSenders = senders.filter((s) => s.track?.kind === 'video')
-
-      console.log('📡 Senders check:', {
-        total: senders.length,
-        audio: audioSenders.length,
-        video: videoSenders.length,
-        audioEnabled: audioSenders[0]?.track?.enabled,
-        videoEnabled: videoSenders[0]?.track?.enabled,
-      })
-
-      // Verify we have at least audio
-      if (audioSenders.length === 0) {
-        console.error('❌ No audio track - re-adding tracks')
-        localStreamRef.current.getTracks().forEach((track) => {
-          console.log('🎤 Re-adding track:', track.kind, track.enabled)
-          pcRef.current.addTrack(track, localStreamRef.current)
-        })
-        // Wait a moment after adding tracks
-        await new Promise((resolve) => setTimeout(resolve, 500))
-      }
-
-      console.log('📞 Creating WebRTC offer...')
+      console.log('📡 Senders:', senders.length)
 
       const offer = await pcRef.current.createOffer({
         offerToReceiveAudio: true,
-        offerToReceiveVideo: callType === 'video' || isScreenSharing,
+        offerToReceiveVideo: callType === 'video',
       })
 
-      console.log('📞 Setting local description...')
       await pcRef.current.setLocalDescription(offer)
 
       if (wsRef.current?.readyState === WebSocket.OPEN) {
-        console.log('📞 Sending offer to remote peer...')
         wsRef.current.send(
           JSON.stringify({
             type: 'webrtc-offer',
@@ -934,24 +722,25 @@ const CallScreen = () => {
             from: user?.uid,
           })
         )
-        console.log('✅ Offer sent successfully')
-      } else {
-        console.error('❌ Cannot send offer: WebSocket not open')
+        console.log('✅ Offer sent')
       }
     } catch (error) {
       console.error('❌ Create offer error:', error)
-      Alert.alert('Connection Error', 'Failed to establish call connection')
     }
   }
 
   const handleOffer = async (offer) => {
     try {
+      console.log('📞 ANSWERER: Handling offer')
+
       if (!pcRef.current) {
-        await createPeerConnection()
+        console.error('❌ No peer connection')
+        return
       }
 
       await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer))
 
+      // Process queued candidates
       while (candidatesQueue.current.length > 0) {
         const candidate = candidatesQueue.current.shift()
         await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
@@ -967,8 +756,10 @@ const CallScreen = () => {
             answer,
             to: remoteUserId,
             chatId,
+            from: user?.uid,
           })
         )
+        console.log('✅ Answer sent')
       }
     } catch (error) {
       console.error('❌ Handle offer error:', error)
@@ -1004,6 +795,7 @@ const CallScreen = () => {
     }
   }
 
+  // =================== CONTROLS ===================
   const toggleMute = () => {
     if (localStreamRef.current) {
       const audioTracks = localStreamRef.current.getAudioTracks()
@@ -1054,101 +846,24 @@ const CallScreen = () => {
     }
   }
 
-  const toggleScreenSharing = async () => {
-    if (Platform.OS !== 'web') {
-      Alert.alert('Error', 'Screen sharing is not supported on mobile devices.')
+  const startCallTimer = () => {
+    callStartTime.current = Date.now()
+    durationInterval.current = setInterval(() => {
+      if (callStartTime.current) {
+        const elapsed = Math.floor((Date.now() - callStartTime.current) / 1000)
+        setCallDuration(elapsed)
+      }
+    }, 1000)
+  }
+
+  // =================== CLEANUP ===================
+  const cleanup = () => {
+    if (isCleaningUp.current) {
+      console.log('⚠️ Cleanup already in progress')
       return
     }
 
-    if (isScreenSharing) {
-      stopScreenSharing()
-    } else {
-      const screenStream = await getScreenShareStream()
-      if (!screenStream) return
-
-      setIsScreenSharing(true)
-      screenStreamRef.current = screenStream
-
-      if (pcRef.current) {
-        const senders = pcRef.current.getSenders()
-        const videoTrack = screenStream.getVideoTracks()[0]
-        const videoSender = senders.find(
-          (sender) => sender.track && sender.track.kind === 'video'
-        )
-
-        if (videoSender) {
-          await videoSender.replaceTrack(videoTrack)
-        } else {
-          pcRef.current.addTrack(videoTrack, screenStream)
-        }
-
-        await createOffer()
-
-        if (wsRef.current?.readyState === WebSocket.OPEN) {
-          wsRef.current.send(
-            JSON.stringify({
-              type: 'screen-sharing',
-              enabled: true,
-              to: remoteUserId,
-              chatId,
-            })
-          )
-        }
-      }
-    }
-  }
-
-  const stopScreenSharing = async () => {
-    if (!isScreenSharing || !screenStreamRef.current) return
-
-    screenStreamRef.current.getTracks().forEach((track) => track.stop())
-    screenStreamRef.current = null
-    setIsScreenSharing(false)
-
-    if (callType === 'video') {
-      const newStream = await getUserMedia()
-      setLocalStream(newStream)
-      localStreamRef.current = newStream
-
-      if (pcRef.current) {
-        const senders = pcRef.current.getSenders()
-        const newVideoTrack = newStream.getVideoTracks()[0]
-        const videoSender = senders.find(
-          (sender) => sender.track && sender.track.kind === 'video'
-        )
-
-        if (videoSender && newVideoTrack) {
-          await videoSender.replaceTrack(newVideoTrack)
-        }
-
-        await createOffer()
-      }
-    } else {
-      if (pcRef.current) {
-        const senders = pcRef.current.getSenders()
-        const videoSender = senders.find(
-          (sender) => sender.track && sender.track.kind === 'video'
-        )
-        if (videoSender) {
-          pcRef.current.removeTrack(videoSender)
-        }
-        await createOffer()
-      }
-    }
-
-    if (wsRef.current?.readyState === WebSocket.OPEN) {
-      wsRef.current.send(
-        JSON.stringify({
-          type: 'screen-sharing',
-          enabled: false,
-          to: remoteUserId,
-          chatId,
-        })
-      )
-    }
-  }
-
-  const cleanup = () => {
+    isCleaningUp.current = true
     console.log('🧹 Starting cleanup...')
 
     stopRingtones()
@@ -1159,6 +874,7 @@ const CallScreen = () => {
       durationInterval.current = null
     }
 
+    // ✅ Stop all tracks BEFORE closing peer connection
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => {
         track.stop()
@@ -1168,24 +884,20 @@ const CallScreen = () => {
     }
 
     if (screenStreamRef.current) {
-      screenStreamRef.current.getTracks().forEach((track) => {
-        track.stop()
-        console.log('📺 Stopped screen share track')
-      })
+      screenStreamRef.current.getTracks().forEach((track) => track.stop())
       screenStreamRef.current = null
     }
 
+    // ✅ Close peer connection AFTER stopping tracks
     if (pcRef.current) {
       pcRef.current.close()
       pcRef.current = null
       console.log('📞 Closed peer connection')
     }
 
-    // Close WebSocket with proper code
     if (wsRef.current) {
       if (wsRef.current.readyState === WebSocket.OPEN) {
         wsRef.current.close(1000, 'Call ended')
-        console.log('🔌 Closed call WebSocket')
       }
       wsRef.current = null
     }
@@ -1204,8 +916,12 @@ const CallScreen = () => {
     setIsScreenSharing(false)
     setCallWsConnected(false)
 
+    setupInProgress.current = false
+    isCleaningUp.current = false
+
     console.log('✅ Cleanup complete')
   }
+
   const formatCallDuration = (seconds) => {
     const mins = Math.floor(seconds / 60)
     const secs = seconds % 60
@@ -1213,10 +929,10 @@ const CallScreen = () => {
       .toString()
       .padStart(2, '0')}`
   }
+
+  // =================== NAVIGATION GUARD ===================
   useEffect(() => {
     const unsubscribe = navigation.addListener('beforeRemove', (e) => {
-      // ✅ Only prevent navigation if call is actually connected
-      // Allow navigation during ringing/connecting states
       if (isConnected && callStatus === 'connected') {
         e.preventDefault()
 
@@ -1227,7 +943,6 @@ const CallScreen = () => {
             style: 'destructive',
             onPress: () => {
               handleEndCall()
-              // Allow navigation after ending call
               setTimeout(() => {
                 navigation.dispatch(e.data.action)
               }, 100)
@@ -1235,14 +950,14 @@ const CallScreen = () => {
           },
         ])
       } else {
-        // ✅ Allow navigation during ringing/connecting
-        // But still cleanup
         cleanup()
       }
     })
 
     return unsubscribe
   }, [navigation, isConnected, callStatus])
+
+  // =================== RENDER FUNCTIONS ===================
   const renderLocalVideo = () => {
     if (!localStream && !screenStreamRef.current) return null
 
@@ -1281,6 +996,23 @@ const CallScreen = () => {
       )
     }
 
+    if (Platform.OS === 'android') {
+      const stream = isScreenSharing ? screenStreamRef.current : localStream
+      if (!stream) return null
+
+      return (
+        <LocalVideoContainer>
+          <RTCView
+            streamURL={stream.toURL()}
+            style={{ width: '100%', height: '100%' }}
+            objectFit="cover"
+            mirror={callType === 'video' && isFrontCamera}
+            zOrder={1}
+          />
+        </LocalVideoContainer>
+      )
+    }
+
     const stream = isScreenSharing ? screenStreamRef.current : localStream
     return (
       <LocalVideoContainer>
@@ -1301,6 +1033,12 @@ const CallScreen = () => {
   }
 
   const renderRemoteVideo = () => {
+    console.log('🎬 renderRemoteVideo:', {
+      hasRemoteStream: !!remoteStream,
+      isConnected,
+      callType,
+    })
+
     if (!remoteStream || !isConnected) {
       return (
         <PlaceholderView>
@@ -1314,9 +1052,7 @@ const CallScreen = () => {
                 : `Calling ${remoteUserName}...`
               : callStatus === 'connecting'
               ? `Connecting to ${remoteUserName}...`
-              : callStatus === 'connected'
-              ? 'Waiting for video...'
-              : callStatus}
+              : 'Waiting for video...'}
           </PlaceholderText>
         </PlaceholderView>
       )
@@ -1332,36 +1068,46 @@ const CallScreen = () => {
       )
     }
 
-    if (Platform.OS === 'web') {
+    if (Platform.OS === 'android') {
       return (
-        <video
-          ref={(video) => {
-            if (video && remoteStream) {
-              video.srcObject = remoteStream
-            }
-          }}
-          autoPlay
-          playsInline
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover',
-            backgroundColor: '#f5f5f5',
-          }}
+        <RTCView
+          streamURL={remoteStream.toURL()}
+          style={{ width: '100%', height: '100%', backgroundColor: '#000' }}
+          objectFit="cover"
+          mirror={false}
+          zOrder={0}
+        />
+      )
+    }
+
+    if (Platform.OS === 'ios') {
+      return (
+        <Video
+          source={{ uri: remoteStream.toURL() }}
+          style={{ width: '100%', height: '100%' }}
+          shouldPlay
+          isMuted={false}
+          resizeMode="cover"
+          useNativeControls={false}
         />
       )
     }
 
     return (
-      <Video
-        source={{ uri: remoteStream.toURL() }}
-        style={{ width: '100%', height: '100%' }}
-        shouldPlay
-        resizeMode="cover"
+      <video
+        ref={(video) => {
+          if (video && remoteStream) {
+            video.srcObject = remoteStream
+          }
+        }}
+        autoPlay
+        playsInline
+        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
       />
     )
   }
 
+  // =================== MAIN RENDER ===================
   if (isIncoming && !callAnswered) {
     return (
       <Container>
@@ -1375,7 +1121,6 @@ const CallScreen = () => {
           </IncomingCallType>
 
           <IncomingCallActions>
-            {/* ✅ Changed from handleEndCall to handleRejectCall */}
             <DeclineButton onPress={handleRejectCall}>
               <Ionicons name="close" size={36} color="#fff" />
             </DeclineButton>
@@ -1387,6 +1132,7 @@ const CallScreen = () => {
       </Container>
     )
   }
+
   return (
     <Container>
       <Header>
@@ -1416,16 +1162,6 @@ const CallScreen = () => {
           <Ionicons name={isMuted ? 'mic-off' : 'mic'} size={28} color="#333" />
         </ControlButton>
 
-        {callType === 'video' && Platform.OS === 'web' && (
-          <ControlButton onPress={toggleScreenSharing} active={isScreenSharing}>
-            <Ionicons
-              name={isScreenSharing ? 'stop-circle' : 'share'}
-              size={28}
-              color="#333"
-            />
-          </ControlButton>
-        )}
-
         <EndCallButton onPress={handleEndCall}>
           <Ionicons name="call" size={28} color="#fff" />
         </EndCallButton>
@@ -1448,7 +1184,7 @@ const CallScreen = () => {
   )
 }
 
-// Styled Components - Light Theme
+// =================== STYLED COMPONENTS ===================
 const Container = styled.View`
   flex: 1;
   background-color: #f5f5f5;
@@ -1638,7 +1374,6 @@ const LocalVideoPlaceholder = styled.View`
   align-items: center;
 `
 
-// Incoming Call Styles
 const IncomingCallView = styled.View`
   flex: 1;
   justify-content: center;
