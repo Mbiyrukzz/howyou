@@ -1,5 +1,5 @@
 import React from 'react'
-import { View, Text, TouchableOpacity } from 'react-native'
+import { View, Text, TouchableOpacity, Alert, Platform } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
 
@@ -90,10 +90,19 @@ const CallbackButton = styled.TouchableOpacity`
   margin-left: 8px;
 `
 
+const DeleteButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #fee;
+  justify-content: center;
+  align-items: center;
+  margin-left: 8px;
+`
+
 const getCallIcon = (callType, status, direction) => {
   const isVideo = callType === 'video'
 
-  // Missed calls - use arrow-down with X
   if (status === 'missed') {
     return {
       name: isVideo ? 'videocam-off' : 'call-outline',
@@ -102,7 +111,6 @@ const getCallIcon = (callType, status, direction) => {
     }
   }
 
-  // Rejected calls - use close/block icon
   if (status === 'rejected') {
     return {
       name: 'close-circle',
@@ -111,7 +119,6 @@ const getCallIcon = (callType, status, direction) => {
     }
   }
 
-  // Incoming calls - use arrow pointing down/in
   if (direction === 'incoming') {
     return {
       name: isVideo ? 'videocam' : 'arrow-down-circle',
@@ -120,7 +127,6 @@ const getCallIcon = (callType, status, direction) => {
     }
   }
 
-  // Outgoing calls - use arrow pointing up/out
   return {
     name: isVideo ? 'videocam' : 'arrow-up-circle',
     color: '#3498db',
@@ -174,7 +180,7 @@ const formatCallTime = (timestamp) => {
   })
 }
 
-const CallLogItem = ({ callLog, onCallback }) => {
+const CallLogItem = ({ callLog, onCallback, onDelete }) => {
   const { callType, status, direction, duration, createdAt } = callLog
 
   const icon = getCallIcon(callType, status, direction)
@@ -184,6 +190,32 @@ const CallLogItem = ({ callLog, onCallback }) => {
 
   const callTypeDisplay = callType === 'video' ? 'Video call' : 'Voice call'
   const directionIcon = direction === 'incoming' ? '↓' : '↑'
+
+  const handleDelete = () => {
+    if (Platform.OS === 'web') {
+      // Web: Use window.confirm
+      const confirmed = window.confirm(
+        'Are you sure you want to delete this call log?'
+      )
+      if (confirmed && onDelete) {
+        onDelete(callLog)
+      }
+    } else {
+      // Mobile: Use Alert
+      Alert.alert(
+        'Delete Call Log',
+        'Are you sure you want to delete this call log?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Delete',
+            style: 'destructive',
+            onPress: () => onDelete && onDelete(callLog),
+          },
+        ]
+      )
+    }
+  }
 
   return (
     <CallLogContainer>
@@ -207,6 +239,7 @@ const CallLogItem = ({ callLog, onCallback }) => {
           <CallTimeText>{timeText}</CallTimeText>
         </CallInfo>
 
+        {/* Callback button */}
         {onCallback && (status === 'missed' || status === 'rejected') && (
           <CallbackButton onPress={onCallback}>
             <Ionicons
@@ -215,6 +248,13 @@ const CallLogItem = ({ callLog, onCallback }) => {
               color="#fff"
             />
           </CallbackButton>
+        )}
+
+        {/* Delete button - Fixed for all platforms */}
+        {onDelete && (
+          <DeleteButton onPress={handleDelete}>
+            <Ionicons name="trash-outline" size={18} color="#e74c3c" />
+          </DeleteButton>
         )}
       </CallLogCard>
     </CallLogContainer>

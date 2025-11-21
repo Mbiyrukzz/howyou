@@ -26,7 +26,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import * as MediaLibrary from 'expo-media-library'
 import { Camera } from 'expo-camera'
-import { Audio } from 'expo-audio'
+import { Audio } from 'expo-av'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import LoadingIndicator from '../components/LoadingIndicator'
@@ -662,6 +662,25 @@ const MessageItem = React.memo(
       new Date(item.updatedAt).getTime() > new Date(item.createdAt).getTime()
     const timeString = `${formatMessageTime(item.createdAt)} • ${displayName}`
 
+    // ✅ Log status changes for debugging
+    useEffect(() => {
+      if (isOwn) {
+        console.log(`📊 Message ${messageId} status:`, {
+          status: item.status,
+          deliveredBy: item.deliveredBy,
+          readBy: item.readBy,
+          updateCount: item._updateCount,
+        })
+      }
+    }, [
+      item.status,
+      item.deliveredBy,
+      item.readBy,
+      item._updateCount,
+      messageId,
+      isOwn,
+    ])
+
     useEffect(() => {
       return () => {
         if (sound) {
@@ -678,6 +697,7 @@ const MessageItem = React.memo(
 
     const playAudio = async (audioUrl) => {
       try {
+        // Stop current playback if exists
         if (sound && isPlaying) {
           await sound.stopAsync()
           await sound.unloadAsync()
@@ -686,30 +706,38 @@ const MessageItem = React.memo(
           return
         }
 
+        // Create and play new sound
         const { sound: newSound } = await Audio.Sound.createAsync(
           { uri: audioUrl },
-          { shouldPlay: true }
+          { shouldPlay: true },
+          (status) => {
+            // Handle playback status updates
+            if (status.isLoaded) {
+              if (status.durationMillis) {
+                setAudioDuration(Math.floor(status.durationMillis / 1000))
+              }
+              if (status.didJustFinish) {
+                setIsPlaying(false)
+                newSound.unloadAsync()
+                setSound(null)
+              }
+            }
+          }
         )
 
         setSound(newSound)
         setIsPlaying(true)
-
-        const status = await newSound.getStatusAsync()
-        if (status.isLoaded && status.durationMillis) {
-          setAudioDuration(Math.floor(status.durationMillis / 1000))
-        }
-
-        newSound.setOnPlaybackStatusUpdate((status) => {
-          if (status.didJustFinish) {
-            setIsPlaying(false)
-            newSound.unloadAsync()
-            setSound(null)
-          }
-        })
       } catch (error) {
         console.error('Error playing audio:', error)
-        Alert.alert('Error', 'Failed to play audio')
+        Alert.alert(
+          'Playback Error',
+          'Unable to play this audio file. It may be corrupted or in an unsupported format.'
+        )
         setIsPlaying(false)
+        if (sound) {
+          sound.unloadAsync().catch(console.error)
+          setSound(null)
+        }
       }
     }
 
@@ -950,7 +978,20 @@ const MessageItem = React.memo(
 
     if (prevItem.content !== nextItem.content) return false
     if (prevItem.updatedAt !== nextItem.updatedAt) return false
-    if (prevItem.status !== nextItem.status) return false // ✅ Check status changes
+    if (prevItem.status !== nextItem.status) return false // ✅ Check status
+
+    // ✅ CRITICAL: Check update counter to catch all changes
+    if (prevItem._updateCount !== nextItem._updateCount) return false
+
+    // ✅ Check delivered/read arrays
+    if (
+      (prevItem.deliveredBy?.length || 0) !==
+      (nextItem.deliveredBy?.length || 0)
+    )
+      return false
+    if ((prevItem.readBy?.length || 0) !== (nextItem.readBy?.length || 0))
+      return false
+
     if ((prevItem._id || prevItem.id) !== (nextItem._id || nextItem.id))
       return false
 
@@ -966,7 +1007,6 @@ const MessageItem = React.memo(
     return true
   }
 )
-
 const SoundWaveAnimation = () => {
   const [animations] = useState(() =>
     Array.from({ length: 20 }, () => new Animated.Value(0.3))
@@ -1041,6 +1081,7 @@ export default function ChatDetailScreen({
   const [hoveredMessageId, setHoveredMessageId] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
+  const [audioPermission, setAudioPermission] = useState(null)
 
   console.log('🚀 ChatDetailScreen mounted, initial states:', {
     webDropdownVisible,
@@ -1087,6 +1128,7 @@ export default function ChatDetailScreen({
     getCallHistory,
     getMessagesForChat,
     loadLastSeenData,
+    deleteCallLog,
   } = chatsContext || {}
 
   const messages = getMessagesForChat(chatId) || []
@@ -1146,7 +1188,6 @@ export default function ChatDetailScreen({
     }
   }, [otherUser, getLastSeen, getLastSeenText, checkUserOnline])
 
-  // Debug delivered messages
   useEffect(() => {
     const markAsDelivered = async () => {
       if (!chatId || !messages.length || !markMessagesAsDelivered) {
@@ -1158,7 +1199,7 @@ export default function ChatDetailScreen({
         return
       }
 
-      // Get undelivered messages from other users
+      // Get messages that need delivery status
       const undeliveredMessages = messages
         .filter((msg) => {
           const isOwnMessage = msg.senderId === user?.uid
@@ -1176,6 +1217,7 @@ export default function ChatDetailScreen({
             deliveredBy: msg.deliveredBy,
           })
 
+          // ✅ Only mark messages from other users that haven't been delivered yet
           return !isOwnMessage && needsDelivery && notAlreadyDelivered
         })
         .map((msg) => msg._id || msg.id)
@@ -1199,7 +1241,7 @@ export default function ChatDetailScreen({
     markAsDelivered()
   }, [messages.length, chatId, markMessagesAsDelivered, user?.uid])
 
-  // Debug read messages
+  // ✅ SECOND: Mark messages as read (runs after a delay)
   useEffect(() => {
     const markAsRead = async () => {
       if (!chatId || !messages.length || !markMessagesAsRead) {
@@ -1211,11 +1253,12 @@ export default function ChatDetailScreen({
         return
       }
 
-      // Get unread messages from other users
+      // Get messages that need read status
       const unreadMessages = messages
         .filter((msg) => {
           const isOwnMessage = msg.senderId === user?.uid
-          const needsRead = msg.status !== 'read'
+          // ✅ Only mark as read if status is 'delivered' (not 'sent')
+          const needsRead = msg.status === 'delivered'
           const notAlreadyRead = !(msg.readBy || []).includes(user?.uid)
 
           console.log('👁️ Message read check:', {
@@ -1227,6 +1270,7 @@ export default function ChatDetailScreen({
             readBy: msg.readBy,
           })
 
+          // ✅ Only mark messages that are delivered and from other users
           return !isOwnMessage && needsRead && notAlreadyRead
         })
         .map((msg) => msg._id || msg.id)
@@ -1238,7 +1282,7 @@ export default function ChatDetailScreen({
           unreadMessages
         )
 
-        // Debounce to avoid too many API calls
+        // ✅ Add a 1 second delay to ensure delivered status is set first
         const timeoutId = setTimeout(async () => {
           const result = await markMessagesAsRead(chatId, unreadMessages)
           console.log('👁️ Mark read result:', result)
@@ -1252,7 +1296,6 @@ export default function ChatDetailScreen({
 
     markAsRead()
   }, [messages, chatId, markMessagesAsRead, user?.uid])
-
   // Update the text input to use typing indicators
   const handleMessageChange = (text) => {
     handleTypingInput(text, setMessage)
@@ -1513,41 +1556,114 @@ export default function ChatDetailScreen({
   const startRecording = async () => {
     try {
       if (Platform.OS === 'web') {
+        // Web Audio Recording
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          Alert.alert(
+            'Not Supported',
+            'Audio recording is not supported in this browser. Please use Chrome, Firefox, or Edge.'
+          )
+          return
+        }
+
+        try {
+          const stream = await navigator.mediaDevices.getUserMedia({
+            audio: true,
+          })
+          const mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus',
+          })
+          const audioChunks = []
+
+          mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+              audioChunks.push(event.data)
+            }
+          }
+
+          mediaRecorder.onstop = () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' })
+            const audioUrl = URL.createObjectURL(audioBlob)
+
+            setRecording({
+              blob: audioBlob,
+              url: audioUrl,
+              stream: stream,
+              mediaRecorder: mediaRecorder,
+              chunks: audioChunks,
+            })
+          }
+
+          mediaRecorder.start()
+
+          setRecording({
+            mediaRecorder: mediaRecorder,
+            stream: stream,
+            chunks: audioChunks,
+          })
+          setShowRecordingUI(true)
+          setRecordingDuration(0)
+
+          recordingIntervalRef.current = setInterval(() => {
+            setRecordingDuration((prev) => prev + 1)
+          }, 1000)
+
+          console.log('✅ Web recording started successfully')
+        } catch (err) {
+          console.error('Web audio error:', err)
+          Alert.alert(
+            'Permission Denied',
+            'Microphone access is required to record audio. Please allow microphone access in your browser settings.'
+          )
+        }
+        return
+      }
+
+      // Mobile (Android/iOS) Audio Recording
+      if (!Audio || !Audio.requestPermissionsAsync) {
         Alert.alert(
-          'Audio Recording Unavailable',
-          'Audio recording is not supported in the web browser. Please use the mobile app to record audio.'
+          'Not Supported',
+          'Audio recording is not available. Please ensure the app has proper permissions.'
         )
         return
       }
-      const { status } = await Audio.Recording.requestPermissionsAsync()
+
+      const { status } = await Audio.requestPermissionsAsync()
       if (status !== 'granted') {
         Alert.alert(
           'Permission Denied',
-          'Audio recording permission is required'
+          'Microphone permission is required to record audio.'
         )
         return
       }
+
       await Audio.setAudioModeAsync({
         allowsRecordingIOS: true,
         playsInSilentModeIOS: true,
+        staysActiveInBackground: false,
+        shouldDuckAndroid: true,
+        playThroughEarpieceAndroid: false,
       })
-      const newRecording = new Audio.Recording()
-      await newRecording.prepareToRecordAsync(
+
+      const { recording: newRecording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY
       )
-      await newRecording.startAsync()
+
       setRecording(newRecording)
       setShowRecordingUI(true)
       setRecordingDuration(0)
+
       recordingIntervalRef.current = setInterval(() => {
         setRecordingDuration((prev) => prev + 1)
       }, 1000)
+
+      console.log('✅ Mobile recording started successfully')
     } catch (err) {
       console.error('Failed to start recording:', err)
       Alert.alert('Error', 'Failed to start recording: ' + err.message)
     }
   }
 
+  // Replace the stopRecording function:
   const stopRecording = async () => {
     if (!recording) return
 
@@ -1556,24 +1672,51 @@ export default function ChatDetailScreen({
         clearInterval(recordingIntervalRef.current)
       }
 
-      await recording.stopAndUnloadAsync()
-      const uri = recording.getURI()
+      if (Platform.OS === 'web') {
+        // Web: Stop MediaRecorder
+        if (
+          recording.mediaRecorder &&
+          recording.mediaRecorder.state !== 'inactive'
+        ) {
+          recording.mediaRecorder.stop()
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-      })
+          // Stop all tracks
+          if (recording.stream) {
+            recording.stream.getTracks().forEach((track) => track.stop())
+          }
 
-      setRecording(null)
-      setShowRecordingUI(false)
-      setRecordingDuration(0)
+          // Wait for the blob to be ready
+          await new Promise((resolve) => {
+            recording.mediaRecorder.onstop = resolve
+          })
+        }
 
-      return uri
+        setShowRecordingUI(false)
+        setRecordingDuration(0)
+        return recording
+      } else {
+        // Mobile: Stop Expo Audio Recording
+        await recording.stopAndUnloadAsync()
+        const uri = recording.getURI()
+
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+        })
+
+        setRecording(null)
+        setShowRecordingUI(false)
+        setRecordingDuration(0)
+
+        return uri
+      }
     } catch (err) {
       console.error('Failed to stop recording:', err)
       Alert.alert('Error', 'Failed to stop recording')
+      return null
     }
   }
 
+  // Replace the cancelRecording function:
   const cancelRecording = async () => {
     if (!recording) return
 
@@ -1582,10 +1725,27 @@ export default function ChatDetailScreen({
         clearInterval(recordingIntervalRef.current)
       }
 
-      await recording.stopAndUnloadAsync()
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: false,
-      })
+      if (Platform.OS === 'web') {
+        // Web: Stop and cleanup
+        if (
+          recording.mediaRecorder &&
+          recording.mediaRecorder.state !== 'inactive'
+        ) {
+          recording.mediaRecorder.stop()
+        }
+        if (recording.stream) {
+          recording.stream.getTracks().forEach((track) => track.stop())
+        }
+        if (recording.url) {
+          URL.revokeObjectURL(recording.url)
+        }
+      } else {
+        // Mobile: Stop and unload
+        await recording.stopAndUnloadAsync()
+        await Audio.setAudioModeAsync({
+          allowsRecordingIOS: false,
+        })
+      }
 
       setRecording(null)
       setShowRecordingUI(false)
@@ -1595,17 +1755,42 @@ export default function ChatDetailScreen({
     }
   }
 
+  // Replace the sendRecording function:
   const sendRecording = async () => {
-    const uri = await stopRecording()
-    if (!uri) return
+    const recordingData = await stopRecording()
+    if (!recordingData) return
 
-    await handleSendMessage([
-      {
-        uri,
-        name: `recording_${Date.now()}.m4a`,
-        type: 'audio/m4a',
-      },
-    ])
+    try {
+      if (Platform.OS === 'web') {
+        // Web: Convert blob to File
+        const audioFile = new File(
+          [recordingData.blob],
+          `recording_${Date.now()}.webm`,
+          { type: 'audio/webm' }
+        )
+
+        await handleSendMessage([
+          {
+            uri: recordingData.url,
+            name: audioFile.name,
+            type: 'audio/webm',
+            blob: recordingData.blob, // Include blob for FormData
+          },
+        ])
+      } else {
+        // Mobile: Use URI
+        await handleSendMessage([
+          {
+            uri: recordingData,
+            name: `recording_${Date.now()}.m4a`,
+            type: 'audio/m4a',
+          },
+        ])
+      }
+    } catch (error) {
+      console.error('Failed to send recording:', error)
+      Alert.alert('Error', 'Failed to send recording')
+    }
   }
 
   const formatRecordingTime = (seconds) => {
@@ -1706,7 +1891,6 @@ export default function ChatDetailScreen({
       })
 
       if (result.success) {
-        // ✅ Context already updated via sendMessage, just clear inputs
         setMessage('')
         setSelectedFiles([])
         setTimeout(
@@ -1857,6 +2041,53 @@ export default function ChatDetailScreen({
     }
   }
 
+  const handleDeleteCallLog = async (callLog) => {
+    const callId = callLog._id || callLog.id
+
+    if (Platform.OS === 'web') {
+      // Web: Use window.confirm
+      const confirmed = window.confirm(
+        'Are you sure you want to delete this call log?'
+      )
+      if (!confirmed) return
+    } else {
+      // Mobile: Use Alert
+      return new Promise((resolve) => {
+        Alert.alert(
+          'Delete Call Log',
+          'Are you sure you want to delete this call log?',
+          [
+            { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () => resolve(true),
+            },
+          ]
+        )
+      }).then(async (confirmed) => {
+        if (!confirmed) return
+
+        const result = await deleteCallLog(callId)
+        if (result.success) {
+          setCallLogs((prev) => prev.filter((c) => (c._id || c.id) !== callId))
+          Alert.alert('Success', 'Call log deleted')
+        } else {
+          Alert.alert('Error', result.error || 'Failed to delete call log')
+        }
+      })
+    }
+
+    // Web continues here
+    const result = await deleteCallLog(callId)
+    if (result.success) {
+      setCallLogs((prev) => prev.filter((c) => (c._id || c.id) !== callId))
+      alert('Call log deleted successfully')
+    } else {
+      alert(result.error || 'Failed to delete call log')
+    }
+  }
+
   /* ---------- image preview ---------- */
   const handleImagePress = (imageUrl) => {
     setPreviewImageUrl(imageUrl)
@@ -1925,6 +2156,7 @@ export default function ChatDetailScreen({
         <CallLogItem
           callLog={item.data}
           onCallback={() => handleCallCallback(item.data)}
+          onDelete={handleDeleteCallLog}
         />
       )
     }

@@ -37,7 +37,7 @@ if (Platform.OS === 'web') {
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window')
 
 const SIGNALING_URL =
-  Platform.OS === 'web' ? 'ws://localhost:5000' : 'ws://10.230.214.87:5000'
+  Platform.OS === 'web' ? 'ws://localhost:5000' : 'ws://10.225.164.87:5000'
 const RING_TIMEOUT = 40000
 
 const iceServers = {
@@ -314,7 +314,7 @@ const CallScreen = () => {
     try {
       console.log('📡 ANSWERER: Notifying backend of call acceptance...')
       const response = await fetch(
-        `http://10.230.214.87:5000/answer-call/${route.params?.callId}`,
+        `http://10.225.164.87:5000/answer-call/${route.params?.callId}`,
         {
           method: 'POST',
           headers: {

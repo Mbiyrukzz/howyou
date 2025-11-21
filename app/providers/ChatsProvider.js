@@ -5,7 +5,7 @@ import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://10.230.214.87:5000'
+const API_URL = 'http://10.225.164.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -23,6 +23,8 @@ const ChatsProvider = ({ children }) => {
   const { isReady, get, put, post, del } = useAuthedRequest()
   const { user } = useUser()
   const typingTimeoutRef = useRef({})
+  const messageUpdateCounter = useRef(0)
+
   const handleWebSocketMessage = useCallback(
     (data) => {
       console.log('📨 [ChatsProvider] WebSocket message:', data.type, {
@@ -125,7 +127,6 @@ const ChatsProvider = ({ children }) => {
     [user?.uid]
   )
 
-  // Initialize WebSocket with the custom hook
   const {
     isConnected: wsConnected,
     connectionState,
@@ -307,119 +308,179 @@ const ChatsProvider = ({ children }) => {
     })
   }, [])
 
-  // Add these FIXED handlers to your ChatsProvider.js
-  // Replace the existing handleMessageDelivered and handleMessagesRead functions
-
   const handleMessageDelivered = useCallback((data) => {
     const { chatId, messageId, deliveredBy, timestamp } = data
 
-    console.log(`✅ [WS] Message ${messageId} delivered by ${deliveredBy}`)
+    console.log(`✅ [WS] Message delivered:`, {
+      chatId,
+      messageId,
+      deliveredBy,
+      timestamp,
+    })
 
     setMessages((prev) => {
       const chatMessages = prev[chatId] || []
 
-      // Check if message exists
-      const messageExists = chatMessages.some(
+      // Find the message
+      const messageIndex = chatMessages.findIndex(
         (msg) => (msg._id || msg.id) === messageId
       )
 
-      if (!messageExists) {
+      if (messageIndex === -1) {
         console.warn(`⚠️ Message ${messageId} not found in chat ${chatId}`)
         return prev
       }
 
-      const updated = {
-        ...prev,
-        [chatId]: chatMessages.map((msg) => {
-          const msgId = msg._id || msg.id
-          if (msgId === messageId) {
-            console.log(`✅ [WS] Updating message ${msgId} to delivered`)
-            return {
-              ...msg,
-              status: 'delivered',
-              deliveredAt: timestamp,
-              deliveredBy: [...(msg.deliveredBy || []), deliveredBy],
-            }
-          }
-          return msg
-        }),
+      console.log(`✅ Updating message at index ${messageIndex} to delivered`)
+
+      // ✅ Create completely new array and object
+      const updatedMessages = [...chatMessages]
+      const oldMessage = updatedMessages[messageIndex]
+
+      updatedMessages[messageIndex] = {
+        ...oldMessage,
+        status: 'delivered',
+        deliveredAt: timestamp || new Date().toISOString(),
+        deliveredBy: Array.from(
+          new Set([...(oldMessage.deliveredBy || []), deliveredBy])
+        ),
+        _updateCount: (oldMessage._updateCount || 0) + 1,
       }
 
-      console.log(
-        `✅ [WS] Updated messages for chat ${chatId}:`,
-        updated[chatId]?.length
-      )
-      return updated
+      console.log('✅ Message updated:', {
+        messageId,
+        oldStatus: oldMessage.status,
+        newStatus: 'delivered',
+        updateCount: updatedMessages[messageIndex]._updateCount,
+      })
+
+      messageUpdateCounter.current += 1
+
+      return {
+        ...prev,
+        [chatId]: updatedMessages,
+      }
     })
   }, [])
 
   const handleMessagesRead = useCallback((data) => {
     const { chatId, messageIds, readBy, timestamp } = data
 
-    console.log(`👁️ [WS] ${messageIds.length} messages read by ${readBy}`)
+    console.log(`👁️ [WS] Messages read:`, {
+      chatId,
+      messageIds,
+      readBy,
+      count: messageIds?.length,
+    })
+
+    // ✅ Handle both single messageId (legacy) and array of messageIds
+    const ids = Array.isArray(messageIds) ? messageIds : [messageIds]
 
     setMessages((prev) => {
       const chatMessages = prev[chatId] || []
 
-      // Filter out non-existent message IDs
-      const validMessageIds = messageIds.filter((id) =>
+      // Find which messages actually exist
+      const validMessageIds = ids.filter((id) =>
         chatMessages.some((msg) => (msg._id || msg.id) === id)
       )
 
       if (validMessageIds.length === 0) {
-        console.warn(
-          `⚠️ No valid messages found for read update in chat ${chatId}`
-        )
+        console.warn(`⚠️ No valid messages for read update in chat ${chatId}`)
         return prev
       }
 
-      const updated = {
-        ...prev,
-        [chatId]: chatMessages.map((msg) => {
-          const msgId = msg._id || msg.id
-          if (validMessageIds.includes(msgId)) {
-            console.log(`👁️ [WS] Updating message ${msgId} to read`)
-            return {
-              ...msg,
-              status: 'read',
-              readAt: timestamp,
-              readBy: [...(msg.readBy || []), readBy],
-            }
-          }
-          return msg
-        }),
-      }
+      console.log(`👁️ Updating ${validMessageIds.length} messages to read`)
 
-      console.log(
-        `👁️ [WS] Updated ${validMessageIds.length} messages for chat ${chatId}`
-      )
-      return updated
+      // ✅ Update all matching messages
+      const updatedMessages = chatMessages.map((msg) => {
+        const msgId = msg._id || msg.id
+
+        if (validMessageIds.includes(msgId)) {
+          console.log(`👁️ Updating message ${msgId} to read`)
+
+          return {
+            ...msg,
+            status: 'read',
+            readAt: timestamp || new Date().toISOString(),
+            readBy: Array.from(new Set([...(msg.readBy || []), readBy])),
+            _updateCount: (msg._updateCount || 0) + 1,
+          }
+        }
+
+        return msg
+      })
+
+      messageUpdateCounter.current += 1
+
+      return {
+        ...prev,
+        [chatId]: updatedMessages,
+      }
     })
   }, [])
-
   const handleLastSeenUpdate = useCallback((data) => {
+    console.log('👁️ Last seen update received:', {
+      userId: data.userId,
+      timestamp: data.timestamp,
+    })
+
     setLastSeen((prev) => ({
       ...prev,
       [data.userId]: data.timestamp,
     }))
+
+    // Also update the users array
+    setUsers((prev) =>
+      prev.map((u) => {
+        const userId = u.firebaseUid || u._id
+        if (userId === data.userId) {
+          return { ...u, lastSeen: data.timestamp }
+        }
+        return u
+      })
+    )
   }, [])
 
   const handleTypingIndicator = useCallback((data) => {
     const { userId, chatId, isTyping } = data
 
+    console.log('⌨️ Typing indicator received:', {
+      userId,
+      chatId,
+      isTyping,
+      platform: Platform.OS,
+    })
+
     if (isTyping) {
       setTypingUsers((prev) => {
         const chatTyping = prev[chatId] || []
         if (!chatTyping.includes(userId)) {
+          console.log('✅ Adding user to typing list:', userId)
           return { ...prev, [chatId]: [...chatTyping, userId] }
         }
         return prev
       })
+
+      // Auto-clear typing after 5 seconds
+      if (typingTimeoutRef.current[`${chatId}-${userId}`]) {
+        clearTimeout(typingTimeoutRef.current[`${chatId}-${userId}`])
+      }
+
+      typingTimeoutRef.current[`${chatId}-${userId}`] = setTimeout(() => {
+        console.log('⏰ Auto-clearing typing for user:', userId)
+        handleTypingStopped({ userId, chatId })
+      }, 5000)
     } else {
       setTypingUsers((prev) => ({
         ...prev,
         [chatId]: (prev[chatId] || []).filter((uid) => uid !== userId),
       }))
+
+      // Clear timeout
+      if (typingTimeoutRef.current[`${chatId}-${userId}`]) {
+        clearTimeout(typingTimeoutRef.current[`${chatId}-${userId}`])
+        delete typingTimeoutRef.current[`${chatId}-${userId}`]
+      }
     }
   }, [])
 
@@ -488,13 +549,32 @@ const ChatsProvider = ({ children }) => {
       const data = await get(`${API_URL}/list-users`)
       setUsers(data)
 
+      // ✅ Extract last seen and online status from users
       const lastSeenData = {}
+      const onlineUserIds = new Set()
+
       data.forEach((user) => {
+        const userId = user.firebaseUid || user._id
+
+        // Set last seen
         if (user.lastSeen) {
-          lastSeenData[user.firebaseUid || user._id] = user.lastSeen
+          lastSeenData[userId] = user.lastSeen
+        }
+
+        // Set online status
+        if (user.online) {
+          onlineUserIds.add(userId)
         }
       })
+
+      console.log('👥 Loaded users with status:', {
+        totalUsers: data.length,
+        onlineCount: onlineUserIds.size,
+        lastSeenCount: Object.keys(lastSeenData).length,
+      })
+
       setLastSeen(lastSeenData)
+      setOnlineUsers(onlineUserIds)
     } catch (error) {
       console.error('Failed to load users:', error)
     }
@@ -563,8 +643,29 @@ const ChatsProvider = ({ children }) => {
         const sorted = (data || []).sort(
           (a, b) => new Date(a.createdAt) - new Date(b.createdAt)
         )
-        setMessages((prev) => ({ ...prev, [chatId]: sorted }))
-        return sorted
+
+        // ✅ Ensure all loaded messages have status fields
+        const messagesWithStatus = sorted.map((msg) => ({
+          ...msg,
+          status: msg.status || 'sent',
+          deliveredBy: msg.deliveredBy || [],
+          readBy: msg.readBy || [],
+        }))
+
+        console.log('📥 Loaded messages with status:', {
+          chatId,
+          count: messagesWithStatus.length,
+          sentCount: messagesWithStatus.filter((m) => m.status === 'sent')
+            .length,
+          deliveredCount: messagesWithStatus.filter(
+            (m) => m.status === 'delivered'
+          ).length,
+          readCount: messagesWithStatus.filter((m) => m.status === 'read')
+            .length,
+        })
+
+        setMessages((prev) => ({ ...prev, [chatId]: messagesWithStatus }))
+        return messagesWithStatus
       } catch (error) {
         console.error('Failed to load messages:', error)
         return []
@@ -578,10 +679,24 @@ const ChatsProvider = ({ children }) => {
       if (!isReady || !chatId) {
         return { success: false, error: 'Invalid parameters' }
       }
+
+      if ((!content || !content.trim()) && files.length === 0) {
+        return {
+          success: false,
+          error: 'Message must have content or files',
+        }
+      }
+
       try {
         let data
 
         if (files.length > 0) {
+          console.log('📤 Sending message with files:', {
+            filesCount: files.length,
+            messageType,
+            hasContent: !!(content && content.trim()),
+          })
+
           const formData = new FormData()
           formData.append('chatId', chatId)
 
@@ -609,24 +724,30 @@ const ChatsProvider = ({ children }) => {
           for (let i = 0; i < files.length; i++) {
             const file = files[i]
 
-            if (Platform.OS === 'web' && file.uri.startsWith('blob:')) {
-              try {
+            if (Platform.OS === 'web') {
+              if (file instanceof File) {
+                formData.append('files', file)
+              } else if (file.blob) {
+                const webFile = new File(
+                  [file.blob],
+                  file.name || `audio_${Date.now()}.webm`,
+                  { type: file.type || 'audio/webm' }
+                )
+                formData.append('files', webFile)
+              } else if (file.uri && file.uri.startsWith('blob:')) {
                 const response = await fetch(file.uri)
                 const blob = await response.blob()
                 const webFile = new File(
                   [blob],
-                  file.name || `file_${Date.now()}_${i}.jpg`,
+                  file.name || `file_${Date.now()}.jpg`,
                   { type: file.type || file.mimeType || 'image/jpeg' }
                 )
                 formData.append('files', webFile)
-              } catch (blobError) {
-                console.error('Failed to convert blob:', blobError)
-                throw new Error('Failed to process image file')
               }
             } else {
               const fileObject = {
                 uri: file.uri,
-                name: file.name || `file_${Date.now()}_${i}.jpg`,
+                name: file.name || `file_${Date.now()}.jpg`,
                 type: file.type || file.mimeType || 'image/jpeg',
               }
               formData.append('files', fileObject)
@@ -653,7 +774,7 @@ const ChatsProvider = ({ children }) => {
           if (!content || !content.trim()) {
             return {
               success: false,
-              error: 'Message must have content or files',
+              error: 'Text message must have content',
             }
           }
 
@@ -665,14 +786,25 @@ const ChatsProvider = ({ children }) => {
         }
 
         if (data.success && data.message) {
-          // ✅ Add initial status
+          console.log('✅ Message created with ID:', data.message._id)
+
+          // ✅ CRITICAL: Ensure status fields are present
           const messageWithStatus = {
             ...data.message,
-            status: 'sent', // Initial status
-            sentAt: new Date().toISOString(),
-            deliveredBy: [],
-            readBy: [],
+            status: data.message.status || 'sent',
+            sentAt: data.message.sentAt || new Date().toISOString(),
+            deliveredBy: data.message.deliveredBy || [],
+            readBy: data.message.readBy || [],
+            _updateCount: 0, // ✅ Initialize counter
           }
+
+          console.log('💾 Adding message to local state:', {
+            messageId: messageWithStatus._id,
+            status: messageWithStatus.status,
+            deliveredBy: messageWithStatus.deliveredBy,
+            readBy: messageWithStatus.readBy,
+            updateCount: messageWithStatus._updateCount,
+          })
 
           setMessages((prev) => ({
             ...prev,
@@ -684,7 +816,7 @@ const ChatsProvider = ({ children }) => {
             wsSend({
               type: 'new-message',
               chatId,
-              message: data.message,
+              message: messageWithStatus,
               participants: chat.participants || [],
             })
           }
@@ -695,7 +827,7 @@ const ChatsProvider = ({ children }) => {
 
         return data
       } catch (error) {
-        console.error('sendMessage error:', error)
+        console.error('❌ sendMessage error:', error)
         return {
           success: false,
           error: error.message || 'Failed to send message',
@@ -813,40 +945,55 @@ const ChatsProvider = ({ children }) => {
         count: messageIds.length,
       })
 
+      // ✅ Update local state IMMEDIATELY
+      setMessages((prev) => {
+        const chatMessages = prev[chatId] || []
+        const updatedMessages = chatMessages.map((msg) => {
+          const msgId = msg._id || msg.id
+          if (messageIds.includes(msgId) && msg.senderId !== user.uid) {
+            console.log(
+              '📬 Optimistically updating message to delivered:',
+              msgId
+            )
+            return {
+              ...msg,
+              status: 'delivered',
+              deliveredAt: new Date().toISOString(),
+              deliveredBy: Array.from(
+                new Set([...(msg.deliveredBy || []), user.uid])
+              ),
+              _updateCount: (msg._updateCount || 0) + 1,
+            }
+          }
+          return msg
+        })
+
+        messageUpdateCounter.current += 1
+
+        return {
+          ...prev,
+          [chatId]: updatedMessages,
+        }
+      })
+
       try {
         const data = await post(
           `${API_URL}/mark-messages-delivered/${chatId}`,
-          {
-            messageIds,
-          }
+          { messageIds }
         )
 
         console.log('📬 Backend response:', data)
 
-        if (data.success) {
-          console.log('📬 Updating local state for delivered messages')
-          // Update local state immediately
-          setMessages((prev) => ({
-            ...prev,
-            [chatId]: (prev[chatId] || []).map((msg) => {
-              const msgId = msg._id || msg.id
-              if (messageIds.includes(msgId) && msg.senderId !== user.uid) {
-                console.log('📬 Updating message to delivered:', msgId)
-                return {
-                  ...msg,
-                  status: 'delivered',
-                  deliveredAt: new Date().toISOString(),
-                  deliveredBy: [...(msg.deliveredBy || []), user.uid],
-                }
-              }
-              return msg
-            }),
-          }))
+        // ✅ If backend fails, revert the optimistic update
+        if (!data.success) {
+          console.error('❌ Backend failed, reverting optimistic update')
+          // Could add revert logic here if needed
         }
 
         return data
       } catch (error) {
-        console.error('markMessagesAsDelivered error:', error)
+        console.error('❌ markMessagesAsDelivered error:', error)
+        // Revert optimistic update on error
         return {
           success: false,
           error: error.message || 'Failed to mark messages as delivered',
@@ -855,6 +1002,7 @@ const ChatsProvider = ({ children }) => {
     },
     [isReady, post, user?.uid]
   )
+
   const markMessagesAsRead = useCallback(
     async (chatId, messageIds = null) => {
       if (!isReady || !user?.uid) {
@@ -868,40 +1016,49 @@ const ChatsProvider = ({ children }) => {
         count: messageIds?.length,
       })
 
+      // ✅ Update local state IMMEDIATELY
+      setMessages((prev) => {
+        const chatMessages = prev[chatId] || []
+        const updatedMessages = chatMessages.map((msg) => {
+          const msgId = msg._id || msg.id
+          const shouldMark = messageIds
+            ? messageIds.includes(msgId)
+            : msg.senderId !== user.uid
+
+          if (shouldMark && msg.senderId !== user.uid) {
+            console.log('👁️ Optimistically updating message to read:', msgId)
+            return {
+              ...msg,
+              status: 'read',
+              readAt: new Date().toISOString(),
+              readBy: Array.from(new Set([...(msg.readBy || []), user.uid])),
+              _updateCount: (msg._updateCount || 0) + 1,
+            }
+          }
+          return msg
+        })
+
+        messageUpdateCounter.current += 1
+
+        return {
+          ...prev,
+          [chatId]: updatedMessages,
+        }
+      })
+
       try {
         const body = messageIds ? { messageIds } : {}
         const data = await post(`${API_URL}/mark-messages-read/${chatId}`, body)
 
         console.log('👁️ Backend response:', data)
 
-        if (data.success) {
-          console.log('👁️ Updating local state for read messages')
-          // Update local state immediately
-          setMessages((prev) => ({
-            ...prev,
-            [chatId]: (prev[chatId] || []).map((msg) => {
-              const msgId = msg._id || msg.id
-              const shouldMark = messageIds
-                ? messageIds.includes(msgId)
-                : msg.senderId !== user.uid
-
-              if (shouldMark) {
-                console.log('👁️ Updating message to read:', msgId)
-                return {
-                  ...msg,
-                  status: 'read',
-                  readAt: new Date().toISOString(),
-                  readBy: [...(msg.readBy || []), user.uid],
-                }
-              }
-              return msg
-            }),
-          }))
+        if (!data.success) {
+          console.error('❌ Backend failed for mark read')
         }
 
         return data
       } catch (error) {
-        console.error('markMessagesAsRead error:', error)
+        console.error('❌ markMessagesAsRead error:', error)
         return {
           success: false,
           error: error.message || 'Failed to mark messages as read',
@@ -935,8 +1092,23 @@ const ChatsProvider = ({ children }) => {
 
   const sendTypingIndicator = useCallback(
     (chatId, isTyping) => {
+      if (!wsConnected) {
+        console.warn('⚠️ Cannot send typing - WebSocket not connected')
+        return
+      }
+
       const chat = chats.find((c) => (c._id || c.id) === chatId)
-      if (!chat) return
+      if (!chat) {
+        console.warn('⚠️ Cannot send typing - Chat not found')
+        return
+      }
+
+      console.log('⌨️ Sending typing indicator:', {
+        chatId,
+        isTyping,
+        platform: Platform.OS,
+        participants: chat.participants,
+      })
 
       wsSend({
         type: isTyping ? 'typing-start' : 'typing-stop',
@@ -945,16 +1117,25 @@ const ChatsProvider = ({ children }) => {
       })
 
       if (isTyping) {
+        // Clear any existing timeout for this chat
         if (typingTimeoutRef.current[chatId]) {
           clearTimeout(typingTimeoutRef.current[chatId])
         }
 
+        // Auto-stop typing after 5 seconds
         typingTimeoutRef.current[chatId] = setTimeout(() => {
+          console.log('⏰ Auto-stopping typing for chat:', chatId)
           sendTypingIndicator(chatId, false)
         }, 5000)
+      } else {
+        // Clear timeout when explicitly stopping
+        if (typingTimeoutRef.current[chatId]) {
+          clearTimeout(typingTimeoutRef.current[chatId])
+          delete typingTimeoutRef.current[chatId]
+        }
       }
     },
-    [chats, wsSend]
+    [chats, wsSend, wsConnected]
   )
 
   const updateUserStatus = useCallback(
@@ -1074,6 +1255,40 @@ const ChatsProvider = ({ children }) => {
       }
     },
     [get, isReady]
+  )
+
+  const deleteCallLog = useCallback(
+    async (callId) => {
+      if (!isReady || !user?.uid) {
+        return { success: false, error: 'Auth not ready' }
+      }
+
+      try {
+        const data = await del(`${API_URL}/delete-call/${callId}`)
+
+        if (data.success) {
+          // Update local state - remove from all chats' call logs
+          setCalls((prev) => {
+            const updated = { ...prev }
+            Object.keys(updated).forEach((chatId) => {
+              updated[chatId] = updated[chatId].filter(
+                (call) => (call._id || call.id) !== callId
+              )
+            })
+            return updated
+          })
+        }
+
+        return data
+      } catch (error) {
+        console.error('deleteCallLog error:', error)
+        return {
+          success: false,
+          error: error.message || 'Failed to delete call log',
+        }
+      }
+    },
+    [isReady, del, user?.uid]
   )
 
   // Utility functions
@@ -1213,6 +1428,7 @@ const ChatsProvider = ({ children }) => {
     endCall,
     getCallHistory,
     dismissCallNotification,
+    deleteCallLog,
 
     sendTypingIndicator,
     getTypingUsersForChat,
