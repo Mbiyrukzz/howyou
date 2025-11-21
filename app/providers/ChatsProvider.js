@@ -366,44 +366,73 @@ const ChatsProvider = ({ children }) => {
   const handleMessagesRead = useCallback((data) => {
     const { chatId, messageIds, readBy, timestamp } = data
 
-    console.log(`👁️ [WS] Messages read:`, {
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('👁️ [WS] MESSAGE-READ EVENT RECEIVED')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('📥 Payload:', {
       chatId,
       messageIds,
       readBy,
-      count: messageIds?.length,
+      timestamp,
+      messageIdsType: Array.isArray(messageIds) ? 'array' : typeof messageIds,
+      messageIdsLength: messageIds?.length,
     })
 
     // ✅ Handle both single messageId (legacy) and array of messageIds
     const ids = Array.isArray(messageIds) ? messageIds : [messageIds]
+    console.log('🔄 Processed IDs:', ids)
 
     setMessages((prev) => {
       const chatMessages = prev[chatId] || []
+      console.log(`📊 Current chat has ${chatMessages.length} messages`)
 
       // Find which messages actually exist
       const validMessageIds = ids.filter((id) =>
         chatMessages.some((msg) => (msg._id || msg.id) === id)
       )
 
+      console.log(
+        `✅ Valid message IDs found: ${validMessageIds.length}`,
+        validMessageIds
+      )
+
       if (validMessageIds.length === 0) {
         console.warn(`⚠️ No valid messages for read update in chat ${chatId}`)
+        console.warn(
+          'Available message IDs:',
+          chatMessages.map((m) => m._id || m.id)
+        )
         return prev
       }
-
-      console.log(`👁️ Updating ${validMessageIds.length} messages to read`)
 
       // ✅ Update all matching messages
       const updatedMessages = chatMessages.map((msg) => {
         const msgId = msg._id || msg.id
 
         if (validMessageIds.includes(msgId)) {
-          console.log(`👁️ Updating message ${msgId} to read`)
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+          console.log(`👁️ UPDATING MESSAGE ${msgId} TO READ`)
+          console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+          console.log('Before:', {
+            status: msg.status,
+            readBy: msg.readBy,
+            updateCount: msg._updateCount,
+          })
+
+          const newReadBy = Array.from(new Set([...(msg.readBy || []), readBy]))
+
+          console.log('After:', {
+            status: 'read',
+            readBy: newReadBy,
+            updateCount: (msg._updateCount || 0) + 1,
+          })
 
           return {
             ...msg,
             status: 'read',
             readAt: timestamp || new Date().toISOString(),
-            readBy: Array.from(new Set([...(msg.readBy || []), readBy])),
-            _updateCount: (msg._updateCount || 0) + 1,
+            readBy: newReadBy,
+            _updateCount: (msg._updateCount || 0) + 1, // ✅ Force re-render
           }
         }
 
@@ -411,12 +440,20 @@ const ChatsProvider = ({ children }) => {
       })
 
       messageUpdateCounter.current += 1
+      console.log(
+        '✅ Updated messageUpdateCounter to:',
+        messageUpdateCounter.current
+      )
 
       return {
         ...prev,
         [chatId]: updatedMessages,
       }
     })
+
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+    console.log('✅ MESSAGE-READ HANDLER COMPLETE')
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
   }, [])
   const handleLastSeenUpdate = useCallback((data) => {
     console.log('👁️ Last seen update received:', {

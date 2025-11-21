@@ -591,11 +591,13 @@ const MessageStatusIndicator = React.memo(({ status, isOwn }) => {
               marginLeft: 4,
             }}
           >
-            <Ionicons name="eye" size={12} color="rgba(255,255,255,0.8)" />
+            {/* ✅ GREEN eye icon for read */}
+            <Ionicons name="eye" size={12} color="#f1fff7ff" />
+            {/* ✅ GREEN double check for read */}
             <Ionicons
               name="checkmark-done"
               size={12}
-              color="rgba(255,255,255,0.8)"
+              color="rgba(243, 250, 143, 1)"
               style={{ marginLeft: 2 }}
             />
           </View>
@@ -603,6 +605,7 @@ const MessageStatusIndicator = React.memo(({ status, isOwn }) => {
       case 'delivered':
         return (
           <View style={{ marginLeft: 4 }}>
+            {/* White double check for delivered */}
             <Ionicons
               name="checkmark-done"
               size={12}
@@ -614,6 +617,7 @@ const MessageStatusIndicator = React.memo(({ status, isOwn }) => {
       default:
         return (
           <View style={{ marginLeft: 4 }}>
+            {/* White single check for sent */}
             <Ionicons
               name="checkmark"
               size={12}
@@ -1241,37 +1245,38 @@ export default function ChatDetailScreen({
     markAsDelivered()
   }, [messages.length, chatId, markMessagesAsDelivered, user?.uid])
 
-  // ✅ SECOND: Mark messages as read (runs after a delay)
   useEffect(() => {
     const markAsRead = async () => {
-      if (!chatId || !messages.length || !markMessagesAsRead) {
+      if (!chatId || !messages.length || !markMessagesAsRead || !user?.uid) {
         console.log('⏭️ Skipping read - missing deps:', {
           chatId: !!chatId,
           messagesLength: messages.length,
           hasMarkFunction: !!markMessagesAsRead,
+          hasUser: !!user?.uid,
         })
         return
       }
 
-      // Get messages that need read status
+      // ✅ FIX: Get messages FROM OTHER USERS that are delivered but not read by ME
       const unreadMessages = messages
         .filter((msg) => {
-          const isOwnMessage = msg.senderId === user?.uid
-          // ✅ Only mark as read if status is 'delivered' (not 'sent')
-          const needsRead = msg.status === 'delivered'
-          const notAlreadyRead = !(msg.readBy || []).includes(user?.uid)
+          const isOwnMessage = msg.senderId === user.uid
+          const isDelivered = msg.status === 'delivered'
+          const notAlreadyReadByMe = !(msg.readBy || []).includes(user.uid)
 
           console.log('👁️ Message read check:', {
             msgId: msg._id || msg.id,
+            senderId: msg.senderId,
+            currentUserId: user.uid,
             isOwnMessage,
-            needsRead,
-            notAlreadyRead,
+            isDelivered,
+            notAlreadyReadByMe,
             currentStatus: msg.status,
             readBy: msg.readBy,
           })
 
-          // ✅ Only mark messages that are delivered and from other users
-          return !isOwnMessage && needsRead && notAlreadyRead
+          // ✅ CRITICAL: Only mark messages from OTHER users (not own messages)
+          return !isOwnMessage && isDelivered && notAlreadyReadByMe
         })
         .map((msg) => msg._id || msg.id)
 
@@ -1296,6 +1301,7 @@ export default function ChatDetailScreen({
 
     markAsRead()
   }, [messages, chatId, markMessagesAsRead, user?.uid])
+
   // Update the text input to use typing indicators
   const handleMessageChange = (text) => {
     handleTypingInput(text, setMessage)
