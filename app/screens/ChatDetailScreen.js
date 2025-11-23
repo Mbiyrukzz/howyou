@@ -26,7 +26,7 @@ import * as DocumentPicker from 'expo-document-picker'
 import * as ImagePicker from 'expo-image-picker'
 import * as MediaLibrary from 'expo-media-library'
 import { Camera } from 'expo-camera'
-import { Audio } from 'expo-av'
+import { Audio, Video } from 'expo-av'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import LoadingIndicator from '../components/LoadingIndicator'
@@ -138,18 +138,6 @@ const MessagesContainer = styled.View`
   padding: 16px;
 `
 
-const MessageItemWrapper = styled.View`
-  flex-direction: ${(props) => (props.isOwn ? 'row-reverse' : 'row')};
-  align-items: center;
-  margin-vertical: 4px;
-  position: relative;
-  pointer-events: auto;
-`
-
-const MessageItemContent = styled.View`
-  flex: 1;
-`
-
 const MessageBubble = styled.View`
   max-width: ${screenWidth * 0.75}px;
   margin-vertical: 4px;
@@ -237,12 +225,6 @@ const MessageTime = styled.Text`
   align-self: ${(props) => (props.isOwn ? 'flex-end' : 'flex-start')};
 `
 
-const MessageStatus = styled.Text`
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.8);
-  margin-top: 2px;
-`
-
 const DateSeparator = styled.View`
   align-items: center;
   margin: 20px 0;
@@ -316,11 +298,6 @@ const LoadingContainer = styled.View`
   flex: 1;
   justify-content: center;
   align-items: center;
-`
-
-const LoadingTextContainer = styled.Text`
-  color: #7f8c8d;
-  font-size: 16px;
 `
 
 const ErrorContainer = styled.View`
@@ -493,34 +470,83 @@ const RemoveFileButton = styled.TouchableOpacity`
   align-items: center;
 `
 
+const MessageVideoContainer = styled.TouchableOpacity`
+  width: ${screenWidth * 0.6}px;
+  height: 200px;
+  border-radius: 10px;
+  margin-top: ${(props) => (props.hasText ? '8px' : '0px')};
+  background-color: #000;
+  overflow: hidden;
+  position: relative;
+`
+
+const VideoPlayerOverlay = styled.View`
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  justify-content: center;
+  align-items: center;
+  background-color: rgba(0, 0, 0, 0.3);
+`
+
+const VideoPlayButton = styled.TouchableOpacity`
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+  background-color: rgba(255, 255, 255, 0.9);
+  justify-content: center;
+  align-items: center;
+`
+
 const MessageAudioPlayer = styled.View`
   flex-direction: row;
   align-items: center;
   margin-top: 8px;
   background-color: ${(props) =>
-    props.isOwn ? 'rgba(255, 255, 255, 0.2)' : '#f0f0f0'};
-  padding: 10px;
-  border-radius: 8px;
+    props.isOwn ? 'rgba(255, 255, 255, 0.15)' : '#f0f0f0'};
+  padding: 12px;
+  border-radius: 20px;
+  min-width: 220px;
 `
 
 const PlayButton = styled.TouchableOpacity`
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
   background-color: ${(props) =>
     props.isOwn ? 'rgba(255, 255, 255, 0.3)' : '#3498db'};
   justify-content: center;
   align-items: center;
-  margin-right: 8px;
+  margin-right: 12px;
+`
+
+const AudioWaveform = styled.View`
+  flex: 1;
+  height: 30px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  margin-right: 12px;
+`
+
+const WaveBar = styled.View`
+  width: 3px;
+  background-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.6)' : '#3498db'};
+  border-radius: 2px;
+  height: ${(props) => props.height || 10}px;
 `
 
 const AudioInfo = styled.View`
-  flex: 1;
+  justify-content: center;
 `
 
 const AudioDuration = styled.Text`
-  font-size: 12px;
-  color: ${(props) => (props.isOwn ? '#fff' : '#7f8c8d')};
+  font-size: 13px;
+  font-weight: 600;
+  color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
 `
 
 const getUserColor = (userId) => {
@@ -637,6 +663,7 @@ const MessageItem = React.memo(
     previousItem,
     currentUserId,
     users,
+    navigation,
     onImagePress,
     onLongPress,
     onThreeDotsPress,
@@ -688,7 +715,12 @@ const MessageItem = React.memo(
     useEffect(() => {
       return () => {
         if (sound) {
-          sound.unloadAsync()
+          if (Platform.OS === 'web') {
+            sound.pause()
+            sound.currentTime = 0
+          } else {
+            sound.unloadAsync().catch(console.error)
+          }
         }
       }
     }, [sound])
@@ -703,48 +735,97 @@ const MessageItem = React.memo(
       try {
         // Stop current playback if exists
         if (sound && isPlaying) {
-          await sound.stopAsync()
-          await sound.unloadAsync()
+          if (Platform.OS === 'web') {
+            sound.pause()
+            sound.currentTime = 0
+          } else {
+            await sound.stopAsync()
+            await sound.unloadAsync()
+          }
           setSound(null)
           setIsPlaying(false)
           return
         }
 
-        // Create and play new sound
-        const { sound: newSound } = await Audio.Sound.createAsync(
-          { uri: audioUrl },
-          { shouldPlay: true },
-          (status) => {
-            // Handle playback status updates
-            if (status.isLoaded) {
-              if (status.durationMillis) {
-                setAudioDuration(Math.floor(status.durationMillis / 1000))
-              }
-              if (status.didJustFinish) {
-                setIsPlaying(false)
-                newSound.unloadAsync()
-                setSound(null)
+        if (Platform.OS === 'web') {
+          const audio = new window.Audio(audioUrl)
+
+          audio.addEventListener('loadedmetadata', () => {
+            console.log('Audio metadata loaded, duration:', audio.duration)
+            setAudioDuration(Math.floor(audio.duration))
+          })
+
+          audio.addEventListener('ended', () => {
+            setIsPlaying(false)
+            setSound(null)
+          })
+
+          audio.addEventListener('error', (e) => {
+            console.error('Audio playback error:', e)
+            alert('Cannot play this audio format in browser')
+            setIsPlaying(false)
+            setSound(null)
+          })
+
+          audio.load()
+          await audio.play()
+          setSound(audio)
+          setIsPlaying(true)
+        } else {
+          // ✅ FIXED: Proper audio mode for mobile
+          await Audio.setAudioModeAsync({
+            allowsRecordingIOS: false,
+            playsInSilentModeIOS: true,
+            staysActiveInBackground: false,
+            shouldDuckAndroid: true,
+            playThroughEarpieceAndroid: false, // ✅ Use speaker
+          })
+
+          const { sound: newSound } = await Audio.Sound.createAsync(
+            { uri: audioUrl },
+            {
+              shouldPlay: true,
+              volume: 1.0, // ✅ Full volume
+            },
+            (status) => {
+              if (status.isLoaded) {
+                if (status.durationMillis) {
+                  setAudioDuration(Math.floor(status.durationMillis / 1000))
+                }
+                if (status.didJustFinish) {
+                  setIsPlaying(false)
+                  newSound.unloadAsync()
+                  setSound(null)
+                }
               }
             }
-          }
-        )
+          )
 
-        setSound(newSound)
-        setIsPlaying(true)
+          setSound(newSound)
+          setIsPlaying(true)
+        }
       } catch (error) {
         console.error('Error playing audio:', error)
-        Alert.alert(
-          'Playback Error',
-          'Unable to play this audio file. It may be corrupted or in an unsupported format.'
-        )
+
+        let errorMessage = 'Unable to play this audio file.'
+        if (Platform.OS === 'web') {
+          errorMessage += ' Your browser may not support this audio format.'
+          alert(errorMessage)
+        } else {
+          Alert.alert('Playback Error', errorMessage)
+        }
         setIsPlaying(false)
+
         if (sound) {
-          sound.unloadAsync().catch(console.error)
+          if (Platform.OS === 'web') {
+            sound.pause()
+          } else {
+            sound.unloadAsync().catch(console.error)
+          }
           setSound(null)
         }
       }
     }
-
     const formatAudioDuration = (seconds) => {
       const mins = Math.floor(seconds / 60)
       const secs = seconds % 60
@@ -756,29 +837,67 @@ const MessageItem = React.memo(
 
       return item.files
         .map((file, index) => {
+          // ✅ AUDIO RENDERING
           if (item.type === 'audio' || file.type === 'audio') {
+            const waveHeights = [8, 15, 20, 12, 18, 25, 15, 10, 20, 15]
+
             return (
               <MessageAudioPlayer key={`audio-${index}`} isOwn={isOwn}>
                 <PlayButton isOwn={isOwn} onPress={() => playAudio(file.url)}>
                   <Ionicons
                     name={isPlaying ? 'pause' : 'play'}
                     size={20}
-                    color="#fff"
+                    color={isOwn ? '#fff' : '#fff'}
                   />
                 </PlayButton>
+
+                <AudioWaveform>
+                  {waveHeights.map((height, i) => (
+                    <WaveBar key={i} height={height} isOwn={isOwn} />
+                  ))}
+                </AudioWaveform>
+
                 <AudioInfo>
-                  <FileText isOwn={isOwn}>
-                    {file.originalname || `Audio ${index + 1}`}
-                  </FileText>
-                  {audioDuration > 0 && (
-                    <AudioDuration isOwn={isOwn}>
-                      {formatAudioDuration(audioDuration)}
-                    </AudioDuration>
-                  )}
+                  <AudioDuration isOwn={isOwn}>
+                    {audioDuration > 0
+                      ? formatAudioDuration(audioDuration)
+                      : '0:00'}
+                  </AudioDuration>
                 </AudioInfo>
               </MessageAudioPlayer>
             )
-          } else if (item.type === 'image' && file.url) {
+          }
+
+          // ✅ VIDEO RENDERING - Fixed to prevent duplicate rendering
+          else if (item.type === 'video' && file.url) {
+            return (
+              <MessageVideoContainer
+                key={`video-${index}`}
+                hasText={!!(item.content && item.content.trim())}
+                onPress={() => {
+                  // Navigate to full-screen video player
+                  navigation.navigate('VideoPlayer', { videoUrl: file.url })
+                }}
+              >
+                <Video
+                  source={{ uri: file.url }}
+                  style={{ width: '100%', height: '100%' }}
+                  resizeMode="contain"
+                  shouldPlay={false}
+                  useNativeControls={false} // ✅ Disable native controls for preview
+                  isLooping={false}
+                />
+                <VideoPlayerOverlay>
+                  <VideoPlayButton>
+                    <Ionicons name="play" size={30} color="#2c3e50" />
+                  </VideoPlayButton>
+                </VideoPlayerOverlay>
+              </MessageVideoContainer>
+            )
+          }
+
+          // ✅ IMAGE RENDERING
+          else if (item.type === 'image' && file.url) {
             return (
               <MessageImageContainer
                 key={`image-${index}`}
@@ -808,7 +927,10 @@ const MessageItem = React.memo(
                 )}
               </MessageImageContainer>
             )
-          } else if (item.type === 'file' && file.url) {
+          }
+
+          // ✅ FILE RENDERING
+          else if (item.type === 'file' && file.url) {
             return (
               <MessageFile key={`file-${index}`} isOwn={isOwn}>
                 <FileIcon
@@ -822,6 +944,7 @@ const MessageItem = React.memo(
               </MessageFile>
             )
           }
+
           return null
         })
         .filter(Boolean)
@@ -946,12 +1069,8 @@ const MessageItem = React.memo(
                 {item.content && item.content.trim().length > 0 && (
                   <MessageText isOwn={isOwn}>{item.content.trim()}</MessageText>
                 )}
-                {renderFiles()}
-                {item.type === 'video' && item.files?.[0]?.url && (
-                  <MessageVideo>
-                    <Ionicons name="play-circle" size={40} color="white" />
-                  </MessageVideo>
-                )}
+                {renderFiles()}{' '}
+                {/* ✅ Only call renderFiles() here, nothing else */}
                 <View
                   style={{
                     flexDirection: 'row',
@@ -966,7 +1085,6 @@ const MessageItem = React.memo(
                       (edited)
                     </MessageEditedLabel>
                   )}
-                  {/* ✅ Add message status indicator */}
                   <MessageStatusIndicator status={item.status} isOwn={isOwn} />
                 </View>
               </MessageBubble>
@@ -1077,6 +1195,8 @@ export default function ChatDetailScreen({
   const [recording, setRecording] = useState(null)
   const [recordingDuration, setRecordingDuration] = useState(0)
   const [showRecordingUI, setShowRecordingUI] = useState(false)
+  const [recordingVideo, setRecordingVideo] = useState(false)
+  const [videoUri, setVideoUri] = useState(null)
   const [selectedFiles, setSelectedFiles] = useState([])
   const [actionMenuVisible, setActionMenuVisible] = useState(false)
   const [selectedMessage, setSelectedMessage] = useState(null)
@@ -1085,13 +1205,6 @@ export default function ChatDetailScreen({
   const [hoveredMessageId, setHoveredMessageId] = useState(null)
   const [savingEdit, setSavingEdit] = useState(false)
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
-  const [audioPermission, setAudioPermission] = useState(null)
-
-  console.log('🚀 ChatDetailScreen mounted, initial states:', {
-    webDropdownVisible,
-    selectedMessage,
-    dropdownPosition,
-  })
 
   const recordingIntervalRef = useRef(null)
   const flatListRef = useRef(null)
@@ -1524,6 +1637,7 @@ export default function ChatDetailScreen({
   const showImagePickerOptions = () => {
     const options = [
       'Take Photo',
+      'Record Video', // ✅ Add this
       'Choose from Library',
       'Choose File',
       'Cancel',
@@ -1533,7 +1647,7 @@ export default function ChatDetailScreen({
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options,
-          cancelButtonIndex: 3,
+          cancelButtonIndex: 4, // ✅ Update cancel index
         },
         (buttonIndex) => {
           switch (buttonIndex) {
@@ -1541,21 +1655,70 @@ export default function ChatDetailScreen({
               takePhoto()
               break
             case 1:
-              pickImageFromLibrary()
+              recordVideo() // ✅ Add this
               break
             case 2:
+              pickImageFromLibrary()
+              break
+            case 3:
               pickFile()
               break
           }
         }
       )
     } else {
-      Alert.alert('Select Image', 'Choose an option', [
+      Alert.alert('Select Media', 'Choose an option', [
         { text: 'Take Photo', onPress: takePhoto },
+        { text: 'Record Video', onPress: recordVideo }, // ✅ Add this
         { text: 'Choose from Library', onPress: pickImageFromLibrary },
         { text: 'Choose File', onPress: pickFile },
         { text: 'Cancel', style: 'cancel' },
       ])
+    }
+  }
+
+  // ✅ Add recordVideo function:
+  const recordVideo = async () => {
+    try {
+      if (Platform.OS === 'web') {
+        Alert.alert(
+          'Video Recording Unavailable',
+          'Video recording is not supported in the web browser. Please use the mobile app.'
+        )
+        return
+      }
+
+      const permissions = await Camera.requestCameraPermissionsAsync()
+      if (permissions.status !== 'granted') {
+        Alert.alert(
+          'Permission Denied',
+          'Camera permission is required to record videos'
+        )
+        return
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Videos,
+        allowsEditing: true,
+        quality: 0.8,
+        videoMaxDuration: 60, // 60 seconds max
+      })
+
+      if (result.canceled || !result.assets?.[0]) {
+        return
+      }
+
+      const asset = result.assets[0]
+      await handleSendMessage([
+        {
+          uri: asset.uri,
+          name: asset.fileName || `video_${Date.now()}.mp4`,
+          type: 'video/mp4',
+        },
+      ])
+    } catch (error) {
+      console.error('Record video error:', error)
+      Alert.alert('Error', 'Failed to record video: ' + error.message)
     }
   }
 
@@ -1669,9 +1832,8 @@ export default function ChatDetailScreen({
     }
   }
 
-  // Replace the stopRecording function:
   const stopRecording = async () => {
-    if (!recording) return
+    if (!recording) return null
 
     try {
       if (recordingIntervalRef.current) {
@@ -1679,27 +1841,46 @@ export default function ChatDetailScreen({
       }
 
       if (Platform.OS === 'web') {
-        // Web: Stop MediaRecorder
-        if (
-          recording.mediaRecorder &&
-          recording.mediaRecorder.state !== 'inactive'
-        ) {
-          recording.mediaRecorder.stop()
+        // Web: Stop MediaRecorder and create blob
+        return new Promise((resolve) => {
+          if (
+            recording.mediaRecorder &&
+            recording.mediaRecorder.state !== 'inactive'
+          ) {
+            recording.mediaRecorder.addEventListener('dataavailable', (e) => {
+              if (e.data.size > 0) {
+                recording.chunks.push(e.data)
+              }
+            })
 
-          // Stop all tracks
-          if (recording.stream) {
-            recording.stream.getTracks().forEach((track) => track.stop())
+            recording.mediaRecorder.addEventListener('stop', () => {
+              // Create blob from all chunks
+              const audioBlob = new Blob(recording.chunks, {
+                type: 'audio/webm',
+              })
+              const audioUrl = URL.createObjectURL(audioBlob)
+
+              // Stop all tracks
+              if (recording.stream) {
+                recording.stream.getTracks().forEach((track) => track.stop())
+              }
+
+              setShowRecordingUI(false)
+              setRecordingDuration(0)
+
+              resolve({
+                blob: audioBlob,
+                url: audioUrl,
+                name: `recording_${Date.now()}.webm`,
+                type: 'audio/webm',
+              })
+            })
+
+            recording.mediaRecorder.stop()
+          } else {
+            resolve(null)
           }
-
-          // Wait for the blob to be ready
-          await new Promise((resolve) => {
-            recording.mediaRecorder.onstop = resolve
-          })
-        }
-
-        setShowRecordingUI(false)
-        setRecordingDuration(0)
-        return recording
+        })
       } else {
         // Mobile: Stop Expo Audio Recording
         await recording.stopAndUnloadAsync()
@@ -1713,7 +1894,11 @@ export default function ChatDetailScreen({
         setShowRecordingUI(false)
         setRecordingDuration(0)
 
-        return uri
+        return {
+          uri,
+          name: `recording_${Date.now()}.m4a`,
+          type: 'audio/m4a',
+        }
       }
     } catch (err) {
       console.error('Failed to stop recording:', err)
@@ -1761,35 +1946,33 @@ export default function ChatDetailScreen({
     }
   }
 
-  // Replace the sendRecording function:
   const sendRecording = async () => {
     const recordingData = await stopRecording()
-    if (!recordingData) return
+    if (!recordingData) {
+      Alert.alert('Error', 'No recording data available')
+      return
+    }
 
     try {
-      if (Platform.OS === 'web') {
-        // Web: Convert blob to File
-        const audioFile = new File(
-          [recordingData.blob],
-          `recording_${Date.now()}.webm`,
-          { type: 'audio/webm' }
-        )
+      console.log('📤 Sending recording:', recordingData)
 
+      if (Platform.OS === 'web') {
+        // Web: Pass blob directly
         await handleSendMessage([
           {
-            uri: recordingData.url,
-            name: audioFile.name,
-            type: 'audio/webm',
-            blob: recordingData.blob, // Include blob for FormData
+            uri: recordingData.url, // Blob URL for preview
+            name: recordingData.name,
+            type: recordingData.type,
+            blob: recordingData.blob, // ✅ Actual blob for upload
           },
         ])
       } else {
-        // Mobile: Use URI
+        // Mobile: Use file URI
         await handleSendMessage([
           {
-            uri: recordingData,
-            name: `recording_${Date.now()}.m4a`,
-            type: 'audio/m4a',
+            uri: recordingData.uri,
+            name: recordingData.name,
+            type: recordingData.type,
           },
         ])
       }
@@ -1923,28 +2106,38 @@ export default function ChatDetailScreen({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ImagePicker.MediaTypeOptions.All, // ✅ Allow images and videos
         allowsEditing: true,
         aspect: [4, 3],
         quality: 0.8,
+        videoMaxDuration: 60, // ✅ 60 seconds max for videos
       })
 
       if (!result.canceled && result.assets?.[0]) {
         const asset = result.assets[0]
+
+        // Determine file type
+        let fileType = asset.type || 'image/jpeg'
+        let fileName = asset.fileName || `file_${Date.now()}`
+
+        if (asset.type === 'video') {
+          fileType = 'video/mp4'
+          fileName = fileName.includes('.mp4') ? fileName : `${fileName}.mp4`
+        }
+
         await handleSendMessage([
           {
             uri: asset.uri,
-            name: asset.fileName || `image_${Date.now()}.jpg`,
-            type: asset.type || 'image/jpeg',
+            name: fileName,
+            type: fileType,
           },
         ])
       }
     } catch (error) {
-      console.error('Pick image error:', error)
-      Alert.alert('Error', 'Failed to pick image')
+      console.error('Pick media error:', error)
+      Alert.alert('Error', 'Failed to pick media')
     }
   }
-
   const takePhoto = async () => {
     try {
       if (Platform.OS === 'web') {
@@ -2156,37 +2349,41 @@ export default function ChatDetailScreen({
   }, [isInSidebar])
 
   /* ---------- render item (message or call log) ---------- */
-  const renderItem = useCallback(({ item, index }) => {
-    if (item.type === 'call') {
+  const renderItem = useCallback(
+    ({ item, index }) => {
+      if (item.type === 'call') {
+        return (
+          <CallLogItem
+            callLog={item.data}
+            onCallback={() => handleCallCallback(item.data)}
+            onDelete={handleDeleteCallLog}
+          />
+        )
+      }
+
+      // Render message
+      const previousItem =
+        index > 0 && combinedItems[index - 1].type === 'message'
+          ? combinedItems[index - 1].data
+          : null
+
       return (
-        <CallLogItem
-          callLog={item.data}
-          onCallback={() => handleCallCallback(item.data)}
-          onDelete={handleDeleteCallLog}
+        <MessageItem
+          item={item.data}
+          previousItem={previousItem}
+          currentUserId={user?.uid}
+          users={users}
+          navigation={navigation} // ✅ ADD THIS - Pass navigation prop
+          onImagePress={handleImagePress}
+          onLongPress={handleMessageLongPress}
+          onThreeDotsPress={handleMessageThreeDotsPress}
+          hoveredMessageId={hoveredMessageId}
+          setHoveredMessageId={setHoveredMessageId}
         />
       )
-    }
-
-    // Render message
-    const previousItem =
-      index > 0 && combinedItems[index - 1].type === 'message'
-        ? combinedItems[index - 1].data
-        : null
-
-    return (
-      <MessageItem
-        item={item.data}
-        previousItem={previousItem}
-        currentUserId={user?.uid}
-        users={users}
-        onImagePress={handleImagePress}
-        onLongPress={handleMessageLongPress}
-        onThreeDotsPress={handleMessageThreeDotsPress}
-        hoveredMessageId={hoveredMessageId}
-        setHoveredMessageId={setHoveredMessageId}
-      />
-    )
-  })
+    },
+    [combinedItems, user?.uid, users, navigation, hoveredMessageId]
+  )
 
   /* ---------- render ---------- */
   if (!chatId) {

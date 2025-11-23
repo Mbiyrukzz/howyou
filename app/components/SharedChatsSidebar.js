@@ -1,4 +1,4 @@
-// components/SharedChatsSidebar.js - Complete Self-Contained Chats Sidebar
+// components/SharedChatsSidebar.js - Complete Self-Contained Chats Sidebar with Mobile Gestures
 import React, { useState } from 'react'
 import {
   FlatList,
@@ -7,11 +7,13 @@ import {
   Modal,
   TouchableWithoutFeedback,
   View,
+  Animated,
 } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as ImagePicker from 'expo-image-picker'
+import { Swipeable } from 'react-native-gesture-handler'
 
 /* =================== Styled Components =================== */
 const Column = styled.View`
@@ -270,6 +272,22 @@ const FABGradient = styled(LinearGradient).attrs({
   align-items: center;
 `
 
+// Swipe Action Components
+const SwipeActionContainer = styled(Animated.View)`
+  flex: 1;
+  justify-content: center;
+  align-items: flex-end;
+  padding-right: 20px;
+`
+
+const DeleteButton = styled.TouchableOpacity`
+  background-color: #dc2626;
+  justify-content: center;
+  align-items: center;
+  width: 80px;
+  height: 100%;
+`
+
 // Modal Components
 const ModalOverlay = styled.View`
   flex: 1;
@@ -472,6 +490,7 @@ export default function SharedChatsSidebar({
   const [activeDropdown, setActiveDropdown] = useState(null)
   const [cameraModalVisible, setCameraModalVisible] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const swipeableRefs = React.useRef({})
 
   const filteredChats = chats.filter((chat) => {
     const otherParticipant = chat.participants?.find(
@@ -590,6 +609,11 @@ export default function SharedChatsSidebar({
 
     setActiveDropdown(null)
 
+    // Close swipeable if open
+    if (swipeableRefs.current[chatId]) {
+      swipeableRefs.current[chatId].close()
+    }
+
     if (Platform.OS === 'web') {
       if (
         window.confirm(`Delete chat with ${chatName}? This cannot be undone.`)
@@ -621,13 +645,34 @@ export default function SharedChatsSidebar({
     try {
       const result = await onDeleteChat(chatId)
       if (result && result.success) {
-        Alert.alert('Success', 'Chat deleted successfully')
+        // Success feedback only on mobile (web shows nothing)
+        if (Platform.OS !== 'web') {
+          Alert.alert('Success', 'Chat deleted successfully')
+        }
       } else if (result && result.error) {
         Alert.alert('Error', result.error || 'Failed to delete chat')
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to delete chat: ' + error.message)
     }
+  }
+
+  /* =================== Swipe Actions for Mobile =================== */
+
+  const renderRightActions = (progress, dragX, chat) => {
+    const trans = dragX.interpolate({
+      inputRange: [-100, 0],
+      outputRange: [0, 100],
+      extrapolate: 'clamp',
+    })
+
+    return (
+      <SwipeActionContainer style={{ transform: [{ translateX: trans }] }}>
+        <DeleteButton onPress={() => handleDeleteChat(chat)}>
+          <Ionicons name="trash-outline" size={24} color="#fff" />
+        </DeleteButton>
+      </SwipeActionContainer>
+    )
   }
 
   /* =================== Render Chat Item =================== */
@@ -674,9 +719,14 @@ export default function SharedChatsSidebar({
       ? `${isOwn ? 'You: ' : ''}${lastMessageText}`
       : 'No messages yet - start the conversation!'
 
-    return (
+    const chatItemContent = (
       <ChatItemContainer>
-        <ChatItem active={isActive} onPress={() => onSelectChat(item)}>
+        <ChatItem
+          active={isActive}
+          onPress={() => onSelectChat(item)}
+          onLongPress={() => Platform.OS !== 'web' && handleDeleteChat(item)}
+          delayLongPress={500}
+        >
           <ChatAvatar color={userColor}>
             {otherUser?.photoURL ? (
               <ChatAvatarImage source={{ uri: otherUser.photoURL }} />
@@ -729,6 +779,29 @@ export default function SharedChatsSidebar({
         )}
       </ChatItemContainer>
     )
+
+    // Wrap with Swipeable for mobile platforms
+    if (Platform.OS !== 'web') {
+      return (
+        <Swipeable
+          ref={(ref) => {
+            if (ref) {
+              swipeableRefs.current[chatId] = ref
+            }
+          }}
+          renderRightActions={(progress, dragX) =>
+            renderRightActions(progress, dragX, item)
+          }
+          overshootRight={false}
+          friction={2}
+          rightThreshold={40}
+        >
+          {chatItemContent}
+        </Swipeable>
+      )
+    }
+
+    return chatItemContent
   }
 
   /* =================== Main Render =================== */

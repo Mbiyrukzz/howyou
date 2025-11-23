@@ -5,7 +5,7 @@ import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://10.225.164.87:5000'
+const API_URL = 'http://10.197.1.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -66,6 +66,14 @@ const ChatsProvider = ({ children }) => {
 
         case 'user-last-seen':
           handleLastSeenUpdate(data)
+          break
+
+        case 'new-chat':
+          handleNewChat(data)
+          break
+
+        case 'chat-deleted':
+          handleChatDeleted(data)
           break
 
         case 'new-message':
@@ -221,6 +229,85 @@ const ChatsProvider = ({ children }) => {
     },
     [user?.uid]
   )
+
+  const handleNewChat = useCallback(
+    (data) => {
+      const { chat, createdBy, timestamp } = data
+
+      console.log('💬 New chat notification received:', {
+        chatId: chat._id,
+        createdBy,
+        isGroup: chat.isGroup,
+        participants: chat.participants,
+      })
+
+      // Check if this chat already exists (avoid duplicates)
+      setChats((prevChats) => {
+        const exists = prevChats.some(
+          (c) => (c._id || c.id) === (chat._id || chat.id)
+        )
+
+        if (exists) {
+          console.log('⚠️ Chat already exists in state, skipping')
+          return prevChats
+        }
+
+        console.log('✅ Adding new chat to state')
+        // Add to the beginning of the list (most recent)
+        return [chat, ...prevChats]
+      })
+
+      // Show a notification (optional)
+      if (Platform.OS !== 'web') {
+        const otherParticipant = chat.participants?.find((p) => p !== user?.uid)
+        const otherUser =
+          chat.participantDetails?.[otherParticipant] ||
+          users.find((u) => (u.firebaseUid || u._id) === otherParticipant)
+
+        const chatName = chat.isGroup ? chat.name : otherUser?.name || 'Someone'
+
+        Alert.alert('New Chat', `${chatName} started a conversation with you`, [
+          { text: 'OK' },
+        ])
+      }
+    },
+    [user?.uid, users]
+  )
+
+  const handleChatDeleted = useCallback((data) => {
+    const { chatId, deletedBy } = data
+
+    console.log('🗑️ Chat deletion notification:', {
+      chatId,
+      deletedBy,
+    })
+
+    // Remove chat from state
+    setChats((prevChats) => prevChats.filter((c) => (c._id || c.id) !== chatId))
+
+    // Remove messages for this chat
+    setMessages((prev) => {
+      const updated = { ...prev }
+      delete updated[chatId]
+      return updated
+    })
+
+    // Remove calls for this chat
+    setCalls((prev) => {
+      const updated = { ...prev }
+      delete updated[chatId]
+      return updated
+    })
+
+    // Show notification
+    if (Platform.OS !== 'web') {
+      Alert.alert(
+        'Chat Deleted',
+        'This conversation has been deleted by the other person',
+        [{ text: 'OK' }]
+      )
+    }
+  }, [])
 
   const handleMessageUpdated = useCallback((data) => {
     const { chatId, messageId, message } = data

@@ -4,7 +4,7 @@
     "slug": "PeepGram",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/android-chrome-192x192.png",
+    "icon": "./assets/splash-icon.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
@@ -18,7 +18,7 @@
     },
   "android": {
   "adaptiveIcon": {
-    "foregroundImage": "./assets/android-chrome-192x192.png",
+    "foregroundImage": "./assets/adaptive-icon.png",
     "backgroundColor": "#ffffff"
   },
   "edgeToEdgeEnabled": true,

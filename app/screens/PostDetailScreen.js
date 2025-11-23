@@ -17,7 +17,7 @@ import { useUser } from '../hooks/useUser'
 import CommentSection from '../components/CommentSection'
 import * as ImagePicker from 'expo-image-picker'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.225.164.87:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.197.1.87:5000'
 
 // ─── STYLED COMPONENTS ───────────────────────────────────
 const Container = styled.View`

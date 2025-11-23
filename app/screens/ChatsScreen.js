@@ -1,6 +1,6 @@
-// screens/ChatsScreen.js - Simplified with SharedChatsSidebar
+// screens/ChatsScreen.js - Fixed delete function
 import React, { useContext, useState, useEffect } from 'react'
-import { View, Platform, StatusBar } from 'react-native'
+import { View, Platform, StatusBar, Alert } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 
@@ -86,20 +86,64 @@ export default function ChatsScreen({ navigation, route }) {
     navigation.navigate('NewChats')
   }
 
+  // ✅ FIXED: Proper async/await with confirmation
   const handleDeleteChat = async (chatId) => {
-    try {
-      const result = await deleteChat(chatId)
+    return new Promise((resolve) => {
+      // Show confirmation dialog
+      if (Platform.OS === 'web') {
+        const confirmed = window.confirm(
+          'Are you sure you want to delete this conversation?'
+        )
+        if (!confirmed) {
+          resolve({ success: false, cancelled: true })
+          return
+        }
 
-      // Clear selected chat if it was deleted
-      if (result && result.success && selectedChatId === chatId) {
-        setSelectedChatId(null)
+        // Perform deletion
+        deleteChat(chatId)
+          .then((result) => {
+            if (result && result.success && selectedChatId === chatId) {
+              setSelectedChatId(null)
+            }
+            resolve(result)
+          })
+          .catch((error) => {
+            console.error('Failed to delete chat:', error)
+            resolve({ success: false, error: error.message })
+          })
+      } else {
+        // Mobile: Use Alert
+        Alert.alert(
+          'Delete Conversation',
+          'Are you sure you want to delete this conversation?',
+          [
+            {
+              text: 'Cancel',
+              style: 'cancel',
+              onPress: () => resolve({ success: false, cancelled: true }),
+            },
+            {
+              text: 'Delete',
+              style: 'destructive',
+              onPress: () => {
+                deleteChat(chatId)
+                  .then((result) => {
+                    if (result && result.success && selectedChatId === chatId) {
+                      setSelectedChatId(null)
+                    }
+                    resolve(result)
+                  })
+                  .catch((error) => {
+                    console.error('Failed to delete chat:', error)
+                    resolve({ success: false, error: error.message })
+                  })
+              },
+            },
+          ],
+          { cancelable: true }
+        )
       }
-
-      return result
-    } catch (error) {
-      console.error('Failed to delete chat:', error)
-      return { success: false, error: error.message }
-    }
+    })
   }
 
   const handleUploadStatus = async (asset) => {
@@ -107,7 +151,7 @@ export default function ChatsScreen({ navigation, route }) {
       await createPost(asset)
     } catch (error) {
       console.error('Failed to upload status:', error)
-      throw error // Let SharedChatsSidebar handle the error display
+      throw error
     }
   }
 
@@ -159,7 +203,6 @@ export default function ChatsScreen({ navigation, route }) {
       <Container>
         <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
 
-        {/* ✅ Complete Self-Contained SharedChatsSidebar */}
         <SharedChatsSidebar
           chats={chats}
           selectedChatId={selectedChatId}

@@ -261,7 +261,7 @@ const LoadingIndicator = styled.ActivityIndicator`
   margin-right: 10px;
 `
 
-const API_URL = 'http://10.225.164.87:5000'
+const API_URL = 'http://10.197.1.87:5000'
 
 export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('')

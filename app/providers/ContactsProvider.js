@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react'
 import ContactsContext from '../contexts/ContactsContext'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 
-const API_URL = 'http://10.225.164.87:5000'
+const API_URL = 'http://10.197.1.87:5000'
 
 const ContactsProvider = ({ children }) => {
   const [contacts, setContacts] = useState([])

@@ -330,8 +330,8 @@ const ViewAllCommentsText = styled.Text`
 
 const FloatingActionButton = styled.TouchableOpacity`
   position: absolute;
-  right: 20px;
-  bottom: 30px;
+  right: 30px;
+  bottom: 130px;
   width: 60px;
   height: 60px;
   border-radius: 30px;
