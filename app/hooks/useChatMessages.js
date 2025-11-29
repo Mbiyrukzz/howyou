@@ -18,6 +18,11 @@ export const useChatMessages = (chatId) => {
 
   const messages = getMessagesForChat(chatId) || []
 
+  const markedAsDeliveredRef = useRef(new Set())
+  const markedAsReadRef = useRef(new Set())
+  const markDeliveredTimeoutRef = useRef(null)
+  const markReadTimeoutRef = useRef(null)
+
   const loadChatMessages = async () => {
     if (!chatId) return
     try {
@@ -63,38 +68,119 @@ export const useChatMessages = (chatId) => {
   }, [messages, callLogs])
 
   useEffect(() => {
-    if (!messages.length || !chatId) return
+    if (!messages.length || !chatId || !chatsContext?.user?.uid || loading)
+      return
 
-    const undelivered = messages.filter(
-      (msg) =>
-        msg.senderId !== chatsContext?.user?.uid &&
-        !msg.deliveredBy?.includes(chatsContext?.user?.uid)
-    )
-
-    if (undelivered.length > 0) {
-      markMessagesAsDelivered?.(
-        chatId,
-        undelivered.map((m) => m._id || m.id)
-      )
+    // Clear previous timeout
+    if (markDeliveredTimeoutRef.current) {
+      clearTimeout(markDeliveredTimeoutRef.current)
     }
-  }, [messages, chatId])
+
+    // Debounce the marking
+    markDeliveredTimeoutRef.current = setTimeout(() => {
+      const undelivered = messages.filter((msg) => {
+        const msgId = msg._id || msg.id
+        // ✅ Check multiple possible sender field names
+        const senderId = msg.senderId || msg.sender || msg.from
+
+        return (
+          senderId !== chatsContext.user.uid &&
+          !msg.deliveredBy?.includes(chatsContext.user.uid) &&
+          !markedAsDeliveredRef.current.has(msgId)
+        )
+      })
+
+      if (undelivered.length > 0) {
+        console.log('📬 [useChatMessages] Marking messages as delivered:', {
+          count: undelivered.length,
+          messageIds: undelivered.map((m) => m._id || m.id),
+        })
+
+        const messageIds = undelivered.map((m) => m._id || m.id)
+        messageIds.forEach((id) => markedAsDeliveredRef.current.add(id))
+        markMessagesAsDelivered?.(chatId, messageIds)
+      } else {
+        console.log('📬 [useChatMessages] No messages need delivery marking')
+      }
+    }, 500)
+
+    return () => {
+      if (markDeliveredTimeoutRef.current) {
+        clearTimeout(markDeliveredTimeoutRef.current)
+      }
+    }
+  }, [messages.length, chatId, chatsContext?.user?.uid, loading])
 
   useEffect(() => {
-    if (!messages.length || !chatId) return
+    if (!messages.length || !chatId || !chatsContext?.user?.uid || loading)
+      return
 
-    const unread = messages.filter(
-      (msg) =>
-        msg.senderId !== chatsContext?.user?.uid &&
-        !msg.readBy?.includes(chatsContext?.user?.uid)
-    )
-
-    if (unread.length > 0) {
-      markMessagesAsRead?.(
-        chatId,
-        unread.map((m) => m._id || m.id)
-      )
+    // Clear previous timeout
+    if (markReadTimeoutRef.current) {
+      clearTimeout(markReadTimeoutRef.current)
     }
-  }, [messages, chatId])
+
+    // Debounce the marking
+    markReadTimeoutRef.current = setTimeout(() => {
+      const unread = messages.filter((msg) => {
+        const msgId = msg._id || msg.id
+        // ✅ Check multiple possible sender field names
+        const senderId = msg.senderId || msg.sender || msg.from
+
+        return (
+          senderId !== chatsContext.user.uid &&
+          !msg.readBy?.includes(chatsContext.user.uid) &&
+          !markedAsReadRef.current.has(msgId)
+        )
+      })
+
+      if (unread.length > 0) {
+        console.log('👁️ [useChatMessages] Marking messages as read:', {
+          count: unread.length,
+          messageIds: unread.map((m) => m._id || m.id),
+        })
+
+        const messageIds = unread.map((m) => m._id || m.id)
+        messageIds.forEach((id) => markedAsReadRef.current.add(id))
+        markMessagesAsRead?.(chatId, messageIds)
+      } else {
+        console.log('👁️ [useChatMessages] No messages need read marking')
+      }
+    }, 500)
+
+    return () => {
+      if (markReadTimeoutRef.current) {
+        clearTimeout(markReadTimeoutRef.current)
+      }
+    }
+  }, [messages.length, chatId, chatsContext?.user?.uid, loading])
+
+  // CLEAN UP REFS WHEN CHAT CHANGES
+  useEffect(() => {
+    return () => {
+      markedAsDeliveredRef.current.clear()
+      markedAsReadRef.current.clear()
+    }
+  }, [chatId])
+
+  useEffect(() => {
+    if (messages.length > 0) {
+      console.log('🔍 MESSAGE STRUCTURE DEBUG:', {
+        firstMessage: messages[0],
+        senderFields: {
+          senderId: messages[0].senderId,
+          sender: messages[0].sender,
+          from: messages[0].from,
+        },
+        statusFields: {
+          status: messages[0].status,
+          deliveredBy: messages[0].deliveredBy,
+          readBy: messages[0].readBy,
+        },
+        currentUserId: chatsContext?.user?.uid,
+      })
+    }
+  }, [messages.length])
 
   return {
     messages,

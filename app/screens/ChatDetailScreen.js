@@ -163,7 +163,6 @@ export default function ChatDetailScreen({
 
   const chatInfo = getChatInfo()
 
-  // Update last seen
   useEffect(() => {
     if (chatId && !loading) {
       updateLastSeen(chatId)

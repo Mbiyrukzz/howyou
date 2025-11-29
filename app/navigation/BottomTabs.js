@@ -4,19 +4,19 @@ import { Platform } from 'react-native'
 import ChatsContext from '../contexts/ChatsContext'
 import ChatsStack from './ChatsStack'
 import PostsStack from './PostsStack'
-import RoomsStack from './RoomsStack'
+
 import SettingsStack from './SettingsStack'
 import { Ionicons } from '@expo/vector-icons'
-import { useSafeAreaInsets } from 'react-native-safe-area-context' // ✅ Add this import
+import { useSafeAreaInsets } from 'react-native-safe-area-context'
+import CallsStack from './CallsStack'
 
 const Tab = createBottomTabNavigator()
 
-// Icon mapping with focused/unfocused variants
 const getIconName = (routeName, focused) => {
   const iconMap = {
     Chats: focused ? 'chatbubble' : 'chatbubble-outline',
     Posts: focused ? 'albums' : 'albums-outline',
-    Rooms: focused ? 'people' : 'people-outline',
+    Calls: focused ? 'call' : 'call-outline',
     Settings: focused ? 'settings' : 'settings-outline',
   }
   return iconMap[routeName] || 'help-circle-outline'
@@ -27,7 +27,7 @@ const getLabel = (routeName) => {
   const labelMap = {
     Chats: 'Home',
     Posts: 'Stories',
-    Rooms: 'Friends',
+    Calls: 'Calls',
     Settings: 'More',
   }
   return labelMap[routeName] || routeName
@@ -115,7 +115,7 @@ export default function BottomTabs() {
         }}
       />
       <Tab.Screen name="Posts" component={PostsStack} />
-      <Tab.Screen name="Rooms" component={RoomsStack} />
+      <Tab.Screen name="Calls" component={CallsStack} />
       <Tab.Screen name="Settings" component={SettingsStack} />
     </Tab.Navigator>
   )

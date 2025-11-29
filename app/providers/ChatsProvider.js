@@ -5,7 +5,7 @@ import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://10.197.1.87:5000'
+const API_URL = 'http://10.102.223.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])
@@ -1063,41 +1063,68 @@ const ChatsProvider = ({ children }) => {
         return { success: false, error: 'Auth not ready' }
       }
 
+      if (!messageIds || messageIds.length === 0) {
+        console.log('❌ markMessagesAsDelivered - No message IDs provided')
+        return { success: false, error: 'No message IDs' }
+      }
+
       console.log('📬 markMessagesAsDelivered called:', {
         chatId,
         messageIds,
         count: messageIds.length,
+        userId: user.uid,
       })
 
-      // ✅ Update local state IMMEDIATELY
+      // ✅ Update local state IMMEDIATELY with better checking
       setMessages((prev) => {
         const chatMessages = prev[chatId] || []
+        let hasChanges = false
+
         const updatedMessages = chatMessages.map((msg) => {
           const msgId = msg._id || msg.id
-          if (messageIds.includes(msgId) && msg.senderId !== user.uid) {
-            console.log(
-              '📬 Optimistically updating message to delivered:',
-              msgId
-            )
-            return {
-              ...msg,
-              status: 'delivered',
-              deliveredAt: new Date().toISOString(),
-              deliveredBy: Array.from(
-                new Set([...(msg.deliveredBy || []), user.uid])
-              ),
-              _updateCount: (msg._updateCount || 0) + 1,
+          // ✅ Check multiple possible sender field names
+          const senderId = msg.senderId || msg.sender || msg.from
+
+          if (messageIds.includes(msgId) && senderId !== user.uid) {
+            const alreadyDelivered = msg.deliveredBy?.includes(user.uid)
+
+            if (!alreadyDelivered) {
+              hasChanges = true
+              console.log('📬 Marking message as delivered:', {
+                msgId,
+                currentStatus: msg.status,
+                senderId,
+                currentUserId: user.uid,
+              })
+
+              return {
+                ...msg,
+                status: 'delivered',
+                deliveredAt: new Date().toISOString(),
+                deliveredBy: Array.from(
+                  new Set([...(msg.deliveredBy || []), user.uid])
+                ),
+                _updateCount: (msg._updateCount || 0) + 1,
+              }
             }
           }
           return msg
         })
 
-        messageUpdateCounter.current += 1
-
-        return {
-          ...prev,
-          [chatId]: updatedMessages,
+        if (hasChanges) {
+          messageUpdateCounter.current += 1
+          console.log(
+            '✅ Messages state updated, counter:',
+            messageUpdateCounter.current
+          )
+          return {
+            ...prev,
+            [chatId]: updatedMessages,
+          }
         }
+
+        console.log('⚠️ No changes needed - messages already delivered')
+        return prev
       })
 
       try {
@@ -1107,17 +1134,9 @@ const ChatsProvider = ({ children }) => {
         )
 
         console.log('📬 Backend response:', data)
-
-        // ✅ If backend fails, revert the optimistic update
-        if (!data.success) {
-          console.error('❌ Backend failed, reverting optimistic update')
-          // Could add revert logic here if needed
-        }
-
         return data
       } catch (error) {
         console.error('❌ markMessagesAsDelivered error:', error)
-        // Revert optimistic update on error
         return {
           success: false,
           error: error.message || 'Failed to mark messages as delivered',
@@ -1138,36 +1157,61 @@ const ChatsProvider = ({ children }) => {
         chatId,
         messageIds,
         count: messageIds?.length,
+        userId: user.uid,
       })
 
-      // ✅ Update local state IMMEDIATELY
+      // ✅ Update local state IMMEDIATELY with better checking
       setMessages((prev) => {
         const chatMessages = prev[chatId] || []
+        let hasChanges = false
+
         const updatedMessages = chatMessages.map((msg) => {
           const msgId = msg._id || msg.id
+          // ✅ Check multiple possible sender field names
+          const senderId = msg.senderId || msg.sender || msg.from
+
           const shouldMark = messageIds
             ? messageIds.includes(msgId)
-            : msg.senderId !== user.uid
+            : senderId !== user.uid
 
-          if (shouldMark && msg.senderId !== user.uid) {
-            console.log('👁️ Optimistically updating message to read:', msgId)
-            return {
-              ...msg,
-              status: 'read',
-              readAt: new Date().toISOString(),
-              readBy: Array.from(new Set([...(msg.readBy || []), user.uid])),
-              _updateCount: (msg._updateCount || 0) + 1,
+          if (shouldMark && senderId !== user.uid) {
+            const alreadyRead = msg.readBy?.includes(user.uid)
+
+            if (!alreadyRead) {
+              hasChanges = true
+              console.log('👁️ Marking message as read:', {
+                msgId,
+                currentStatus: msg.status,
+                senderId,
+                currentUserId: user.uid,
+              })
+
+              return {
+                ...msg,
+                status: 'read',
+                readAt: new Date().toISOString(),
+                readBy: Array.from(new Set([...(msg.readBy || []), user.uid])),
+                _updateCount: (msg._updateCount || 0) + 1,
+              }
             }
           }
           return msg
         })
 
-        messageUpdateCounter.current += 1
-
-        return {
-          ...prev,
-          [chatId]: updatedMessages,
+        if (hasChanges) {
+          messageUpdateCounter.current += 1
+          console.log(
+            '✅ Messages state updated, counter:',
+            messageUpdateCounter.current
+          )
+          return {
+            ...prev,
+            [chatId]: updatedMessages,
+          }
         }
+
+        console.log('⚠️ No changes needed - messages already read')
+        return prev
       })
 
       try {
@@ -1175,11 +1219,6 @@ const ChatsProvider = ({ children }) => {
         const data = await post(`${API_URL}/mark-messages-read/${chatId}`, body)
 
         console.log('👁️ Backend response:', data)
-
-        if (!data.success) {
-          console.error('❌ Backend failed for mark read')
-        }
-
         return data
       } catch (error) {
         console.error('❌ markMessagesAsRead error:', error)
