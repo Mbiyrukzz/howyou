@@ -184,6 +184,14 @@ const ChatsProvider = ({ children }) => {
     (messageData) => {
       const { chatId, message, senderId } = messageData
 
+      console.log('📨 handleNewMessage called:', {
+        chatId,
+        messageId: message._id || message.id,
+        senderId,
+        currentUserId: user?.uid,
+        isOwnMessage: senderId === user?.uid,
+      })
+
       if (senderId === user?.uid) {
         console.log('⏭️ Skipping own message (already in state)')
         return
@@ -226,8 +234,75 @@ const ChatsProvider = ({ children }) => {
           [chatId]: chatTyping.filter((uid) => uid !== senderId),
         }
       })
+
+      // ✅ AUTO-MARK AS DELIVERED - Use setTimeout to break circular dependency
+      if (user?.uid && senderId !== user.uid) {
+        const messageId = message._id || message.id
+
+        console.log('📬 Preparing to auto-mark as delivered:', {
+          messageId,
+          chatId,
+          receivedBy: user.uid,
+          alreadyDelivered: message.deliveredBy?.includes(user.uid),
+        })
+
+        // ✅ Use setTimeout with 0ms to defer execution and break circular dependency
+        setTimeout(() => {
+          console.log('📬 Calling markMessagesAsDelivered...')
+
+          // ✅ Call the API directly instead of relying on the function reference
+          if (!isReady || !user?.uid) return
+
+          // Update local state
+          setMessages((prev) => {
+            const chatMessages = prev[chatId] || []
+            const updatedMessages = chatMessages.map((msg) => {
+              const msgId = msg._id || msg.id
+              const msgSenderId = msg.senderId || msg.sender || msg.from
+
+              if (msgId === messageId && msgSenderId !== user.uid) {
+                const alreadyDelivered = msg.deliveredBy?.includes(user.uid)
+                if (!alreadyDelivered) {
+                  console.log('✅ Marking message as delivered:', msgId)
+                  return {
+                    ...msg,
+                    status: 'delivered',
+                    deliveredAt: new Date().toISOString(),
+                    deliveredBy: Array.from(
+                      new Set([...(msg.deliveredBy || []), user.uid])
+                    ),
+                    _updateCount: (msg._updateCount || 0) + 1,
+                  }
+                }
+              }
+              return msg
+            })
+
+            return {
+              ...prev,
+              [chatId]: updatedMessages,
+            }
+          })
+
+          // Make API call
+          post(`${API_URL}/mark-messages-delivered/${chatId}`, {
+            messageIds: [messageId],
+          })
+            .then((result) => {
+              console.log('✅ Auto-mark delivered result:', result)
+            })
+            .catch((err) => {
+              console.error('❌ Failed to auto-mark as delivered:', err)
+            })
+        }, 0)
+      } else {
+        console.log('⏭️ Skipping auto-mark delivered:', {
+          hasUser: !!user?.uid,
+          isOwnMessage: senderId === user?.uid,
+        })
+      }
     },
-    [user?.uid]
+    [user?.uid, isReady, post]
   )
 
   const handleNewChat = useCallback(
@@ -1058,8 +1133,16 @@ const ChatsProvider = ({ children }) => {
 
   const markMessagesAsDelivered = useCallback(
     async (chatId, messageIds) => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('📬 MARK AS DELIVERED - FUNCTION CALLED')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
       if (!isReady || !user?.uid) {
-        console.log('❌ markMessagesAsDelivered - Auth not ready')
+        console.log('❌ markMessagesAsDelivered - Auth not ready:', {
+          isReady,
+          hasUser: !!user,
+          uid: user?.uid,
+        })
         return { success: false, error: 'Auth not ready' }
       }
 
@@ -1068,44 +1151,65 @@ const ChatsProvider = ({ children }) => {
         return { success: false, error: 'No message IDs' }
       }
 
-      console.log('📬 markMessagesAsDelivered called:', {
+      console.log('📬 Mark Delivered Parameters:', {
         chatId,
         messageIds,
         count: messageIds.length,
         userId: user.uid,
       })
 
-      // ✅ Update local state IMMEDIATELY with better checking
+      // ✅ Update local state IMMEDIATELY
       setMessages((prev) => {
         const chatMessages = prev[chatId] || []
         let hasChanges = false
 
+        console.log('📬 Current messages in chat:', {
+          chatId,
+          totalMessages: chatMessages.length,
+          messageIds: chatMessages.map((m) => ({
+            id: m._id || m.id,
+            senderId: m.senderId || m.sender || m.from,
+            status: m.status,
+            deliveredBy: m.deliveredBy,
+          })),
+        })
+
         const updatedMessages = chatMessages.map((msg) => {
           const msgId = msg._id || msg.id
-          // ✅ Check multiple possible sender field names
           const senderId = msg.senderId || msg.sender || msg.from
 
-          if (messageIds.includes(msgId) && senderId !== user.uid) {
-            const alreadyDelivered = msg.deliveredBy?.includes(user.uid)
+          if (messageIds.includes(msgId)) {
+            console.log('📬 Checking message:', {
+              msgId,
+              senderId,
+              currentUserId: user.uid,
+              isFromCurrentUser: senderId === user.uid,
+              alreadyDelivered: msg.deliveredBy?.includes(user.uid),
+              currentStatus: msg.status,
+              deliveredBy: msg.deliveredBy,
+            })
 
-            if (!alreadyDelivered) {
-              hasChanges = true
-              console.log('📬 Marking message as delivered:', {
-                msgId,
-                currentStatus: msg.status,
-                senderId,
-                currentUserId: user.uid,
-              })
+            if (senderId !== user.uid) {
+              const alreadyDelivered = msg.deliveredBy?.includes(user.uid)
 
-              return {
-                ...msg,
-                status: 'delivered',
-                deliveredAt: new Date().toISOString(),
-                deliveredBy: Array.from(
-                  new Set([...(msg.deliveredBy || []), user.uid])
-                ),
-                _updateCount: (msg._updateCount || 0) + 1,
+              if (!alreadyDelivered) {
+                hasChanges = true
+                console.log('✅ UPDATING MESSAGE TO DELIVERED:', msgId)
+
+                return {
+                  ...msg,
+                  status: 'delivered',
+                  deliveredAt: new Date().toISOString(),
+                  deliveredBy: Array.from(
+                    new Set([...(msg.deliveredBy || []), user.uid])
+                  ),
+                  _updateCount: (msg._updateCount || 0) + 1,
+                }
+              } else {
+                console.log('⏭️ Already delivered:', msgId)
               }
+            } else {
+              console.log('⏭️ Message is from current user, skipping:', msgId)
             }
           }
           return msg
@@ -1114,7 +1218,7 @@ const ChatsProvider = ({ children }) => {
         if (hasChanges) {
           messageUpdateCounter.current += 1
           console.log(
-            '✅ Messages state updated, counter:',
+            '✅ State updated, counter:',
             messageUpdateCounter.current
           )
           return {
@@ -1123,11 +1227,13 @@ const ChatsProvider = ({ children }) => {
           }
         }
 
-        console.log('⚠️ No changes needed - messages already delivered')
+        console.log('⚠️ No changes needed')
         return prev
       })
 
+      // ✅ Make API call
       try {
+        console.log('📤 Making API call to mark as delivered...')
         const data = await post(
           `${API_URL}/mark-messages-delivered/${chatId}`,
           { messageIds }
@@ -1136,7 +1242,7 @@ const ChatsProvider = ({ children }) => {
         console.log('📬 Backend response:', data)
         return data
       } catch (error) {
-        console.error('❌ markMessagesAsDelivered error:', error)
+        console.error('❌ markMessagesAsDelivered API error:', error)
         return {
           success: false,
           error: error.message || 'Failed to mark messages as delivered',
@@ -1148,51 +1254,82 @@ const ChatsProvider = ({ children }) => {
 
   const markMessagesAsRead = useCallback(
     async (chatId, messageIds = null) => {
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+      console.log('👁️ MARK AS READ - FUNCTION CALLED')
+      console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━')
+
       if (!isReady || !user?.uid) {
-        console.log('❌ markMessagesAsRead - Auth not ready')
+        console.log('❌ markMessagesAsRead - Auth not ready:', {
+          isReady,
+          hasUser: !!user,
+          uid: user?.uid,
+        })
         return { success: false, error: 'Auth not ready' }
       }
 
-      console.log('👁️ markMessagesAsRead called:', {
+      console.log('👁️ Mark Read Parameters:', {
         chatId,
         messageIds,
         count: messageIds?.length,
         userId: user.uid,
       })
 
-      // ✅ Update local state IMMEDIATELY with better checking
+      // ✅ Update local state IMMEDIATELY
       setMessages((prev) => {
         const chatMessages = prev[chatId] || []
         let hasChanges = false
 
+        console.log('👁️ Current messages in chat:', {
+          chatId,
+          totalMessages: chatMessages.length,
+          messageIds: chatMessages.map((m) => ({
+            id: m._id || m.id,
+            senderId: m.senderId || m.sender || m.from,
+            status: m.status,
+            readBy: m.readBy,
+          })),
+        })
+
         const updatedMessages = chatMessages.map((msg) => {
           const msgId = msg._id || msg.id
-          // ✅ Check multiple possible sender field names
           const senderId = msg.senderId || msg.sender || msg.from
 
           const shouldMark = messageIds
             ? messageIds.includes(msgId)
             : senderId !== user.uid
 
-          if (shouldMark && senderId !== user.uid) {
-            const alreadyRead = msg.readBy?.includes(user.uid)
+          if (shouldMark) {
+            console.log('👁️ Checking message:', {
+              msgId,
+              senderId,
+              currentUserId: user.uid,
+              isFromCurrentUser: senderId === user.uid,
+              alreadyRead: msg.readBy?.includes(user.uid),
+              currentStatus: msg.status,
+              readBy: msg.readBy,
+            })
 
-            if (!alreadyRead) {
-              hasChanges = true
-              console.log('👁️ Marking message as read:', {
-                msgId,
-                currentStatus: msg.status,
-                senderId,
-                currentUserId: user.uid,
-              })
+            if (senderId !== user.uid) {
+              const alreadyRead = msg.readBy?.includes(user.uid)
 
-              return {
-                ...msg,
-                status: 'read',
-                readAt: new Date().toISOString(),
-                readBy: Array.from(new Set([...(msg.readBy || []), user.uid])),
-                _updateCount: (msg._updateCount || 0) + 1,
+              if (!alreadyRead) {
+                hasChanges = true
+                console.log('✅ UPDATING MESSAGE TO READ:', msgId)
+
+                return {
+                  ...msg,
+                  status: 'read',
+                  readAt: new Date().toISOString(),
+                  readBy: Array.from(
+                    new Set([...(msg.readBy || []), user.uid])
+                  ),
+                  _updateCount: (msg._updateCount || 0) + 1,
+                }
+              } else {
+                console.log('⏭️ Already read:', msgId)
               }
+            } else {
+              console.log('⏭️ Message is from current user, skipping:', msgId)
             }
           }
           return msg
@@ -1201,7 +1338,7 @@ const ChatsProvider = ({ children }) => {
         if (hasChanges) {
           messageUpdateCounter.current += 1
           console.log(
-            '✅ Messages state updated, counter:',
+            '✅ State updated, counter:',
             messageUpdateCounter.current
           )
           return {
@@ -1210,18 +1347,20 @@ const ChatsProvider = ({ children }) => {
           }
         }
 
-        console.log('⚠️ No changes needed - messages already read')
+        console.log('⚠️ No changes needed')
         return prev
       })
 
+      // ✅ Make API call
       try {
+        console.log('📤 Making API call to mark as read...')
         const body = messageIds ? { messageIds } : {}
         const data = await post(`${API_URL}/mark-messages-read/${chatId}`, body)
 
         console.log('👁️ Backend response:', data)
         return data
       } catch (error) {
-        console.error('❌ markMessagesAsRead error:', error)
+        console.error('❌ markMessagesAsRead API error:', error)
         return {
           success: false,
           error: error.message || 'Failed to mark messages as read',
@@ -1419,6 +1558,14 @@ const ChatsProvider = ({ children }) => {
     },
     [get, isReady]
   )
+  useEffect(() => {
+    if (!isReady || chats.length === 0) return
+
+    chats.forEach((chat) => {
+      const chatId = chat._id || chat.id
+      getCallHistory(chatId)
+    })
+  }, [isReady, chats])
 
   const deleteCallLog = useCallback(
     async (callId) => {
@@ -1544,6 +1691,72 @@ const ChatsProvider = ({ children }) => {
     }
   }, [isReady, loadChats, loadUsers])
 
+  // Add this useEffect near the bottom of ChatsProvider, before the cleanup effect
+
+  // ✅ Auto-mark undelivered messages on startup/reconnect
+  useEffect(() => {
+    // Only run when conditions are ready
+    if (!user?.uid || !isReady || loading || !wsConnected) {
+      console.log('⏭️ Skipping startup delivery check:', {
+        hasUser: !!user?.uid,
+        isReady,
+        loading,
+        wsConnected,
+      })
+      return
+    }
+
+    // Add a small delay to ensure messages are loaded
+    const timer = setTimeout(() => {
+      console.log('🔄 Running startup delivery check...')
+      console.log('📊 Total chats with messages:', Object.keys(messages).length)
+
+      let totalUndelivered = 0
+
+      // Check all chats for undelivered messages
+      Object.entries(messages).forEach(([chatId, chatMessages]) => {
+        const undelivered = chatMessages.filter((msg) => {
+          const senderId = msg.senderId || msg.sender || msg.from
+          const isFromOther = senderId !== user.uid
+          const notDelivered = !msg.deliveredBy?.includes(user.uid)
+
+          return isFromOther && notDelivered
+        })
+
+        if (undelivered.length > 0) {
+          totalUndelivered += undelivered.length
+          const messageIds = undelivered.map((m) => m._id || m.id)
+
+          console.log(
+            `📬 Chat ${chatId}: Found ${undelivered.length} undelivered messages`
+          )
+          console.log('   Message IDs:', messageIds)
+
+          markMessagesAsDelivered(chatId, messageIds)
+            .then((result) => {
+              console.log(
+                `✅ Marked ${messageIds.length} messages as delivered in chat ${chatId}`
+              )
+            })
+            .catch((err) => {
+              console.error(
+                `❌ Failed to mark messages as delivered in chat ${chatId}:`,
+                err
+              )
+            })
+        }
+      })
+
+      if (totalUndelivered === 0) {
+        console.log('✅ No undelivered messages found')
+      } else {
+        console.log(`📬 Total undelivered messages found: ${totalUndelivered}`)
+      }
+    }, 2000)
+
+    return () => clearTimeout(timer)
+  }, [user?.uid, isReady, wsConnected])
+
   // Cleanup typing timeouts on unmount
   useEffect(() => {
     return () => {
@@ -1552,6 +1765,8 @@ const ChatsProvider = ({ children }) => {
   }, [])
 
   const contextValue = {
+    user,
+
     chats,
     loading,
     users,

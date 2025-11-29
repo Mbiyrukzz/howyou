@@ -1,9 +1,9 @@
-import React, { useContext, useState } from 'react'
+import React, { useContext, useState, useEffect } from 'react'
 import { View, Platform, StatusBar, Alert } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 
-import CallDetailScreen from './CallDetailScreen'
+import { CallDetailScreen } from './CallDetailScreen'
 import ChatsContext from '../contexts/ChatsContext'
 import { useUser } from '../hooks/useUser'
 import WebSidebarLayout, {
@@ -130,13 +130,26 @@ export default function CallsScreen({ navigation, route }) {
     deleteCallLog,
     initiateCall,
     onlineUsers,
+    getCallHistory,
   } = chatsContext || {}
+
+  console.log('📞 All calls from ChatsContext:', calls)
+  console.log('📞 Chats:', chats)
+  console.log('📞 Users:', users)
 
   useWebNavigation((type, id) => {
     if (type === 'call') {
       setSelectedCallId(id || null)
     }
   })
+  useEffect(() => {
+    if (!chats?.length) return
+
+    chats.forEach((chat) => {
+      const chatId = chat._id || chat.id
+      getCallHistory(chatId)
+    })
+  }, [chats])
 
   // Get all calls from all chats
   const allCalls = Object.entries(calls)

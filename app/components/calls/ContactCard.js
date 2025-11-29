@@ -1,4 +1,5 @@
 import styled from 'styled-components/native'
+import { Vibration } from 'react-native'
 
 const ContactCardContainer = styled.TouchableOpacity`
   flex-direction: row;

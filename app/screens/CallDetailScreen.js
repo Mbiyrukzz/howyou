@@ -1,26 +1,37 @@
 import styled from 'styled-components/native'
 import { ScrollView } from 'react-native'
 import { CallHistoryCard } from '../components/calls/HistoryCard'
+import React, { useState, useEffect } from 'react'
+import { Alert, Vibration, FlatList } from 'react-native'
+import { Ionicons } from '@expo/vector-icons'
+import { useChats } from '../hooks/useChats'
 
 const DetailContainer = styled.View`
   flex: 1;
-  background-color: #1a1a2e;
+  background-color: #f8fafc;
 `
 
 const DetailHeader = styled.View`
   align-items: center;
   padding: 40px 20px;
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: #fff;
+  border-bottom-width: 1px;
+  border-bottom-color: #e2e8f0;
 `
 
 const ProfileAvatar = styled.View`
   width: 100px;
   height: 100px;
   border-radius: 50px;
-  background-color: ${(props) => props.color || '#3396D3'};
+  background-color: ${(props) => props.color || '#3498db'};
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
+  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.2;
+  shadow-radius: 12px;
+  elevation: 6;
 `
 
 const ProfileAvatarText = styled.Text`
@@ -32,14 +43,15 @@ const ProfileAvatarText = styled.Text`
 const ContactName = styled.Text`
   font-size: 28px;
   font-weight: 800;
-  color: white;
+  color: #1e293b;
   margin-bottom: 8px;
 `
 
 const ContactStatus = styled.Text`
   font-size: 15px;
-  color: ${(props) => (props.online ? '#10b981' : 'rgba(255, 255, 255, 0.6)')};
+  color: ${(props) => (props.online ? '#10b981' : '#64748b')};
   margin-bottom: 20px;
+  font-weight: 500;
 `
 
 const ActionButtons = styled.View`
@@ -55,25 +67,22 @@ const ActionButton = styled.TouchableOpacity`
   width: 60px;
   height: 60px;
   border-radius: 30px;
-  background-color: ${(props) => props.color || '#3396D3'};
+  background-color: ${(props) => props.color || '#3498db'};
   align-items: center;
   justify-content: center;
-  shadow-color: ${(props) => props.color || '#3396D3'};
+  shadow-color: ${(props) => props.color || '#3498db'};
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 12px;
   elevation: 8;
 `
 
-const ActionIcon = styled.Text`
-  font-size: 24px;
-`
-
 const ActionLabel = styled.Text`
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
   margin-top: 8px;
   text-align: center;
+  font-weight: 600;
 `
 
 const SectionContainer = styled.View`
@@ -83,7 +92,7 @@ const SectionContainer = styled.View`
 const SectionTitle = styled.Text`
   font-size: 18px;
   font-weight: 700;
-  color: white;
+  color: #1e293b;
   margin-bottom: 16px;
 `
 
@@ -95,42 +104,50 @@ const StatsContainer = styled.View`
 
 const StatCard = styled.View`
   flex: 1;
-  background-color: rgba(255, 255, 255, 0.08);
+  background-color: #fff;
   border-radius: 16px;
   padding: 16px;
   margin: 0 6px;
   border-width: 1px;
-  border-color: rgba(255, 255, 255, 0.1);
+  border-color: #e2e8f0;
   align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 4px;
+  elevation: 2;
 `
 
 const StatValue = styled.Text`
   font-size: 24px;
   font-weight: 800;
-  color: white;
+  color: #1e293b;
   margin-bottom: 4px;
 `
 
 const StatLabel = styled.Text`
   font-size: 12px;
-  color: rgba(255, 255, 255, 0.6);
+  color: #64748b;
   text-align: center;
+  font-weight: 500;
 `
 
 const FrequentlyCalledBadge = styled.View`
-  background-color: rgba(251, 191, 36, 0.2);
+  background-color: #fef3c7;
   padding: 8px 16px;
   border-radius: 20px;
   margin: 16px 0;
   align-self: center;
   flex-direction: row;
   align-items: center;
+  border-width: 1px;
+  border-color: #fcd34d;
 `
 
 const BadgeText = styled.Text`
   font-size: 13px;
   font-weight: 600;
-  color: #fbbf24;
+  color: #f59e0b;
   margin-left: 6px;
 `
 
@@ -141,13 +158,9 @@ const FavoriteButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: rgba(255, 255, 255, 0.1);
+  background-color: #f1f5f9;
   align-items: center;
   justify-content: center;
-`
-
-const FavoriteIcon = styled.Text`
-  font-size: 20px;
 `
 
 const DetailEmptyState = styled.View`
@@ -157,7 +170,7 @@ const DetailEmptyState = styled.View`
 
 const DetailEmptyStateText = styled.Text`
   font-size: 15px;
-  color: rgba(255, 255, 255, 0.5);
+  color: #94a3b8;
   text-align: center;
 `
 
@@ -290,8 +303,9 @@ export function CallDetailScreen({ route, navigation }) {
     const chat = chats.find((c) => c.participants?.includes(userId))
 
     if (chat) {
-      navigation.navigate('Chat', {
+      navigation.navigate('ChatDetail', {
         chatId: chat._id || chat.id,
+        userId: userId,
       })
     } else {
       Alert.alert('Error', 'Could not find chat with this user')
@@ -331,7 +345,7 @@ export function CallDetailScreen({ route, navigation }) {
   }
 
   const renderCallHistoryItem = ({ item }) => (
-    <CallHistoryCard call={item} onLongPress={handleDeleteCall} />
+    <CallHistoryCard call={item} onLongPress={() => handleDeleteCall(item)} />
   )
 
   const getStatusText = () => {
@@ -357,10 +371,14 @@ export function CallDetailScreen({ route, navigation }) {
       <ScrollView showsVerticalScrollIndicator={false}>
         <DetailHeader>
           <FavoriteButton onPress={toggleFavorite}>
-            <FavoriteIcon>{isFavorite ? '⭐' : '☆'}</FavoriteIcon>
+            <Ionicons
+              name={isFavorite ? 'star' : 'star-outline'}
+              size={24}
+              color={isFavorite ? '#f59e0b' : '#64748b'}
+            />
           </FavoriteButton>
 
-          <ProfileAvatar color={contact?.color || '#3396D3'}>
+          <ProfileAvatar color={contact?.color || '#3498db'}>
             <ProfileAvatarText>
               {contact?.name?.charAt(0) || user?.name?.charAt(0) || '?'}
             </ProfileAvatarText>
@@ -371,22 +389,22 @@ export function CallDetailScreen({ route, navigation }) {
 
           <ActionButtons>
             <ActionWrapper>
-              <ActionButton color="#3396D3" onPress={() => handleCall('audio')}>
-                <ActionIcon>📞</ActionIcon>
+              <ActionButton color="#3498db" onPress={() => handleCall('audio')}>
+                <Ionicons name="call" size={24} color="#fff" />
               </ActionButton>
               <ActionLabel>Audio</ActionLabel>
             </ActionWrapper>
 
             <ActionWrapper>
               <ActionButton color="#10b981" onPress={() => handleCall('video')}>
-                <ActionIcon>📹</ActionIcon>
+                <Ionicons name="videocam" size={24} color="#fff" />
               </ActionButton>
               <ActionLabel>Video</ActionLabel>
             </ActionWrapper>
 
             <ActionWrapper>
               <ActionButton color="#8b5cf6" onPress={handleMessage}>
-                <ActionIcon>💬</ActionIcon>
+                <Ionicons name="chatbubble" size={24} color="#fff" />
               </ActionButton>
               <ActionLabel>Message</ActionLabel>
             </ActionWrapper>
@@ -394,7 +412,7 @@ export function CallDetailScreen({ route, navigation }) {
 
           {stats.totalCalls > 20 && (
             <FrequentlyCalledBadge>
-              <ActionIcon>🔥</ActionIcon>
+              <Ionicons name="flame" size={16} color="#f59e0b" />
               <BadgeText>Frequently Called Contact</BadgeText>
             </FrequentlyCalledBadge>
           )}
