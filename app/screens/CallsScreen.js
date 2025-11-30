@@ -142,6 +142,7 @@ export default function CallsScreen({ navigation, route }) {
       setSelectedCallId(id || null)
     }
   })
+
   useEffect(() => {
     if (!chats?.length) return
 
@@ -165,6 +166,7 @@ export default function CallsScreen({ navigation, route }) {
         return {
           ...call,
           chatId,
+          participantId: otherUserId, // ✅ Store the actual participant ID from chat
           name: otherUser?.name || 'Unknown User',
           color: getUserColor(otherUserId),
           isOnline: onlineUsers.has(otherUserId),
@@ -187,6 +189,7 @@ export default function CallsScreen({ navigation, route }) {
       return {
         ...otherUser,
         chatId: chat._id || chat.id,
+        participantId: otherUserId, // ✅ Store the actual participant ID from chat
         color: getUserColor(otherUserId),
         isOnline: onlineUsers.has(otherUserId),
         status: onlineUsers.has(otherUserId) ? 'Online' : 'Offline',
@@ -203,24 +206,49 @@ export default function CallsScreen({ navigation, route }) {
       return
     }
 
+    // ✅ Use participantId which comes from chat.participants
+    const recipientId =
+      contact.participantId || contact.firebaseUid || contact._id
+
+    console.log('📞 Starting call with:', {
+      chatId: contact.chatId,
+      callType,
+      recipientId,
+      contactName: contact.name,
+    })
+
     try {
       const result = await initiateCall({
         chatId: contact.chatId,
         callType,
-        recipientId: contact.firebaseUid || contact._id,
+        recipientId: recipientId,
       })
 
       if (result.success) {
-        navigation.navigate('CallScreen', {
-          chatId: contact.chatId,
-          remoteUserId: contact.firebaseUid || contact._id,
-          remoteUserName: contact.name,
-          callType,
-          isIncoming: false,
-          callId: result.call._id.toString(),
-        })
+        // ✅ Cross-stack navigation to CallScreen in ChatsStack
+        const rootNavigation = navigation.getParent() || navigation
+
+        try {
+          rootNavigation.navigate('Chats', {
+            screen: 'CallScreen',
+            params: {
+              chatId: contact.chatId,
+              remoteUserId: recipientId,
+              remoteUserName: contact.name,
+              callType,
+              isIncoming: false,
+              callId: result.call._id.toString(),
+            },
+          })
+        } catch (navError) {
+          console.error('Navigation error:', navError)
+          Alert.alert(
+            'Navigation Error',
+            'Call initiated but could not open call screen. Please check the Chats tab.'
+          )
+        }
       } else {
-        Alert.alert('Error', 'Failed to start call')
+        Alert.alert('Error', result.error || 'Failed to start call')
       }
     } catch (error) {
       console.error('Start call error:', error)
@@ -369,7 +397,7 @@ export default function CallsScreen({ navigation, route }) {
               ) : (
                 <>
                   <SectionTitle>Recent Calls</SectionTitle>
-                  {recentCalls.map((call) => (
+                  {allCalls.map((call) => (
                     <CallCard
                       key={call._id || call.id}
                       call={call}
@@ -378,19 +406,6 @@ export default function CallsScreen({ navigation, route }) {
                       onVideoCall={() => handleStartCall(call, 'video')}
                     />
                   ))}
-
-                  {allCalls.length > 5 && (
-                    <>
-                      <SectionTitle>Call History</SectionTitle>
-                      {allCalls.slice(5).map((call) => (
-                        <CallHistoryCard
-                          key={call._id || call.id}
-                          call={call}
-                          onLongPress={() => handleDeleteCall(call)}
-                        />
-                      ))}
-                    </>
-                  )}
                 </>
               )}
             </>

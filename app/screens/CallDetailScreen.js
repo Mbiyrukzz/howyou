@@ -175,8 +175,13 @@ const DetailEmptyStateText = styled.Text`
 `
 
 export function CallDetailScreen({ route, navigation }) {
-  const { contact } = route?.params || {}
-  const [isFavorite, setIsFavorite] = useState(contact?.isFavorite || false)
+  // Handle both contact and call params
+  const { contact, call } = route?.params || {}
+
+  // Determine the user info - could come from contact or call
+  const userInfo = contact || call
+
+  const [isFavorite, setIsFavorite] = useState(userInfo?.isFavorite || false)
   const [callHistory, setCallHistory] = useState([])
   const [loading, setLoading] = useState(true)
 
@@ -191,17 +196,28 @@ export function CallDetailScreen({ route, navigation }) {
     getLastSeen,
   } = useChats()
 
+  // Get the user ID - try multiple possible properties
+  const getUserId = () => {
+    return (
+      userInfo?.id ||
+      userInfo?.participantId ||
+      userInfo?.firebaseUid ||
+      userInfo?._id ||
+      null
+    )
+  }
+
+  const userId = getUserId()
+
   useEffect(() => {
-    if (contact?.id || contact?.participantId) {
+    if (userId) {
       loadCallHistory()
     }
-  }, [contact, calls])
+  }, [userId, calls])
 
   const loadCallHistory = async () => {
     setLoading(true)
     try {
-      const userId = contact.id || contact.participantId
-
       const userChats = chats.filter((chat) =>
         chat.participants?.includes(userId)
       )
@@ -260,53 +276,123 @@ export function CallDetailScreen({ route, navigation }) {
   }
 
   const stats = calculateStats()
-  const user = findUserById(contact?.id || contact?.participantId)
-  const online = isUserOnline(contact?.id || contact?.participantId)
-  const lastSeen = getLastSeen(contact?.id || contact?.participantId)
+  const user = findUserById(userId)
+  const online = isUserOnline(userId)
+  const lastSeen = getLastSeen(userId)
 
   const handleCall = async (callType) => {
     Vibration.vibrate(10)
 
-    const userId = contact.id || contact.participantId
-    const chat = chats.find((c) => c.participants?.includes(userId))
+    if (!userId) {
+      Alert.alert('Error', 'User information not available')
+      return
+    }
+
+    // Try to find the chat, or use the chatId from the call object
+    let chat = chats.find((c) => c.participants?.includes(userId))
+
+    // If we have a chatId from the call object, use that
+    if (!chat && call?.chatId) {
+      chat = chats.find((c) => (c._id || c.id) === call.chatId)
+    }
 
     if (!chat) {
       Alert.alert('Error', 'Could not find chat with this user')
       return
     }
 
+    const chatIdToUse = chat._id || chat.id
+    if (!chatIdToUse) {
+      Alert.alert('Error', 'Invalid chat ID')
+      return
+    }
+
+    // ✅ Normalize callType: 'audio' -> 'voice'
+    const normalizedCallType = callType === 'audio' ? 'voice' : callType
+
+    console.log('📞 Initiating call:', {
+      chatId: chatIdToUse,
+      callType: normalizedCallType,
+      recipientId: userId,
+    })
+
     try {
       const result = await initiateCall({
-        chatId: chat._id || chat.id,
-        callType,
+        chatId: chatIdToUse,
+        callType: normalizedCallType,
         recipientId: userId,
       })
 
       if (result.success) {
-        navigation.navigate('CallScreen', {
-          chatId: chat._id || chat.id,
-          callId: result.call._id,
-          recipientId: userId,
-          callType,
-        })
+        // ✅ Cross-stack navigation: Navigate to Chats tab, then to CallScreen
+        const rootNavigation = navigation.getParent() || navigation
+
+        try {
+          rootNavigation.navigate('Chats', {
+            screen: 'CallScreen',
+            params: {
+              chatId: chatIdToUse,
+              callId: result.call._id,
+              recipientId: userId,
+              callType: normalizedCallType,
+            },
+          })
+        } catch (error) {
+          console.error('Navigation error:', error)
+          Alert.alert(
+            'Navigation Error',
+            'Call initiated but could not open call screen. Please check the Chats tab.'
+          )
+        }
       } else {
         Alert.alert('Call Failed', result.error || 'Could not initiate call')
       }
     } catch (error) {
+      console.error('Call error:', error)
       Alert.alert('Error', error.message || 'Failed to start call')
     }
   }
 
   const handleMessage = () => {
     Vibration.vibrate(10)
-    const userId = contact.id || contact.participantId
-    const chat = chats.find((c) => c.participants?.includes(userId))
+
+    if (!userId) {
+      Alert.alert('Error', 'User information not available')
+      return
+    }
+
+    let chat = chats.find((c) => c.participants?.includes(userId))
+
+    // If we have a chatId from the call object, use that
+    if (!chat && call?.chatId) {
+      chat = chats.find((c) => (c._id || c.id) === call.chatId)
+    }
 
     if (chat) {
-      navigation.navigate('ChatDetail', {
-        chatId: chat._id || chat.id,
-        userId: userId,
-      })
+      const chatIdToUse = chat._id || chat.id
+      if (!chatIdToUse) {
+        Alert.alert('Error', 'Invalid chat ID')
+        return
+      }
+
+      // ✅ Cross-stack navigation: Navigate to Chats tab, then to ChatDetail
+      const rootNavigation = navigation.getParent() || navigation
+
+      try {
+        rootNavigation.navigate('Chats', {
+          screen: 'ChatDetail',
+          params: {
+            chatId: chatIdToUse,
+            userId: userId,
+          },
+        })
+      } catch (error) {
+        console.error('Navigation error:', error)
+        Alert.alert(
+          'Navigation Error',
+          'Could not navigate to chat. Please go to Chats tab and select the conversation manually.'
+        )
+      }
     } else {
       Alert.alert('Error', 'Could not find chat with this user')
     }
@@ -317,7 +403,7 @@ export function CallDetailScreen({ route, navigation }) {
     setIsFavorite(!isFavorite)
   }
 
-  const handleDeleteCall = async (call) => {
+  const handleDeleteCall = async (callItem) => {
     Alert.alert(
       'Delete Call',
       'Are you sure you want to delete this call from history?',
@@ -329,7 +415,7 @@ export function CallDetailScreen({ route, navigation }) {
           onPress: async () => {
             Vibration.vibrate(10)
             try {
-              const result = await deleteCallLog(call._id || call.id)
+              const result = await deleteCallLog(callItem._id || callItem.id)
               if (result.success) {
                 loadCallHistory()
               } else {
@@ -366,6 +452,11 @@ export function CallDetailScreen({ route, navigation }) {
     return 'Offline'
   }
 
+  // Get display name
+  const displayName = userInfo?.name || user?.name || 'Unknown'
+  const displayColor = userInfo?.color || '#3498db'
+  const displayInitial = displayName.charAt(0) || '?'
+
   return (
     <DetailContainer>
       <ScrollView showsVerticalScrollIndicator={false}>
@@ -378,18 +469,16 @@ export function CallDetailScreen({ route, navigation }) {
             />
           </FavoriteButton>
 
-          <ProfileAvatar color={contact?.color || '#3498db'}>
-            <ProfileAvatarText>
-              {contact?.name?.charAt(0) || user?.name?.charAt(0) || '?'}
-            </ProfileAvatarText>
+          <ProfileAvatar color={displayColor}>
+            <ProfileAvatarText>{displayInitial}</ProfileAvatarText>
           </ProfileAvatar>
 
-          <ContactName>{contact?.name || user?.name || 'Unknown'}</ContactName>
+          <ContactName>{displayName}</ContactName>
           <ContactStatus online={online}>{getStatusText()}</ContactStatus>
 
           <ActionButtons>
             <ActionWrapper>
-              <ActionButton color="#3498db" onPress={() => handleCall('audio')}>
+              <ActionButton color="#3498db" onPress={() => handleCall('voice')}>
                 <Ionicons name="call" size={24} color="#fff" />
               </ActionButton>
               <ActionLabel>Audio</ActionLabel>

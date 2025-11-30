@@ -3,66 +3,56 @@ import { Animated, Dimensions, Platform } from 'react-native'
 
 const { width: screenWidth } = Dimensions.get('window')
 
-// =================== Sound Wave ===================
-export const SoundWaveContainer = styled.View`
-  flex-direction: row;
-  align-items: center;
-  justify-content: center;
-  height: 40px;
-  margin-bottom: 16px;
-`
-
-export const SoundWaveBar = styled(Animated.View)`
-  width: 4px;
-  background-color: #e74c3c;
-  border-radius: 2px;
-  margin: 0 2px;
-`
-
 // =================== Container ===================
 export const Container = styled.View`
   flex: 1;
-  background-color: #f8f9fa;
+  background-color: #f8fafc;
 `
 
 // =================== Header ===================
 export const Header = styled.View`
   background-color: #fff;
-  padding: 50px 16px 16px 16px;
+  padding: 50px 20px 16px 20px;
   flex-direction: row;
   align-items: center;
   border-bottom-width: 1px;
-  border-bottom-color: #e9ecef;
+  border-bottom-color: #e2e8f0;
   shadow-color: #000;
   shadow-offset: 0px 2px;
-  shadow-opacity: 0.1;
-  shadow-radius: 3px;
-  elevation: 5;
+  shadow-opacity: 0.05;
+  shadow-radius: 8px;
+  elevation: 4;
 `
 
 export const BackButton = styled.TouchableOpacity`
   width: 40px;
   height: 40px;
   border-radius: 20px;
+  background-color: #f1f5f9;
   justify-content: center;
   align-items: center;
   margin-right: 12px;
 `
 
 export const HeaderAvatar = styled.View`
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   background-color: ${(props) => props.color || '#3498db'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
+  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+  elevation: 3;
 `
 
 export const HeaderAvatarText = styled.Text`
   color: #fff;
-  font-size: 16px;
-  font-weight: bold;
+  font-size: 18px;
+  font-weight: 700;
 `
 
 export const HeaderInfo = styled.View`
@@ -70,29 +60,35 @@ export const HeaderInfo = styled.View`
 `
 
 export const HeaderName = styled.Text`
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e293b;
+  margin-bottom: 2px;
 `
 
 export const HeaderStatus = styled.Text`
-  font-size: 14px;
-  color: #27ae60;
-  margin-top: 2px;
+  font-size: 13px;
+  color: ${(props) => (props.online ? '#10b981' : '#64748b')};
+  font-weight: 500;
 `
 
 export const HeaderActions = styled.View`
   flex-direction: row;
+  gap: 8px;
 `
 
 export const HeaderActionButton = styled.TouchableOpacity`
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  background-color: ${(props) => props.bgColor || '#f1f5f9'};
   justify-content: center;
   align-items: center;
-  margin-left: 8px;
-  background-color: ${(props) => props.bgColor || 'transparent'};
+  shadow-color: ${(props) => props.shadowColor || '#000'};
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.1;
+  shadow-radius: 4px;
+  elevation: 2;
 `
 
 // =================== Messages ===================
@@ -103,42 +99,46 @@ export const MessagesContainer = styled.View`
 
 export const MessageBubble = styled.View`
   max-width: ${screenWidth * 0.75}px;
-  margin-vertical: 4px;
+  margin-vertical: 6px;
   padding: 12px 16px;
-  border-radius: 20px;
+  border-radius: 16px;
   align-self: ${(props) => (props.isOwn ? 'flex-end' : 'flex-start')};
-  background-color: ${(props) => (props.isOwn ? '#3498db' : '#fff')};
+  background-color: ${(props) => (props.isOwn ? '#3b82f6' : '#fff')};
   shadow-color: #000;
-  shadow-offset: 0px 1px;
-  shadow-opacity: 0.1;
-  shadow-radius: 2px;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.08;
+  shadow-radius: 8px;
   elevation: 2;
+  ${(props) => !props.isOwn && 'border-width: 1px; border-color: #e2e8f0;'}
 `
 
 export const MessageText = styled.Text`
-  font-size: 16px;
+  font-size: 15px;
   line-height: 20px;
-  color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
+  color: ${(props) => (props.isOwn ? '#fff' : '#1e293b')};
+  font-weight: 400;
 `
 
 export const MessageTime = styled.Text`
-  font-size: 12px;
-  color: ${(props) => (props.isOwn ? 'rgba(255, 255, 255, 0.8)' : '#95a5a6')};
+  font-size: 11px;
+  color: ${(props) => (props.isOwn ? 'rgba(255, 255, 255, 0.8)' : '#94a3b8')};
   margin-top: 4px;
+  font-weight: 500;
   align-self: ${(props) => (props.isOwn ? 'flex-end' : 'flex-start')};
 `
 
 // =================== Date Separator ===================
 export const DateSeparator = styled.View`
   align-items: center;
-  margin: 20px 0;
+  margin: 24px 0;
 `
 
 export const DateText = styled.Text`
-  background-color: #e9ecef;
-  color: #7f8c8d;
+  background-color: #e2e8f0;
+  color: #64748b;
   font-size: 12px;
-  padding: 6px 12px;
+  font-weight: 600;
+  padding: 6px 14px;
   border-radius: 16px;
   overflow: hidden;
 `
@@ -147,9 +147,9 @@ export const DateText = styled.Text`
 export const MessageImage = styled.Image`
   width: ${screenWidth * 0.6}px;
   height: 200px;
-  border-radius: 10px;
+  border-radius: 12px;
   margin-top: ${(props) => (props.hasText ? '8px' : '0px')};
-  background-color: #f0f0f0;
+  background-color: #f1f5f9;
 `
 
 export const MessageImageContainer = styled.TouchableOpacity`
@@ -165,12 +165,13 @@ export const ImageLoadingOverlay = styled.View`
   background-color: rgba(0, 0, 0, 0.3);
   justify-content: center;
   align-items: center;
-  border-radius: 10px;
+  border-radius: 12px;
 `
 
 export const LoadingText = styled.Text`
   color: white;
   font-size: 12px;
+  font-weight: 600;
   margin-top: 4px;
 `
 
@@ -178,7 +179,7 @@ export const LoadingText = styled.Text`
 export const MessageVideoContainer = styled.TouchableOpacity`
   width: ${screenWidth * 0.6}px;
   height: 200px;
-  border-radius: 10px;
+  border-radius: 12px;
   margin-top: ${(props) => (props.hasText ? '8px' : '0px')};
   background-color: #000;
   overflow: hidden;
@@ -193,16 +194,21 @@ export const VideoPlayerOverlay = styled.View`
   bottom: 0;
   justify-content: center;
   align-items: center;
-  background-color: rgba(0, 0, 0, 0.3);
+  background-color: rgba(0, 0, 0, 0.4);
 `
 
 export const VideoPlayButton = styled.TouchableOpacity`
-  width: 60px;
-  height: 60px;
-  border-radius: 30px;
-  background-color: rgba(255, 255, 255, 0.9);
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  background-color: rgba(255, 255, 255, 0.95);
   justify-content: center;
   align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 8px;
+  elevation: 6;
 `
 
 // =================== Files ===================
@@ -211,16 +217,28 @@ export const MessageFile = styled.TouchableOpacity`
   align-items: center;
   margin-top: 8px;
   background-color: ${(props) =>
-    props.isOwn ? 'rgba(255, 255, 255, 0.2)' : '#f0f0f0'};
-  padding: 10px;
-  border-radius: 8px;
+    props.isOwn ? 'rgba(255, 255, 255, 0.2)' : '#f8fafc'};
+  padding: 12px;
+  border-radius: 12px;
+  border-width: ${(props) => (props.isOwn ? '0' : '1px')};
+  border-color: #e2e8f0;
 `
 
-export const FileIcon = styled.View``
+export const FileIcon = styled.View`
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.3)' : '#e2e8f0'};
+  justify-content: center;
+  align-items: center;
+  margin-right: 12px;
+`
 
 export const FileText = styled.Text`
   font-size: 14px;
-  color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
+  font-weight: 500;
+  color: ${(props) => (props.isOwn ? '#fff' : '#1e293b')};
   flex: 1;
 `
 
@@ -230,26 +248,33 @@ export const MessageAudioPlayer = styled.View`
   align-items: center;
   margin-top: 8px;
   background-color: ${(props) =>
-    props.isOwn ? 'rgba(255, 255, 255, 0.15)' : '#f0f0f0'};
+    props.isOwn ? 'rgba(255, 255, 255, 0.15)' : '#f8fafc'};
   padding: 12px;
   border-radius: 20px;
-  min-width: 220px;
+  min-width: 240px;
+  border-width: ${(props) => (props.isOwn ? '0' : '1px')};
+  border-color: #e2e8f0;
 `
 
 export const PlayButton = styled.TouchableOpacity`
-  width: 40px;
-  height: 40px;
-  border-radius: 20px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   background-color: ${(props) =>
-    props.isOwn ? 'rgba(255, 255, 255, 0.3)' : '#3498db'};
+    props.isOwn ? 'rgba(255, 255, 255, 0.3)' : '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
+  shadow-color: ${(props) => (props.isOwn ? '#fff' : '#3b82f6')};
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+  elevation: 3;
 `
 
 export const AudioWaveform = styled.View`
   flex: 1;
-  height: 30px;
+  height: 32px;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
@@ -259,7 +284,7 @@ export const AudioWaveform = styled.View`
 export const WaveBar = styled.View`
   width: 3px;
   background-color: ${(props) =>
-    props.isOwn ? 'rgba(255, 255, 255, 0.6)' : '#3498db'};
+    props.isOwn ? 'rgba(255, 255, 255, 0.6)' : '#3b82f6'};
   border-radius: 2px;
   height: ${(props) => props.height || 10}px;
 `
@@ -271,33 +296,38 @@ export const AudioInfo = styled.View`
 export const AudioDuration = styled.Text`
   font-size: 13px;
   font-weight: 600;
-  color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
+  color: ${(props) => (props.isOwn ? '#fff' : '#1e293b')};
 `
 
 // =================== Input ===================
 export const InputContainer = styled.View`
   background-color: #fff;
-  padding: 16px;
+  padding: 12px 16px;
   flex-direction: row;
   align-items: flex-end;
   border-top-width: 1px;
-  border-top-color: #e9ecef;
+  border-top-color: #e2e8f0;
+  shadow-color: #000;
+  shadow-offset: 0px -2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 8px;
+  elevation: 4;
 `
 
 export const InputWrapper = styled.View`
   flex: 1;
   max-height: 100px;
-  margin-right: 12px;
-  background-color: #f8f9fa;
-  border-radius: 25px;
+  margin: 0 8px;
+  background-color: #f8fafc;
+  border-radius: 24px;
   padding: 12px 16px;
   border-width: 1px;
-  border-color: #e9ecef;
+  border-color: #e2e8f0;
 `
 
 export const TextInput = styled.TextInput`
-  font-size: 16px;
-  color: #2c3e50;
+  font-size: 15px;
+  color: #1e293b;
   min-height: 20px;
 `
 
@@ -305,29 +335,41 @@ export const SendButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: ${(props) => (props.disabled ? '#bdc3c7' : '#3498db')};
+  background-color: ${(props) => (props.disabled ? '#cbd5e1' : '#3b82f6')};
   justify-content: center;
   align-items: center;
+  shadow-color: ${(props) => (props.disabled ? '#000' : '#3b82f6')};
+  shadow-offset: 0px 3px;
+  shadow-opacity: ${(props) => (props.disabled ? '0.1' : '0.3')};
+  shadow-radius: 6px;
+  elevation: ${(props) => (props.disabled ? '2' : '4')};
 `
 
 export const AttachmentButton = styled.TouchableOpacity`
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   justify-content: center;
   align-items: center;
-  margin-right: 8px;
-  background-color: #f8f9fa;
+  background-color: #f1f5f9;
 `
 
 export const CameraButton = styled.TouchableOpacity`
-  width: 36px;
-  height: 36px;
-  border-radius: 18px;
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   justify-content: center;
   align-items: center;
-  margin-right: 8px;
-  background-color: #f8f9fa;
+  background-color: #f1f5f9;
+`
+
+export const MicrophoneButton = styled.TouchableOpacity`
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+  justify-content: center;
+  align-items: center;
+  background-color: #f1f5f9;
 `
 
 // =================== Loading & Error ===================
@@ -335,6 +377,7 @@ export const LoadingContainer = styled.View`
   flex: 1;
   justify-content: center;
   align-items: center;
+  background-color: #f8fafc;
 `
 
 export const ErrorContainer = styled.View`
@@ -342,24 +385,32 @@ export const ErrorContainer = styled.View`
   justify-content: center;
   align-items: center;
   padding: 40px;
+  background-color: #f8fafc;
 `
 
 export const ErrorText = styled.Text`
-  color: #e74c3c;
+  color: #ef4444;
   font-size: 16px;
+  font-weight: 600;
   text-align: center;
   margin-bottom: 16px;
 `
 
 export const RetryButton = styled.TouchableOpacity`
-  background-color: #3498db;
+  background-color: #3b82f6;
   padding: 12px 24px;
-  border-radius: 8px;
+  border-radius: 12px;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 3px;
+  shadow-opacity: 0.3;
+  shadow-radius: 6px;
+  elevation: 4;
 `
 
 export const RetryButtonText = styled.Text`
   color: white;
-  font-weight: 600;
+  font-weight: 700;
+  font-size: 15px;
 `
 
 // =================== Image Preview Modal ===================
@@ -367,7 +418,7 @@ export const ImagePreviewModal = styled.Modal``
 
 export const ImagePreviewContainer = styled.View`
   flex: 1;
-  background-color: rgba(0, 0, 0, 0.9);
+  background-color: rgba(0, 0, 0, 0.95);
   justify-content: center;
   align-items: center;
 `
@@ -384,9 +435,12 @@ export const ImagePreviewHeader = styled.View`
 `
 
 export const CloseButton = styled.TouchableOpacity`
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
   background-color: rgba(255, 255, 255, 0.2);
-  padding: 10px;
-  border-radius: 20px;
+  justify-content: center;
+  align-items: center;
 `
 
 export const FullScreenImage = styled.Image`
@@ -403,108 +457,142 @@ export const AudioRecordingContainer = styled.View`
   background-color: #fff;
   padding: 20px;
   border-top-width: 1px;
-  border-top-color: #e9ecef;
+  border-top-color: #e2e8f0;
   elevation: 10;
   shadow-color: #000;
-  shadow-offset: 0px -2px;
+  shadow-offset: 0px -3px;
   shadow-opacity: 0.1;
-  shadow-radius: 4px;
+  shadow-radius: 8px;
 `
 
 export const RecordingIndicator = styled.View`
   flex-direction: row;
   align-items: center;
   justify-content: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 `
 
 export const RecordingDot = styled.View`
   width: 12px;
   height: 12px;
   border-radius: 6px;
-  background-color: #e74c3c;
+  background-color: #ef4444;
   margin-right: 8px;
 `
 
 export const RecordingText = styled.Text`
   font-size: 16px;
-  color: #2c3e50;
-  font-weight: 600;
+  color: #1e293b;
+  font-weight: 700;
 `
 
 export const RecordingTime = styled.Text`
   font-size: 14px;
-  color: #7f8c8d;
+  color: #64748b;
+  font-weight: 600;
   margin-left: 8px;
 `
 
 export const RecordingActions = styled.View`
   flex-direction: row;
   justify-content: space-around;
+  align-items: center;
 `
 
 export const RecordButton = styled.TouchableOpacity`
-  width: 60px;
-  height: 60px;
-  border-radius: 30px;
-  background-color: ${(props) => (props.recording ? '#e74c3c' : '#27ae60')};
+  width: 64px;
+  height: 64px;
+  border-radius: 32px;
+  background-color: ${(props) => (props.recording ? '#ef4444' : '#10b981')};
   justify-content: center;
   align-items: center;
-  elevation: 3;
-  shadow-color: #000;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.2;
-  shadow-radius: 3px;
+  shadow-color: ${(props) => (props.recording ? '#ef4444' : '#10b981')};
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 8px;
+  elevation: 6;
 `
 
 export const CancelRecordButton = styled.TouchableOpacity`
-  width: 60px;
-  height: 60px;
-  border-radius: 30px;
-  background-color: #95a5a6;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background-color: #94a3b8;
   justify-content: center;
   align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.2;
+  shadow-radius: 4px;
+  elevation: 3;
 `
 
 export const SendRecordButton = styled.TouchableOpacity`
-  width: 60px;
-  height: 60px;
-  border-radius: 30px;
-  background-color: #3498db;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background-color: #3b82f6;
   justify-content: center;
   align-items: center;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 6px;
+  elevation: 4;
+`
+
+// =================== Sound Wave Animation ===================
+export const SoundWaveContainer = styled.View`
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  height: 40px;
+  margin-bottom: 16px;
+`
+
+export const SoundWaveBar = styled(Animated.View)`
+  width: 4px;
+  background-color: #ef4444;
+  border-radius: 2px;
+  margin: 0 3px;
 `
 
 // =================== Selected Files ===================
 export const SelectedFilesContainer = styled.View`
   flex-direction: row;
-  padding: 8px;
-  background-color: #f8f9fa;
+  padding: 8px 16px;
+  background-color: #f8fafc;
   border-top-width: 1px;
-  border-top-color: #e9ecef;
+  border-top-color: #e2e8f0;
   flex-wrap: wrap;
 `
 
 export const SelectedFileChip = styled.View`
   flex-direction: row;
   align-items: center;
-  background-color: #3498db;
+  background-color: #3b82f6;
   border-radius: 16px;
-  padding: 6px 12px;
+  padding: 8px 12px;
   margin: 4px;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.2;
+  shadow-radius: 4px;
+  elevation: 2;
 `
 
 export const SelectedFileText = styled.Text`
   color: white;
   font-size: 12px;
+  font-weight: 600;
   margin-right: 8px;
   max-width: 100px;
 `
 
 export const RemoveFileButton = styled.TouchableOpacity`
-  width: 16px;
-  height: 16px;
-  border-radius: 8px;
+  width: 18px;
+  height: 18px;
+  border-radius: 9px;
   background-color: rgba(255, 255, 255, 0.3);
   justify-content: center;
   align-items: center;
