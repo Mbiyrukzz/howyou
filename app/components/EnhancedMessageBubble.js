@@ -6,7 +6,7 @@ import { Ionicons } from '@expo/vector-icons'
 /* =================== Styled Components =================== */
 
 const MessageBubbleContainer = styled.View`
-  max-width: 70%;
+  max-width: 75%;
   margin-bottom: 12px;
   align-self: ${(props) => (props.isOwn ? 'flex-end' : 'flex-start')};
   flex-direction: ${(props) => (props.isOwn ? 'row-reverse' : 'row')};
@@ -18,28 +18,31 @@ const MessageWrapper = styled.View`
 `
 
 const MessageContent = styled.View`
-  background-color: ${(props) => (props.isOwn ? '#3498db' : '#fff')};
-  padding: 12px 16px;
-  border-radius: 18px;
-  border-bottom-right-radius: ${(props) => (props.isOwn ? '4px' : '18px')};
-  border-bottom-left-radius: ${(props) => (props.isOwn ? '18px' : '4px')};
-  shadow-color: #000;
-  shadow-offset: 0px 1px;
-  shadow-opacity: 0.1;
-  shadow-radius: 2px;
-  elevation: 2;
+  background-color: ${(props) => (props.isOwn ? '#3b82f6' : '#fff')};
+  padding: 14px 16px;
+  border-radius: 20px;
+  border-bottom-right-radius: ${(props) => (props.isOwn ? '6px' : '20px')};
+  border-bottom-left-radius: ${(props) => (props.isOwn ? '20px' : '6px')};
+  shadow-color: ${(props) => (props.isOwn ? '#3b82f6' : '#000')};
+  shadow-offset: 0px 2px;
+  shadow-opacity: ${(props) => (props.isOwn ? 0.25 : 0.08)};
+  shadow-radius: 8px;
+  elevation: 3;
+  border-width: ${(props) => (props.isOwn ? 0 : 1)}px;
+  border-color: #e2e8f0;
 `
 
 const MessageText = styled.Text`
   font-size: 16px;
-  color: ${(props) => (props.isOwn ? '#fff' : '#2c3e50')};
+  color: ${(props) => (props.isOwn ? '#fff' : '#1e293b')};
   line-height: 22px;
+  font-weight: 500;
 `
 
 const MessageImage = styled.View`
-  width: 200px;
-  height: 200px;
-  border-radius: 12px;
+  width: 220px;
+  height: 220px;
+  border-radius: 16px;
   overflow: hidden;
   margin-top: 8px;
 `
@@ -48,134 +51,204 @@ const MessageTimeRow = styled.View`
   flex-direction: row;
   align-items: center;
   justify-content: ${(props) => (props.isOwn ? 'flex-end' : 'flex-start')};
-  margin-top: 4px;
-  gap: 4px;
+  margin-top: 6px;
+  gap: 6px;
 `
 
 const MessageTime = styled.Text`
-  font-size: 11px;
-  color: ${(props) => (props.isOwn ? 'rgba(255,255,255,0.7)' : '#95a5a6')};
+  font-size: 12px;
+  font-weight: 500;
+  color: ${(props) => (props.isOwn ? 'rgba(255,255,255,0.75)' : '#64748b')};
 `
 
 const EditedLabel = styled.Text`
   font-size: 11px;
-  color: ${(props) => (props.isOwn ? 'rgba(255,255,255,0.6)' : '#95a5a6')};
+  color: ${(props) => (props.isOwn ? 'rgba(255,255,255,0.7)' : '#94a3b8')};
   font-style: italic;
+  font-weight: 500;
 `
 
 const MessageOptionsButton = styled.TouchableOpacity`
-  width: 32px;
-  height: 32px;
-  border-radius: 16px;
-  background-color: rgba(255, 255, 255, 0.9);
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #f1f5f9;
   justify-content: center;
   align-items: center;
   margin-left: ${(props) => (props.isOwn ? '0px' : '8px')};
   margin-right: ${(props) => (props.isOwn ? '8px' : '0px')};
-  shadow-color: #000;
+  shadow-color: #64748b;
   shadow-offset: 0px 2px;
   shadow-opacity: 0.15;
-  shadow-radius: 3px;
-  elevation: 3;
+  shadow-radius: 4px;
+  elevation: 2;
   opacity: ${(props) => (props.visible ? 1 : 0)};
 `
 
 const ModalOverlay = styled.View`
   flex: 1;
-  background-color: rgba(0, 0, 0, 0.5);
-  justify-content: center;
-  align-items: center;
-  padding: 20px;
+  background-color: rgba(0, 0, 0, 0.6);
+  justify-content: flex-end;
+  padding-bottom: 20px;
 `
 
 const MenuContainer = styled.View`
   background-color: #fff;
-  border-radius: 12px;
-  min-width: 200px;
+  border-radius: 20px;
+  margin: 0 16px;
   overflow: hidden;
   shadow-color: #000;
-  shadow-offset: 0px 4px;
-  shadow-opacity: 0.3;
-  shadow-radius: 8px;
-  elevation: 8;
+  shadow-offset: 0px -4px;
+  shadow-opacity: 0.2;
+  shadow-radius: 12px;
+  elevation: 10;
 `
 
 const MenuItem = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
-  padding: 16px;
-  border-bottom-width: 1px;
-  border-bottom-color: #f8f9fa;
-  background-color: ${(props) => (props.danger ? '#fff5f5' : '#fff')};
+  padding: 18px 24px;
+  background-color: #fff;
+`
+
+const MenuIconWrapper = styled.View`
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: ${(props) => {
+    if (props.danger) return '#fee2e2'
+    if (props.primary) return '#dbeafe'
+    return '#f1f5f9'
+  }};
+  align-items: center;
+  justify-content: center;
+  margin-right: 16px;
 `
 
 const MenuItemText = styled.Text`
-  margin-left: 12px;
-  font-size: 15px;
-  font-weight: 500;
-  color: ${(props) => (props.danger ? '#e74c3c' : '#2c3e50')};
+  font-size: 17px;
+  font-weight: 600;
+  color: ${(props) => {
+    if (props.danger) return '#dc2626'
+    if (props.primary) return '#3b82f6'
+    return '#1e293b'
+  }};
+  flex: 1;
+`
+
+const MenuDivider = styled.View`
+  height: 1px;
+  background-color: #f1f5f9;
+  margin: 0 24px;
+`
+
+const MenuCancel = styled.TouchableOpacity`
+  padding: 18px 24px;
+  align-items: center;
+  background-color: #f8f9fa;
+  margin-top: 8px;
+  border-radius: 20px;
+  margin: 8px 16px 0;
+`
+
+const MenuCancelText = styled.Text`
+  font-size: 17px;
+  color: #64748b;
+  font-weight: 700;
 `
 
 const EditModalContainer = styled.View`
   background-color: #fff;
-  border-radius: 12px;
+  border-radius: 20px;
   width: 100%;
-  max-width: 400px;
+  max-width: 500px;
   overflow: hidden;
   shadow-color: #000;
-  shadow-offset: 0px 4px;
+  shadow-offset: 0px 10px;
   shadow-opacity: 0.3;
-  shadow-radius: 8px;
-  elevation: 8;
+  shadow-radius: 20px;
+  elevation: 20;
+  margin: 0 20px;
 `
 
 const EditModalHeader = styled.View`
-  padding: 20px;
+  padding: 24px;
   border-bottom-width: 1px;
-  border-bottom-color: #e9ecef;
-  background-color: #f8f9fa;
+  border-bottom-color: #e2e8f0;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
 `
 
 const EditModalTitle = styled.Text`
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
+  font-size: 20px;
+  font-weight: 700;
+  color: #1e293b;
+`
+
+const CloseButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #f1f5f9;
+  align-items: center;
+  justify-content: center;
 `
 
 const EditModalBody = styled.View`
   padding: 20px;
 `
 
-const EditInput = styled.TextInput`
+const EditInputWrapper = styled.View`
   background-color: #f8f9fa;
-  border-radius: 8px;
-  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid #e2e8f0;
+  overflow: hidden;
+`
+
+const EditInput = styled.TextInput`
+  padding: 16px;
   font-size: 16px;
-  color: #2c3e50;
-  min-height: 100px;
+  color: #1e293b;
+  min-height: 120px;
   text-align-vertical: top;
+  font-weight: 500;
+`
+
+const CharacterCount = styled.Text`
+  font-size: 12px;
+  color: #64748b;
+  text-align: right;
+  padding: 0 16px 12px;
+  font-weight: 500;
 `
 
 const EditModalFooter = styled.View`
   flex-direction: row;
-  padding: 16px;
+  padding: 20px;
   border-top-width: 1px;
-  border-top-color: #e9ecef;
+  border-top-color: #e2e8f0;
   gap: 12px;
 `
 
 const EditButton = styled.TouchableOpacity`
   flex: 1;
-  padding: 12px;
-  border-radius: 8px;
+  padding: 14px;
+  border-radius: 12px;
   align-items: center;
-  background-color: ${(props) => (props.primary ? '#3498db' : '#f8f9fa')};
+  background-color: ${(props) => (props.primary ? '#3b82f6' : '#f1f5f9')};
+  opacity: ${(props) => (props.disabled ? 0.5 : 1)};
+  shadow-color: ${(props) => (props.primary ? '#3b82f6' : 'transparent')};
+  shadow-offset: 0px 4px;
+  shadow-opacity: ${(props) => (props.primary ? 0.3 : 0)};
+  shadow-radius: 8px;
+  elevation: ${(props) => (props.primary ? 4 : 0)};
 `
 
 const EditButtonText = styled.Text`
-  font-size: 15px;
-  font-weight: 600;
-  color: ${(props) => (props.primary ? '#fff' : '#2c3e50')};
+  font-size: 16px;
+  font-weight: 700;
+  color: ${(props) => (props.primary ? '#fff' : '#64748b')};
 `
 
 const LongPressOverlay = styled.View`
@@ -184,8 +257,8 @@ const LongPressOverlay = styled.View`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(52, 152, 219, 0.1);
-  border-radius: 18px;
+  background-color: rgba(59, 130, 246, 0.15);
+  border-radius: 20px;
 `
 
 /* =================== Enhanced Message Component =================== */
@@ -206,6 +279,7 @@ export const EnhancedMessageBubble = ({
   const [showOptions, setShowOptions] = useState(false)
   const [buttonVisible, setButtonVisible] = useState(false)
 
+  const maxLength = 1000
   const isOwn = item.senderId === currentUser?.uid
   const hasImage =
     item.files &&
@@ -296,6 +370,12 @@ export const EnhancedMessageBubble = ({
     setShowMenu(true)
   }
 
+  const isSaveDisabled =
+    updating ||
+    !editedText.trim() ||
+    editedText.trim() === (item.content || '').trim() ||
+    editedText.length > maxLength
+
   return (
     <>
       <MessageBubbleContainer
@@ -309,7 +389,7 @@ export const EnhancedMessageBubble = ({
             onPress={handleOptionsPress}
             visible={buttonVisible}
           >
-            <Ionicons name="ellipsis-vertical" size={16} color="#7f8c8d" />
+            <Ionicons name="ellipsis-vertical" size={18} color="#64748b" />
           </MessageOptionsButton>
         )}
 
@@ -351,7 +431,7 @@ export const EnhancedMessageBubble = ({
       <Modal
         visible={showMenu}
         transparent
-        animationType="fade"
+        animationType="slide"
         onRequestClose={() => setShowMenu(false)}
       >
         <TouchableOpacity
@@ -362,29 +442,59 @@ export const EnhancedMessageBubble = ({
           <ModalOverlay>
             <MenuContainer>
               <MenuItem onPress={handleReply}>
-                <Ionicons name="arrow-undo-outline" size={20} color="#2c3e50" />
+                <MenuIconWrapper>
+                  <Ionicons name="arrow-undo" size={20} color="#64748b" />
+                </MenuIconWrapper>
                 <MenuItemText>Reply</MenuItemText>
+                <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
               </MenuItem>
 
+              <MenuDivider />
+
               <MenuItem onPress={handleCopy}>
-                <Ionicons name="copy-outline" size={20} color="#2c3e50" />
+                <MenuIconWrapper>
+                  <Ionicons name="copy" size={20} color="#64748b" />
+                </MenuIconWrapper>
                 <MenuItemText>Copy</MenuItemText>
+                <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
               </MenuItem>
 
               {isOwn && item.content && (
                 <>
+                  <MenuDivider />
+
                   <MenuItem onPress={handleEdit}>
-                    <Ionicons name="create-outline" size={20} color="#3498db" />
-                    <MenuItemText>Edit</MenuItemText>
+                    <MenuIconWrapper primary>
+                      <Ionicons name="pencil" size={20} color="#3b82f6" />
+                    </MenuIconWrapper>
+                    <MenuItemText primary>Edit</MenuItemText>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#93c5fd"
+                    />
                   </MenuItem>
 
-                  <MenuItem danger onPress={handleDelete}>
-                    <Ionicons name="trash-outline" size={20} color="#e74c3c" />
+                  <MenuDivider />
+
+                  <MenuItem onPress={handleDelete}>
+                    <MenuIconWrapper danger>
+                      <Ionicons name="trash" size={20} color="#dc2626" />
+                    </MenuIconWrapper>
                     <MenuItemText danger>Delete</MenuItemText>
+                    <Ionicons
+                      name="chevron-forward"
+                      size={20}
+                      color="#fca5a5"
+                    />
                   </MenuItem>
                 </>
               )}
             </MenuContainer>
+
+            <MenuCancel onPress={() => setShowMenu(false)}>
+              <MenuCancelText>Cancel</MenuCancelText>
+            </MenuCancel>
           </ModalOverlay>
         </TouchableOpacity>
       </Modal>
@@ -393,33 +503,54 @@ export const EnhancedMessageBubble = ({
       <Modal
         visible={showEditModal}
         transparent
-        animationType="slide"
-        onRequestClose={() => setShowEditModal(false)}
+        animationType="fade"
+        onRequestClose={() => !updating && setShowEditModal(false)}
       >
         <TouchableOpacity
           style={{ flex: 1 }}
           activeOpacity={1}
           onPress={() => !updating && setShowEditModal(false)}
         >
-          <ModalOverlay>
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: 'rgba(0, 0, 0, 0.6)',
+              justifyContent: 'center',
+              alignItems: 'center',
+              padding: 20,
+            }}
+          >
             <TouchableOpacity
               activeOpacity={1}
-              style={{ width: '100%', maxWidth: 400 }}
+              style={{ width: '100%', maxWidth: 500 }}
             >
               <EditModalContainer>
                 <EditModalHeader>
                   <EditModalTitle>Edit Message</EditModalTitle>
+                  <CloseButton
+                    onPress={() => !updating && setShowEditModal(false)}
+                    disabled={updating}
+                  >
+                    <Ionicons name="close" size={20} color="#64748b" />
+                  </CloseButton>
                 </EditModalHeader>
 
                 <EditModalBody>
-                  <EditInput
-                    value={editedText}
-                    onChangeText={setEditedText}
-                    placeholder="Edit your message..."
-                    multiline
-                    autoFocus
-                    editable={!updating}
-                  />
+                  <EditInputWrapper>
+                    <EditInput
+                      value={editedText}
+                      onChangeText={setEditedText}
+                      placeholder="Edit your message..."
+                      placeholderTextColor="#94a3b8"
+                      multiline
+                      autoFocus
+                      editable={!updating}
+                      maxLength={maxLength}
+                    />
+                    <CharacterCount>
+                      {editedText.length}/{maxLength}
+                    </CharacterCount>
+                  </EditInputWrapper>
                 </EditModalBody>
 
                 <EditModalFooter>
@@ -432,16 +563,16 @@ export const EnhancedMessageBubble = ({
                   <EditButton
                     primary
                     onPress={handleSaveEdit}
-                    disabled={updating || !editedText.trim()}
+                    disabled={isSaveDisabled}
                   >
                     <EditButtonText primary>
-                      {updating ? 'Saving...' : 'Save'}
+                      {updating ? 'Saving...' : 'Save Changes'}
                     </EditButtonText>
                   </EditButton>
                 </EditModalFooter>
               </EditModalContainer>
             </TouchableOpacity>
-          </ModalOverlay>
+          </View>
         </TouchableOpacity>
       </Modal>
     </>

@@ -11,6 +11,7 @@ import { auth } from '../firebase/setUpFirebase'
 
 import IncomingCallHandler from '../components/IncomingCallHandler'
 import { useNotifications } from '../hooks/useNotifications'
+import LoadingIndicator from '../components/LoadingIndicator'
 
 const Stack = createNativeStackNavigator()
 
@@ -53,7 +54,13 @@ export default function AppNavigator() {
   }, [])
 
   if (loading) {
-    return null
+    return (
+      <LoadingIndicator
+        text="Loading..."
+        subtext="Kindly wait, Loading Chats..."
+        showCard={false}
+      />
+    )
   }
 
   return (
