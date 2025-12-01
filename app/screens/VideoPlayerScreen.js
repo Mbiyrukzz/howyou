@@ -140,9 +140,19 @@ export default function VideoPlayerScreen({ navigation, route }) {
           source={{ uri: videoUrl }}
           style={{ width: '100%', height: '100%' }}
           resizeMode="contain"
-          shouldPlay={false}
           useNativeControls={false}
-          onPlaybackStatusUpdate={setStatus}
+          onPlaybackStatusUpdate={(status) => {
+            console.log('Video status:', {
+              isLoaded: status.isLoaded,
+              isPlaying: status.isPlaying,
+              position: status.positionMillis,
+              duration: status.durationMillis,
+              error: status.error,
+            })
+            setStatus(status)
+          }}
+          onLoad={(data) => console.log('Video loaded:', data)}
+          onError={(error) => console.error('Video ERROR:', error)}
         />
 
         <ControlsOverlay
