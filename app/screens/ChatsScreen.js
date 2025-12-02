@@ -1,4 +1,4 @@
-// screens/ChatsScreen.js - Fixed delete function
+// screens/ChatsScreen.js - Enhanced with Call Card Design
 import React, { useContext, useState, useEffect } from 'react'
 import { View, Platform, StatusBar, Alert } from 'react-native'
 import styled from 'styled-components/native'
@@ -18,14 +18,37 @@ import SharedChatsSidebar from '../components/SharedChatsSidebar'
 /* =================== Styled Components =================== */
 const Container = styled.View`
   flex: 1;
+  background-color: #f1f5f9;
+`
+
+const EmptyStateContainer = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
   background-color: #f8fafc;
+`
+
+const EmptyIconWrapper = styled.View`
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #e0f2fe;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.15;
+  shadow-radius: 12px;
+  elevation: 4;
 `
 
 const EmptyStateTitle = styled.Text`
   font-size: 24px;
   font-weight: 700;
   color: #1e293b;
-  margin-bottom: 8px;
+  margin-bottom: 12px;
   text-align: center;
 `
 
@@ -34,6 +57,50 @@ const EmptyStateText = styled.Text`
   color: #64748b;
   text-align: center;
   line-height: 24px;
+  max-width: 400px;
+`
+
+const ErrorIconWrapper = styled.View`
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #fee2e2;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  shadow-color: #dc2626;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.15;
+  shadow-radius: 12px;
+  elevation: 4;
+`
+
+const LoadingContainer = styled.View`
+  flex: 1;
+  background-color: #f8fafc;
+`
+
+const SelectChatContainer = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  padding: 48px;
+  background-color: #f8fafc;
+`
+
+const SelectChatIconWrapper = styled.View`
+  width: 96px;
+  height: 96px;
+  border-radius: 48px;
+  background-color: #dbeafe;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 24px;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.2;
+  shadow-radius: 16px;
+  elevation: 5;
 `
 
 /* =================== Main ChatsScreen =================== */
@@ -86,7 +153,6 @@ export default function ChatsScreen({ navigation, route }) {
     navigation.navigate('NewChats')
   }
 
-  // ✅ FIXED: Proper async/await with confirmation
   const handleDeleteChat = async (chatId) => {
     return new Promise((resolve) => {
       // Show confirmation dialog
@@ -162,14 +228,16 @@ export default function ChatsScreen({ navigation, route }) {
       return (
         <Container>
           <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
-          <LoadingIndicator
-            type="pulse"
-            size="large"
-            showText
-            text="Loading conversations..."
-            showCard
-            subtext="Please wait while we sync your messages"
-          />
+          <LoadingContainer>
+            <LoadingIndicator
+              type="pulse"
+              size="large"
+              showText
+              text="Loading conversations..."
+              showCard={false}
+              subtext="Please wait while we sync your messages"
+            />
+          </LoadingContainer>
         </Container>
       )
     }
@@ -178,23 +246,18 @@ export default function ChatsScreen({ navigation, route }) {
       return (
         <Container>
           <StatusBar barStyle="dark-content" backgroundColor="#f8fafc" />
-          <View
-            style={{
-              flex: 1,
-              justifyContent: 'center',
-              alignItems: 'center',
-              padding: 48,
-            }}
-          >
-            <Ionicons name="alert-circle-outline" size={50} color="#dc2626" />
-            <EmptyStateTitle style={{ color: '#dc2626', marginTop: 16 }}>
+          <EmptyStateContainer>
+            <ErrorIconWrapper>
+              <Ionicons name="alert-circle" size={44} color="#dc2626" />
+            </ErrorIconWrapper>
+            <EmptyStateTitle style={{ color: '#dc2626' }}>
               Connection Error
             </EmptyStateTitle>
             <EmptyStateText>
               Unable to load your conversations. Please check your internet
-              connection.
+              connection and try again.
             </EmptyStateText>
-          </View>
+          </EmptyStateContainer>
         </Container>
       )
     }
@@ -225,23 +288,15 @@ export default function ChatsScreen({ navigation, route }) {
   const renderChatDetail = () => {
     if (!selectedChatId) {
       return (
-        <View
-          style={{
-            flex: 1,
-            justifyContent: 'center',
-            alignItems: 'center',
-            padding: 32,
-            backgroundColor: '#f8fafc',
-          }}
-        >
-          <Ionicons name="chatbubble-outline" size={64} color="#94a3b8" />
-          <EmptyStateTitle style={{ marginTop: 16 }}>
-            Select a chat
-          </EmptyStateTitle>
+        <SelectChatContainer>
+          <SelectChatIconWrapper>
+            <Ionicons name="chatbubbles" size={52} color="#3b82f6" />
+          </SelectChatIconWrapper>
+          <EmptyStateTitle>Select a conversation</EmptyStateTitle>
           <EmptyStateText>
-            Choose a conversation from the list to start messaging
+            Choose a chat from the list to view messages and start chatting
           </EmptyStateText>
-        </View>
+        </SelectChatContainer>
       )
     }
 

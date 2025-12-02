@@ -525,7 +525,7 @@ export default function ChatDetailScreen({
           size="large"
           showText={true}
           text="Loading messages..."
-          showCard={true}
+          showCard={false}
           subtext="Please wait while we sync your messages"
         />
       </Container>

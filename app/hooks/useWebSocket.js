@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { Alert } from 'react-native'
 
-const WS_URL = 'ws://10.102.223.87:5000'
+const WS_URL = 'ws://10.128.61.87:5000'
 
 const useWebSocket = ({
   userId,

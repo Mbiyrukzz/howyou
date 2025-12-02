@@ -5,7 +5,7 @@ import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 import { Alert, Platform } from 'react-native'
 
-const API_URL = 'http://10.102.223.87:5000'
+const API_URL = 'http://10.128.61.87:5000'
 
 const ChatsProvider = ({ children }) => {
   const [chats, setChats] = useState([])

@@ -1,4 +1,3 @@
-// components/SharedChatsSidebar.js - Complete Self-Contained Chats Sidebar with Mobile Gestures
 import React, { useState } from 'react'
 import {
   FlatList,
@@ -18,9 +17,9 @@ import { Swipeable } from 'react-native-gesture-handler'
 /* =================== Styled Components =================== */
 const Column = styled.View`
   flex: ${(props) => props.flex || 1};
-  background-color: ${(props) => props.bgColor || '#fff'};
+  background-color: #f8fafc;
   border-right-width: ${(props) => (props.borderRight ? '1px' : '0px')};
-  border-right-color: #e9ecef;
+  border-right-color: #e2e8f0;
   position: relative;
 `
 
@@ -31,107 +30,137 @@ const Header = styled.View`
   align-items: center;
   justify-content: space-between;
   border-bottom-width: 1px;
-  border-bottom-color: #e9ecef;
+  border-bottom-color: #e2e8f0;
   shadow-color: #000;
   shadow-offset: 0px 2px;
-  shadow-opacity: 0.05;
+  shadow-opacity: 0.08;
   shadow-radius: 8px;
-  elevation: 4;
+  elevation: 3;
 `
 
 const HeaderTitle = styled.Text`
   font-size: 28px;
   font-weight: 800;
-  color: #3396d3;
+  color: #1e293b;
   letter-spacing: -0.5px;
 `
 
 const HeaderSubtitle = styled.Text`
   font-size: 13px;
-  color: #7f8c8d;
+  color: #64748b;
   margin-top: 4px;
+  font-weight: 500;
 `
 
 const CameraButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: #f1f5f9;
+  background-color: #3b82f6;
   justify-content: center;
   align-items: center;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 3px;
+  shadow-opacity: 0.3;
+  shadow-radius: 6px;
+  elevation: 4;
 `
 
 const SearchContainer = styled.View`
-  padding: 12px 16px;
-  background-color: #fff;
-  border-bottom-width: 1px;
-  border-bottom-color: #e9ecef;
+  padding: 16px;
+  background-color: #f8fafc;
+`
+
+const SearchInputWrapper = styled.View`
+  position: relative;
 `
 
 const SearchInput = styled.TextInput`
-  background-color: #f8f9fa;
-  border-radius: 20px;
-  padding: 10px 16px 10px 40px;
-  font-size: 14px;
-  color: #2c3e50;
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 12px 16px 12px 44px;
+  font-size: 15px;
+  color: #1e293b;
+  border-width: 1px;
+  border-color: #e2e8f0;
+  shadow-color: #000;
+  shadow-offset: 0px 1px;
+  shadow-opacity: 0.05;
+  shadow-radius: 3px;
+  elevation: 1;
 `
 
 const SearchIcon = styled.View`
   position: absolute;
-  left: 28px;
-  top: 22px;
+  left: 14px;
+  top: 50%;
+  margin-top: -10px;
+  z-index: 1;
 `
 
 const ChatList = styled.FlatList`
   flex: 1;
-  background-color: #fff;
+  background-color: #f8fafc;
+  padding: 0 12px;
 `
 
 const ChatItemContainer = styled.View`
   position: relative;
+  margin-bottom: 12px;
 `
 
 const ChatItem = styled.TouchableOpacity`
+  background-color: #fff;
+  border-radius: 16px;
+  padding: 16px;
+  border-width: 1px;
+  border-color: #e2e8f0;
   flex-direction: row;
   align-items: center;
-  padding: 16px;
-  border-bottom-width: 1px;
-  border-bottom-color: #f8f9fa;
-  background-color: ${(props) => (props.active ? '#e3f2fd' : '#fff')};
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.08;
+  shadow-radius: 8px;
+  elevation: 3;
 `
 
 const ChatAvatar = styled.View`
-  width: 52px;
-  height: 52px;
-  border-radius: 26px;
-  background-color: ${(props) => props.color || '#3498db'};
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
-  margin-right: 12px;
+  margin-right: 14px;
   position: relative;
+  shadow-color: ${(props) => props.color || '#3b82f6'};
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+  elevation: 3;
 `
 
 const ChatAvatarText = styled.Text`
-  color: #fff;
-  font-size: 18px;
-  font-weight: bold;
+  color: white;
+  font-size: 22px;
+  font-weight: 700;
 `
 
 const ChatAvatarImage = styled.Image`
-  width: 52px;
-  height: 52px;
-  border-radius: 26px;
+  width: 56px;
+  height: 56px;
+  border-radius: 28px;
 `
 
 const OnlineDot = styled.View`
   position: absolute;
-  bottom: 2px;
-  right: 2px;
+  bottom: 0;
+  right: 0;
   width: 14px;
   height: 14px;
   border-radius: 7px;
-  background-color: #27ae60;
-  border-width: 2px;
+  background-color: #10b981;
+  border-width: 3px;
   border-color: #fff;
 `
 
@@ -143,63 +172,83 @@ const ChatInfo = styled.View`
 const ChatNameRow = styled.View`
   flex-direction: row;
   align-items: center;
-  margin-bottom: 4px;
+  justify-content: space-between;
+  margin-bottom: 6px;
 `
 
 const ChatName = styled.Text`
-  font-size: 15px;
-  font-weight: 600;
-  color: #2c3e50;
+  font-size: 17px;
+  font-weight: 700;
+  color: #1e293b;
   flex: 1;
 `
 
 const ChatTime = styled.Text`
   font-size: 12px;
-  color: #95a5a6;
+  color: #64748b;
+  font-weight: 500;
+  margin-left: 8px;
 `
 
 const ChatLastMessage = styled.Text`
-  font-size: 13px;
-  color: ${(props) => (props.isTyping ? '#3498db' : '#7f8c8d')};
-  line-height: 18px;
+  font-size: 14px;
+  color: ${(props) => (props.isTyping ? '#3b82f6' : '#64748b')};
+  line-height: 20px;
   font-style: ${(props) => (props.isTyping ? 'italic' : 'normal')};
+  font-weight: 500;
 `
 
 const UnreadBadge = styled.View`
-  background-color: #3498db;
-  border-radius: 10px;
-  min-width: 20px;
-  height: 20px;
+  background-color: #3b82f6;
+  border-radius: 12px;
+  min-width: 24px;
+  height: 24px;
   justify-content: center;
   align-items: center;
-  padding: 0 6px;
+  padding: 0 8px;
+  margin-left: 8px;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+  elevation: 3;
 `
 
 const UnreadText = styled.Text`
   color: #fff;
-  font-size: 11px;
-  font-weight: bold;
+  font-size: 12px;
+  font-weight: 700;
 `
 
 const EmptyState = styled.View`
-  padding: 40px 16px;
+  padding: 60px 24px;
   align-items: center;
   justify-content: center;
 `
 
+const EmptyIconWrapper = styled.View`
+  width: 80px;
+  height: 80px;
+  border-radius: 40px;
+  background-color: #f1f5f9;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 16px;
+`
+
 const EmptyStateTitle = styled.Text`
-  font-size: 16px;
-  font-weight: 600;
-  color: #2c3e50;
-  margin-top: 12px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e293b;
   margin-bottom: 8px;
 `
 
 const EmptyStateText = styled.Text`
   font-size: 14px;
-  color: #95a5a6;
+  color: #64748b;
   text-align: center;
-  margin-top: 8px;
+  font-weight: 500;
+  line-height: 20px;
 `
 
 const OptionsButton = styled.TouchableOpacity`
@@ -214,8 +263,8 @@ const OptionsButton = styled.TouchableOpacity`
 
 const DropdownMenu = styled.View`
   position: absolute;
-  right: 20px;
-  top: 60px;
+  right: 16px;
+  top: 70px;
   background-color: white;
   border-radius: 12px;
   padding: 8px 0;
@@ -225,7 +274,7 @@ const DropdownMenu = styled.View`
   shadow-opacity: 0.15;
   shadow-radius: 12px;
   elevation: 8;
-  border: 1px solid #f1f5f9;
+  border: 1px solid #e2e8f0;
   z-index: 1000;
 `
 
@@ -237,7 +286,7 @@ const DropdownItem = styled.TouchableOpacity`
 `
 
 const DropdownItemText = styled.Text`
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 600;
   color: ${(props) => (props.danger ? '#dc2626' : '#1e293b')};
   margin-left: 12px;
@@ -245,31 +294,20 @@ const DropdownItemText = styled.Text`
 
 const FloatingActionButton = styled.TouchableOpacity`
   position: absolute;
-  right: 24px;
-  bottom: 32px;
-  width: 64px;
-  height: 64px;
-  border-radius: 32px;
+  right: 20px;
+  bottom: 24px;
+  width: 60px;
+  height: 60px;
+  border-radius: 30px;
+  background-color: #3b82f6;
   justify-content: center;
   align-items: center;
-  shadow-color: #3396d3;
+  shadow-color: #3b82f6;
   shadow-offset: 0px 6px;
-  shadow-opacity: 0.3;
-  shadow-radius: 8px;
-  elevation: 12;
+  shadow-opacity: 0.4;
+  shadow-radius: 12px;
+  elevation: 8;
   z-index: 999;
-`
-
-const FABGradient = styled(LinearGradient).attrs({
-  colors: ['#3396D3', '#3396D3'],
-  start: { x: 0, y: 0 },
-  end: { x: 1, y: 1 },
-})`
-  width: 64px;
-  height: 64px;
-  border-radius: 32px;
-  justify-content: center;
-  align-items: center;
 `
 
 // Swipe Action Components
@@ -286,6 +324,7 @@ const DeleteButton = styled.TouchableOpacity`
   align-items: center;
   width: 80px;
   height: 100%;
+  border-radius: 16px;
 `
 
 // Modal Components
@@ -303,41 +342,49 @@ const ModalContent = styled.View`
   max-width: 350px;
   padding: 24px;
   shadow-color: #000;
-  shadow-offset: 0px 4px;
-  shadow-opacity: 0.3;
-  shadow-radius: 8px;
+  shadow-offset: 0px 8px;
+  shadow-opacity: 0.25;
+  shadow-radius: 16px;
   elevation: 10;
 `
 
 const ModalTitle = styled.Text`
-  font-size: 20px;
-  font-weight: bold;
-  color: #2c3e50;
+  font-size: 22px;
+  font-weight: 700;
+  color: #1e293b;
   text-align: center;
   margin-bottom: 8px;
 `
 
 const ModalSubtitle = styled.Text`
   font-size: 14px;
-  color: #7f8c8d;
+  color: #64748b;
   text-align: center;
   margin-bottom: 24px;
+  font-weight: 500;
 `
 
 const ModalButton = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
   padding: 16px;
-  border-radius: 12px;
-  background-color: ${(props) => props.bgColor || '#f8f9fa'};
+  border-radius: 16px;
+  background-color: ${(props) => props.bgColor || '#f8fafc'};
   margin-bottom: 12px;
+  border-width: 1px;
+  border-color: ${(props) => props.borderColor || '#e2e8f0'};
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.05;
+  shadow-radius: 4px;
+  elevation: 2;
 `
 
 const ModalButtonText = styled.Text`
   flex: 1;
   font-size: 16px;
   font-weight: 600;
-  color: ${(props) => props.color || '#2c3e50'};
+  color: ${(props) => props.color || '#1e293b'};
   margin-left: 12px;
 `
 
@@ -349,7 +396,7 @@ const ModalCancelButton = styled.TouchableOpacity`
 const ModalCancelText = styled.Text`
   font-size: 16px;
   font-weight: 600;
-  color: #7f8c8d;
+  color: #64748b;
 `
 
 const LoadingOverlay = styled.View`
@@ -358,32 +405,44 @@ const LoadingOverlay = styled.View`
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: rgba(0, 0, 0, 0.6);
   justify-content: center;
   align-items: center;
   z-index: 9999;
 `
 
+const LoadingContent = styled.View`
+  background-color: #fff;
+  border-radius: 20px;
+  padding: 32px;
+  align-items: center;
+  shadow-color: #000;
+  shadow-offset: 0px 8px;
+  shadow-opacity: 0.3;
+  shadow-radius: 16px;
+  elevation: 10;
+`
+
 const LoadingText = styled.Text`
-  color: white;
+  color: #1e293b;
   font-size: 16px;
-  margin-top: 12px;
+  margin-top: 16px;
   font-weight: 600;
 `
 
 /* =================== Helper Functions =================== */
 const getUserColor = (userId) => {
   const colors = [
-    '#3498db',
-    '#e74c3c',
-    '#f39c12',
-    '#27ae60',
-    '#9b59b6',
-    '#1abc9c',
-    '#34495e',
-    '#e67e22',
-    '#2ecc71',
-    '#8e44ad',
+    '#3b82f6',
+    '#ef4444',
+    '#f59e0b',
+    '#10b981',
+    '#8b5cf6',
+    '#06b6d4',
+    '#64748b',
+    '#f97316',
+    '#22c55e',
+    '#a855f7',
   ]
   const index = userId ? userId.toString().charCodeAt(0) % colors.length : 0
   return colors[index]
@@ -450,13 +509,21 @@ const CameraActionModal = ({ visible, onClose, onCamera, onGallery }) => (
             <ModalSubtitle>
               Choose how you want to add your status
             </ModalSubtitle>
-            <ModalButton bgColor="#e3f2fd" onPress={onCamera}>
-              <Ionicons name="camera" size={24} color="#2196f3" />
-              <ModalButtonText color="#2196f3">Take Photo</ModalButtonText>
+            <ModalButton
+              bgColor="#eff6ff"
+              borderColor="#bfdbfe"
+              onPress={onCamera}
+            >
+              <Ionicons name="camera" size={24} color="#3b82f6" />
+              <ModalButtonText color="#3b82f6">Take Photo</ModalButtonText>
             </ModalButton>
-            <ModalButton bgColor="#f0f4ff" onPress={onGallery}>
-              <Ionicons name="images" size={24} color="#5e72e4" />
-              <ModalButtonText color="#5e72e4">
+            <ModalButton
+              bgColor="#f0fdf4"
+              borderColor="#bbf7d0"
+              onPress={onGallery}
+            >
+              <Ionicons name="images" size={24} color="#10b981" />
+              <ModalButtonText color="#10b981">
                 Choose from Gallery
               </ModalButtonText>
             </ModalButton>
@@ -609,7 +676,6 @@ export default function SharedChatsSidebar({
 
     setActiveDropdown(null)
 
-    // Close swipeable if open
     if (swipeableRefs.current[chatId]) {
       swipeableRefs.current[chatId].close()
     }
@@ -645,7 +711,6 @@ export default function SharedChatsSidebar({
     try {
       const result = await onDeleteChat(chatId)
       if (result && result.success) {
-        // Success feedback only on mobile (web shows nothing)
         if (Platform.OS !== 'web') {
           Alert.alert('Success', 'Chat deleted successfully')
         }
@@ -692,17 +757,15 @@ export default function SharedChatsSidebar({
     const userName = otherUser?.name || otherUser?.displayName || 'Unknown User'
     const chatId = item._id || item.id
 
-    // Get typing users for this chat
     const typingUsers = getTypingUsersForChat
       ? getTypingUsersForChat(chatId)
       : []
     const isTyping = typingUsers.length > 0
 
-    // Format typing text
     let typingText = ''
     if (isTyping) {
       if (typingUsers.length === 1) {
-        typingText = ` Typing...`
+        typingText = `Typing...`
       } else {
         typingText = `${typingUsers.length} people are typing...`
       }
@@ -712,12 +775,11 @@ export default function SharedChatsSidebar({
     const isOwn = lastMessage?.senderId === currentUser?.uid
     const lastMessageText = getLastMessageText(lastMessage)
 
-    // Show typing indicator or last message
     const messagePreview = isTyping
       ? typingText
       : lastMessage && lastMessageText
       ? `${isOwn ? 'You: ' : ''}${lastMessageText}`
-      : 'No messages yet - start the conversation!'
+      : 'No messages yet'
 
     const chatItemContent = (
       <ChatItemContainer>
@@ -726,6 +788,7 @@ export default function SharedChatsSidebar({
           onPress={() => onSelectChat(item)}
           onLongPress={() => Platform.OS !== 'web' && handleDeleteChat(item)}
           delayLongPress={500}
+          activeOpacity={0.7}
         >
           <ChatAvatar color={userColor}>
             {otherUser?.photoURL ? (
@@ -768,7 +831,6 @@ export default function SharedChatsSidebar({
           )}
         </ChatItem>
 
-        {/* Dropdown menu for web */}
         {Platform.OS === 'web' && activeDropdown === chatId && (
           <DropdownMenu>
             <DropdownItem danger onPress={() => handleDeleteChat(item)}>
@@ -780,7 +842,6 @@ export default function SharedChatsSidebar({
       </ChatItemContainer>
     )
 
-    // Wrap with Swipeable for mobile platforms
     if (Platform.OS !== 'web') {
       return (
         <Swipeable
@@ -808,40 +869,37 @@ export default function SharedChatsSidebar({
 
   return (
     <Column flex={1} borderRight>
-      {/* Header with PeepGram title and camera button */}
       <Header>
         <View>
-          <HeaderTitle>PeepGram</HeaderTitle>
+          <HeaderTitle>Messages</HeaderTitle>
           <HeaderSubtitle>{chats.length} conversations</HeaderSubtitle>
         </View>
         {showCameraButton && (
           <CameraButton onPress={handleCameraPress} disabled={uploading}>
-            <Ionicons
-              name="camera-outline"
-              size={24}
-              color={uploading ? '#94a3b8' : '#3396d3'}
-            />
+            <Ionicons name="camera-outline" size={22} color="#fff" />
           </CameraButton>
         )}
       </Header>
 
-      {/* Search Bar */}
       <SearchContainer>
-        <SearchIcon>
-          <Ionicons name="search" size={18} color="#95a5a6" />
-        </SearchIcon>
-        <SearchInput
-          placeholder="Search conversations..."
-          value={searchQuery}
-          onChangeText={setSearchQuery}
-          placeholderTextColor="#95a5a6"
-        />
+        <SearchInputWrapper>
+          <SearchIcon>
+            <Ionicons name="search" size={20} color="#64748b" />
+          </SearchIcon>
+          <SearchInput
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            placeholderTextColor="#94a3b8"
+          />
+        </SearchInputWrapper>
       </SearchContainer>
 
-      {/* Chat List or Empty State */}
       {filteredChats.length === 0 ? (
         <EmptyState>
-          <Ionicons name="chatbubbles-outline" size={60} color="#95a5a6" />
+          <EmptyIconWrapper>
+            <Ionicons name="chatbubbles-outline" size={40} color="#64748b" />
+          </EmptyIconWrapper>
           <EmptyStateTitle>No Conversations</EmptyStateTitle>
           <EmptyStateText>
             {searchQuery
@@ -857,16 +915,12 @@ export default function SharedChatsSidebar({
         />
       )}
 
-      {/* Floating Action Button */}
       {showFAB && onNewChat && (
         <FloatingActionButton onPress={onNewChat}>
-          <FABGradient>
-            <Ionicons name="add" size={28} color="white" />
-          </FABGradient>
+          <Ionicons name="add" size={28} color="white" />
         </FloatingActionButton>
       )}
 
-      {/* Camera Action Modal */}
       <CameraActionModal
         visible={cameraModalVisible}
         onClose={() => setCameraModalVisible(false)}
@@ -874,11 +928,12 @@ export default function SharedChatsSidebar({
         onGallery={handleChooseFromGallery}
       />
 
-      {/* Upload Loading Overlay */}
       {uploading && (
         <LoadingOverlay>
-          <Ionicons name="cloud-upload-outline" size={48} color="white" />
-          <LoadingText>Uploading status...</LoadingText>
+          <LoadingContent>
+            <Ionicons name="cloud-upload-outline" size={48} color="#3b82f6" />
+            <LoadingText>Uploading status...</LoadingText>
+          </LoadingContent>
         </LoadingOverlay>
       )}
     </Column>
