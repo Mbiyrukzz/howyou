@@ -51,7 +51,7 @@ const ProfileAvatar = styled.View`
   width: 80px;
   height: 80px;
   border-radius: 40px;
-  background-color: #3498db;
+  background-color: #3b82f6;
   align-items: center;
   justify-content: center;
   margin-bottom: 12px;
@@ -77,7 +77,7 @@ const ProfileEmail = styled.Text`
 `
 
 const EditProfileButton = styled.TouchableOpacity`
-  background-color: #3498db;
+  background-color: #3b82f6;
   padding: 12px 24px;
   border-radius: 25px;
   flex-direction: row;
@@ -294,7 +294,7 @@ export default function SettingsScreen({ navigation }) {
               <Switch
                 value={notifications}
                 onValueChange={setNotifications}
-                trackColor={{ false: '#ecf0f1', true: '#3498db' }}
+                trackColor={{ false: '#ecf0f1', true: '#3b82f6' }}
                 thumbColor={notifications ? '#fff' : '#bdc3c7'}
               />
             }
@@ -320,7 +320,7 @@ export default function SettingsScreen({ navigation }) {
               <Switch
                 value={readReceipts}
                 onValueChange={setReadReceipts}
-                trackColor={{ false: '#ecf0f1', true: '#3498db' }}
+                trackColor={{ false: '#ecf0f1', true: '#3b82f6' }}
                 thumbColor={readReceipts ? '#fff' : '#bdc3c7'}
               />
             }
@@ -354,7 +354,7 @@ export default function SettingsScreen({ navigation }) {
               <Switch
                 value={darkMode}
                 onValueChange={setDarkMode}
-                trackColor={{ false: '#ecf0f1', true: '#3498db' }}
+                trackColor={{ false: '#ecf0f1', true: '#3b82f6' }}
                 thumbColor={darkMode ? '#fff' : '#bdc3c7'}
               />
             }
@@ -380,7 +380,7 @@ export default function SettingsScreen({ navigation }) {
           <SectionTitle>Storage & Data</SectionTitle>
           <SettingItemComponent
             icon="download-outline"
-            iconColor="#3498db"
+            iconColor="#3b82f6"
             title="Auto-download Media"
             subtitle="Automatically download photos and videos"
             onPress={() => navigation?.navigate('MediaSettings')}

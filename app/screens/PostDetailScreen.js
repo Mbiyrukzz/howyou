@@ -17,7 +17,9 @@ import { useUser } from '../hooks/useUser'
 import CommentSection from '../components/CommentSection'
 import * as ImagePicker from 'expo-image-picker'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.128.61.87:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+
+console.log('API:', API_URL)
 
 // ─── STYLED COMPONENTS ───────────────────────────────────
 const Container = styled.View`
@@ -84,7 +86,7 @@ const PostAvatar = styled.View`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -214,7 +216,7 @@ const SendButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: ${(props) => (props.active ? '#3498db' : '#e9ecef')};
+  background-color: ${(props) => (props.active ? '#3b82f6' : '#e9ecef')};
   justify-content: center;
   align-items: center;
 `
@@ -465,7 +467,7 @@ export default function PostDetailScreen({ route, navigation }) {
   if (loading) {
     return (
       <LoadingContainer>
-        <ActivityIndicator size="large" color="#3498db" />
+        <ActivityIndicator size="large" color="#3b82f6" />
       </LoadingContainer>
     )
   }
@@ -489,7 +491,7 @@ export default function PostDetailScreen({ route, navigation }) {
         <ScrollView showsVerticalScrollIndicator={false}>
           <PostCard>
             <PostHeader>
-              <PostAvatar color={post.avatarColor || '#3498db'}>
+              <PostAvatar color={post.avatarColor || '#3b82f6'}>
                 <PostAvatarText>{getInitials(post.username)}</PostAvatarText>
               </PostAvatar>
               <PostUserInfo>
@@ -538,7 +540,7 @@ export default function PostDetailScreen({ route, navigation }) {
             {loadingComments ? (
               <ActivityIndicator
                 size="small"
-                color="#3498db"
+                color="#3b82f6"
                 style={{ padding: 20 }}
               />
             ) : comments.length === 0 ? (

@@ -1,6 +1,6 @@
 export const getUserColor = (userId) => {
   const colors = [
-    '#3498db',
+    '#3b82f6',
     '#e74c3c',
     '#f39c12',
     '#27ae60',

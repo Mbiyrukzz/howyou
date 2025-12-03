@@ -70,7 +70,7 @@ const ViewerAvatar = styled.View`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -156,7 +156,7 @@ export const StatusViewersModal = ({ visible, statusId, onClose }) => {
 
   const renderViewer = ({ item }) => (
     <ViewerItem>
-      <ViewerAvatar color={item.userAvatarColor || '#3498db'}>
+      <ViewerAvatar color={item.userAvatarColor || '#3b82f6'}>
         <ViewerAvatarText>{getInitials(item.userName)}</ViewerAvatarText>
       </ViewerAvatar>
       <ViewerInfo>
@@ -191,7 +191,7 @@ export const StatusViewersModal = ({ visible, statusId, onClose }) => {
 
               {isLoadingViews(statusId) ? (
                 <LoadingContainer>
-                  <ActivityIndicator size="large" color="#3498db" />
+                  <ActivityIndicator size="large" color="#3b82f6" />
                   <EmptyText>Loading viewers...</EmptyText>
                 </LoadingContainer>
               ) : viewers.length === 0 ? (

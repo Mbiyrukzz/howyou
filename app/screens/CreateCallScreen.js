@@ -86,7 +86,7 @@ const UserAvatar = styled.View`
   width: 52px;
   height: 52px;
   border-radius: 26px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
   margin-right: 16px;
@@ -136,10 +136,10 @@ const CallButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
-  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-color: ${(props) => props.color || '#3b82f6'};
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 8px;
@@ -172,7 +172,7 @@ const EmptyText = styled.Text`
 
 const getUserColor = (userId) => {
   const colors = [
-    '#3498db',
+    '#3b82f6',
     '#f59e0b',
     '#10b981',
     '#8b5cf6',
@@ -255,7 +255,7 @@ export default function CreateCallScreen({ navigation }) {
         </UserInfo>
 
         <CallActions>
-          <CallButton color="#3498db" onPress={() => handleCall(item, 'audio')}>
+          <CallButton color="#3b82f6" onPress={() => handleCall(item, 'audio')}>
             <Ionicons name="call" size={20} color="#fff" />
           </CallButton>
           <CallButton color="#10b981" onPress={() => handleCall(item, 'video')}>

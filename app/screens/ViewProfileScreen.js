@@ -145,7 +145,7 @@ const ChatAvatar = styled.View`
   width: 52px;
   height: 52px;
   border-radius: 26px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -206,7 +206,7 @@ const ChatLastMessage = styled.Text`
 `
 
 const UnreadBadge = styled.View`
-  background-color: #3498db;
+  background-color: #3b82f6;
   border-radius: 10px;
   min-width: 20px;
   height: 20px;
@@ -238,7 +238,7 @@ const Avatar = styled.View`
   width: 120px;
   height: 120px;
   border-radius: 60px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   border-width: 4px;
@@ -417,13 +417,13 @@ const MediaTab = styled.TouchableOpacity`
   padding: 12px;
   align-items: center;
   border-bottom-width: 2px;
-  border-bottom-color: ${(props) => (props.active ? '#3498db' : 'transparent')};
+  border-bottom-color: ${(props) => (props.active ? '#3b82f6' : 'transparent')};
 `
 
 const MediaTabText = styled.Text`
   font-size: 14px;
   font-weight: ${(props) => (props.active ? '600' : '400')};
-  color: ${(props) => (props.active ? '#3498db' : '#7f8c8d')};
+  color: ${(props) => (props.active ? '#3b82f6' : '#7f8c8d')};
 `
 
 const MediaGrid = styled.View`
@@ -535,7 +535,7 @@ const ErrorText = styled.Text`
 `
 
 const RetryButton = styled.TouchableOpacity`
-  background-color: #3498db;
+  background-color: #3b82f6;
   padding: 12px 24px;
   border-radius: 8px;
 `
@@ -576,7 +576,7 @@ const ChatHeaderAvatar = styled.View`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -630,7 +630,7 @@ const MessageBubble = styled.View`
 `
 
 const MessageContent = styled.View`
-  background-color: ${(props) => (props.isOwn ? '#3498db' : '#fff')};
+  background-color: ${(props) => (props.isOwn ? '#3b82f6' : '#fff')};
   padding: 12px 16px;
   border-radius: 18px;
   border-bottom-right-radius: ${(props) => (props.isOwn ? '4px' : '18px')};
@@ -687,7 +687,7 @@ const SendButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: #3498db;
+  background-color: #3b82f6;
   justify-content: center;
   align-items: center;
 `
@@ -710,14 +710,14 @@ const TypingIndicator = styled.View`
 
 const TypingText = styled.Text`
   font-size: 14px;
-  color: #3498db;
+  color: #3b82f6;
   font-style: italic;
 `
 
 /* =================== Helper Functions =================== */
 const getUserColor = (userId) => {
   const colors = [
-    '#3498db',
+    '#3b82f6',
     '#e74c3c',
     '#f39c12',
     '#27ae60',
@@ -959,7 +959,7 @@ const ProfileColumn = ({
     return (
       <Column flex={1.2} borderRight bgColor="#f8f9fa">
         <LoadingContainer>
-          <ActivityIndicator size="large" color="#3498db" />
+          <ActivityIndicator size="large" color="#3b82f6" />
           <Text style={{ marginTop: 16, color: '#7f8c8d' }}>
             Loading profile...
           </Text>
@@ -1036,13 +1036,13 @@ const ProfileColumn = ({
 
         <ActionButtons>
           <ActionButton bgColor="#e8f4fd" onPress={onSendMessage}>
-            <Ionicons name="chatbubble" size={20} color="#3498db" />
-            <ActionButtonText color="#3498db">Message</ActionButtonText>
+            <Ionicons name="chatbubble" size={20} color="#3b82f6" />
+            <ActionButtonText color="#3b82f6">Message</ActionButtonText>
           </ActionButton>
 
           <ActionButton bgColor="#e8f4fd" onPress={onVoiceCall}>
-            <Ionicons name="call" size={20} color="#3498db" />
-            <ActionButtonText color="#3498db">Call</ActionButtonText>
+            <Ionicons name="call" size={20} color="#3b82f6" />
+            <ActionButtonText color="#3b82f6">Call</ActionButtonText>
           </ActionButton>
 
           <ActionButton bgColor="#e8f5e8" onPress={onVideoCall}>
@@ -1059,7 +1059,7 @@ const ProfileColumn = ({
           {profileUser.email && (
             <InfoItem>
               <InfoItemIcon bgColor="#e8f4fd">
-                <Ionicons name="mail" size={20} color="#3498db" />
+                <Ionicons name="mail" size={20} color="#3b82f6" />
               </InfoItemIcon>
               <InfoItemContent>
                 <InfoItemLabel>Email</InfoItemLabel>
@@ -1149,7 +1149,7 @@ const ProfileColumn = ({
 
           {mediaLoading ? (
             <View style={{ padding: 40, alignItems: 'center' }}>
-              <ActivityIndicator size="small" color="#3498db" />
+              <ActivityIndicator size="small" color="#3b82f6" />
               <Text style={{ marginTop: 8, color: '#7f8c8d', fontSize: 12 }}>
                 Loading media...
               </Text>
@@ -1185,7 +1185,7 @@ const ProfileColumn = ({
                     <Ionicons
                       name={getFileIcon(item.mimetype)}
                       size={24}
-                      color="#3498db"
+                      color="#3b82f6"
                     />
                   </FileIconContainer>
                   <FileInfo>
@@ -1454,22 +1454,22 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
           </ChatHeaderInfo>
           <ChatHeaderActions>
             <ChatHeaderButton onPress={handleVoiceCall}>
-              <Ionicons name="call-outline" size={20} color="#3498db" />
+              <Ionicons name="call-outline" size={20} color="#3b82f6" />
             </ChatHeaderButton>
             <ChatHeaderButton onPress={handleVideoCall}>
-              <Ionicons name="videocam-outline" size={20} color="#3498db" />
+              <Ionicons name="videocam-outline" size={20} color="#3b82f6" />
             </ChatHeaderButton>
             <ChatHeaderButton>
               <Ionicons
                 name="information-circle-outline"
                 size={20}
-                color="#3498db"
+                color="#3b82f6"
               />
             </ChatHeaderButton>
           </ChatHeaderActions>
         </ChatHeader>
         <EmptyState style={{ flex: 1 }}>
-          <ActivityIndicator size="large" color="#3498db" />
+          <ActivityIndicator size="large" color="#3b82f6" />
           <EmptyStateText style={{ marginTop: 16 }}>
             Loading messages...
           </EmptyStateText>
@@ -1500,16 +1500,16 @@ const MessagesColumn = ({ chatId, profileUser, currentUser, navigation }) => {
         </ChatHeaderInfo>
         <ChatHeaderActions>
           <ChatHeaderButton onPress={handleVoiceCall}>
-            <Ionicons name="call-outline" size={20} color="#3498db" />
+            <Ionicons name="call-outline" size={20} color="#3b82f6" />
           </ChatHeaderButton>
           <ChatHeaderButton onPress={handleVideoCall}>
-            <Ionicons name="videocam-outline" size={20} color="#3498db" />
+            <Ionicons name="videocam-outline" size={20} color="#3b82f6" />
           </ChatHeaderButton>
           <ChatHeaderButton>
             <Ionicons
               name="information-circle-outline"
               size={20}
-              color="#3498db"
+              color="#3b82f6"
             />
           </ChatHeaderButton>
         </ChatHeaderActions>

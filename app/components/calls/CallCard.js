@@ -23,12 +23,12 @@ const Avatar = styled.View`
   width: 56px;
   height: 56px;
   border-radius: 28px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
   margin-right: 14px;
   position: relative;
-  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-color: ${(props) => props.color || '#3b82f6'};
   shadow-offset: 0px 2px;
   shadow-opacity: 0.3;
   shadow-radius: 4px;
@@ -143,10 +143,10 @@ const ActionButton = styled.TouchableOpacity`
   width: 44px;
   height: 44px;
   border-radius: 22px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
-  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-color: ${(props) => props.color || '#3b82f6'};
   shadow-offset: 0px 3px;
   shadow-opacity: 0.3;
   shadow-radius: 6px;

@@ -78,7 +78,7 @@ const Tab = styled.TouchableOpacity`
   padding: 12px;
   border-radius: 8px;
   align-items: center;
-  background-color: ${(props) => (props.active ? '#3498db' : 'transparent')};
+  background-color: ${(props) => (props.active ? '#3b82f6' : 'transparent')};
 `
 
 const TabText = styled.Text`

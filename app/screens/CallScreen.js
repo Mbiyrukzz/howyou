@@ -221,7 +221,7 @@ const CallScreen = () => {
 
     try {
       const response = await fetch(
-        `http://10.128.61.87:5000/answer-call/${route.params?.callId}`,
+        `http://10.156.197.87:5000/answer-call/${route.params?.callId}`,
         {
           method: 'POST',
           headers: {

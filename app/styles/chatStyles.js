@@ -43,12 +43,12 @@ export const HeaderAvatar = styled.View`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
   position: relative;
-  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-color: ${(props) => props.color || '#3b82f6'};
   shadow-offset: 0px 2px;
   shadow-opacity: 0.3;
   shadow-radius: 4px;

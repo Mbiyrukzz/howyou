@@ -26,7 +26,7 @@ const CommentAvatar = styled.View`
   width: 36px;
   height: 36px;
   border-radius: 18px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -155,12 +155,12 @@ const EditingContainer = styled.View`
   padding: 12px;
   border-radius: 12px;
   margin-bottom: 8px;
-  border: 2px solid #3498db;
+  border: 2px solid #3b82f6;
 `
 
 const EditingLabel = styled.Text`
   font-size: 12px;
-  color: #3498db;
+  color: #3b82f6;
   font-weight: 600;
   margin-bottom: 8px;
 `
@@ -182,7 +182,7 @@ const EditActions = styled.View`
 const EditButton = styled.TouchableOpacity`
   padding: 8px 16px;
   border-radius: 8px;
-  background-color: ${(props) => (props.primary ? '#3498db' : '#e9ecef')};
+  background-color: ${(props) => (props.primary ? '#3b82f6' : '#e9ecef')};
 `
 
 const EditButtonText = styled.Text`
@@ -292,7 +292,7 @@ const MiniReplyInput = ({ onSubmit, onCancel }) => {
           disabled={!text.trim() && files.length === 0}
           style={{
             backgroundColor:
-              text.trim() || files.length > 0 ? '#3498db' : '#e9ecef',
+              text.trim() || files.length > 0 ? '#3b82f6' : '#e9ecef',
             paddingHorizontal: 16,
             paddingVertical: 8,
             borderRadius: 16,
@@ -381,7 +381,7 @@ const Comment = ({
   return (
     <CommentItem>
       <CommentRow>
-        <CommentAvatar color={comment.avatarColor || '#3498db'}>
+        <CommentAvatar color={comment.avatarColor || '#3b82f6'}>
           <CommentAvatarText>{getInitials(comment.username)}</CommentAvatarText>
         </CommentAvatar>
 

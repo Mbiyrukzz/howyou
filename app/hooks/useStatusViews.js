@@ -1,7 +1,9 @@
 import { useState, useCallback } from 'react'
 import useAuthedRequest from './useAuthedRequest'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.128.61.87:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+
+console.log('API:', API_URL)
 
 export const useStatusViews = () => {
   const { isReady, get, post: postRequest } = useAuthedRequest()

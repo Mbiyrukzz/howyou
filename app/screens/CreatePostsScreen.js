@@ -16,7 +16,6 @@ import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 import * as ImagePicker from 'expo-image-picker'
 import { usePosts } from '../providers/PostsProvider'
-import { LinearGradient } from 'expo-linear-gradient'
 
 const Container = styled.View`
   flex: 1;
@@ -49,7 +48,7 @@ const HeaderButton = styled.TouchableOpacity`
 
 const HeaderButtonText = styled.Text`
   font-size: 16px;
-  color: ${(props) => (props.primary ? '#3498db' : '#64748b')};
+  color: ${(props) => (props.primary ? '#3b82f6' : '#64748b')};
   font-weight: ${(props) => (props.primary ? '700' : '600')};
 `
 
@@ -75,7 +74,7 @@ const UserAvatar = styled.View`
   width: 48px;
   height: 48px;
   border-radius: 24px;
-  background-color: #3498db;
+  background-color: #3b82f6;
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -208,12 +207,12 @@ const ActionButton = styled.TouchableOpacity`
   background-color: ${(props) => (props.active ? '#e0f2fe' : '#f8fafc')};
   margin-right: 12px;
   border-width: 1px;
-  border-color: ${(props) => (props.active ? '#3498db' : '#e2e8f0')};
+  border-color: ${(props) => (props.active ? '#3b82f6' : '#e2e8f0')};
 `
 
 const ActionButtonText = styled.Text`
   font-size: 14px;
-  color: ${(props) => (props.active ? '#3498db' : '#64748b')};
+  color: ${(props) => (props.active ? '#3b82f6' : '#64748b')};
   font-weight: 600;
   margin-left: 8px;
 `
@@ -225,8 +224,8 @@ const PostButtonWrapper = styled.View`
 const PostButton = styled.TouchableOpacity`
   padding: 12px 32px;
   border-radius: 12px;
-  background-color: ${(props) => (props.disabled ? '#cbd5e1' : '#3498db')};
-  shadow-color: ${(props) => (props.disabled ? 'transparent' : '#3498db')};
+  background-color: ${(props) => (props.disabled ? '#cbd5e1' : '#3b82f6')};
+  shadow-color: ${(props) => (props.disabled ? 'transparent' : '#3b82f6')};
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 6px;
@@ -267,7 +266,7 @@ const ProgressFill = styled.View`
   background-color: ${(props) => {
     if (props.percentage > 90) return '#ef4444'
     if (props.percentage > 75) return '#f59e0b'
-    return '#3498db'
+    return '#3b82f6'
   }};
   width: ${(props) => props.percentage}%;
 `
@@ -583,7 +582,7 @@ export default function CreatePostScreen({ navigation, route }) {
               <Ionicons
                 name="image"
                 size={20}
-                color={images.length > 0 ? '#3498db' : '#64748b'}
+                color={images.length > 0 ? '#3b82f6' : '#64748b'}
               />
               <ActionButtonText active={images.length > 0}>
                 {images.length > 0
@@ -605,7 +604,7 @@ export default function CreatePostScreen({ navigation, route }) {
         {loading && (
           <LoadingOverlay>
             <LoadingCard>
-              <ActivityIndicator size="large" color="#3498db" />
+              <ActivityIndicator size="large" color="#3b82f6" />
               <LoadingText>Creating post...</LoadingText>
               <LoadingSubtext>Please wait</LoadingSubtext>
             </LoadingCard>

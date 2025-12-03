@@ -120,7 +120,7 @@ const CallNotification = () => {
     try {
       // Notify backend that call was rejected
       const response = await fetch(
-        `http://10.128.61.87:5000/answer-call/${route.params?.callId}`,
+        `http://10.156.197.87:5000/answer-call/${route.params?.callId}`,
         {
           method: 'POST',
           headers: {
@@ -278,7 +278,7 @@ const CallerAvatar = styled.View`
   width: 120px;
   height: 120px;
   border-radius: 60px;
-  background-color: #3498db;
+  background-color: #3b82f6;
   justify-content: center;
   align-items: center;
   margin-bottom: 20px;

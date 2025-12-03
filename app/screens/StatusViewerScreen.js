@@ -94,7 +94,7 @@ const Avatar = styled.View`
   width: 40px;
   height: 40px;
   border-radius: 20px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   justify-content: center;
   align-items: center;
   margin-right: 12px;
@@ -508,7 +508,7 @@ export default function StatusViewerScreen({ route, navigation }) {
 
       {/* Header - Outside tap area */}
       <Header>
-        <Avatar color={currentStatus.userAvatarColor || '#3498db'}>
+        <Avatar color={currentStatus.userAvatarColor || '#3b82f6'}>
           <AvatarText>
             {getInitials(currentStatus.userName || userName || 'You')}
           </AvatarText>

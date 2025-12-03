@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Platform, Alert } from 'react-native'
 
 const SIGNALING_URL =
-  Platform.OS === 'web' ? 'ws://localhost:5000' : 'ws://10.128.61.87:5000'
+  Platform.OS === 'web' ? 'ws://localhost:5000' : 'ws://10.156.197.87:5000'
 
 export function useWebSocket(user, chatId, onMessage, navigation) {
   const wsRef = useRef(null)

@@ -23,11 +23,11 @@ const ProfileAvatar = styled.View`
   width: 100px;
   height: 100px;
   border-radius: 50px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
-  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-color: ${(props) => props.color || '#3b82f6'};
   shadow-offset: 0px 4px;
   shadow-opacity: 0.2;
   shadow-radius: 12px;
@@ -67,10 +67,10 @@ const ActionButton = styled.TouchableOpacity`
   width: 60px;
   height: 60px;
   border-radius: 30px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
-  shadow-color: ${(props) => props.color || '#3498db'};
+  shadow-color: ${(props) => props.color || '#3b82f6'};
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 12px;
@@ -454,7 +454,7 @@ export function CallDetailScreen({ route, navigation }) {
 
   // Get display name
   const displayName = userInfo?.name || user?.name || 'Unknown'
-  const displayColor = userInfo?.color || '#3498db'
+  const displayColor = userInfo?.color || '#3b82f6'
   const displayInitial = displayName.charAt(0) || '?'
 
   return (
@@ -478,7 +478,7 @@ export function CallDetailScreen({ route, navigation }) {
 
           <ActionButtons>
             <ActionWrapper>
-              <ActionButton color="#3498db" onPress={() => handleCall('voice')}>
+              <ActionButton color="#3b82f6" onPress={() => handleCall('voice')}>
                 <Ionicons name="call" size={24} color="#fff" />
               </ActionButton>
               <ActionLabel>Audio</ActionLabel>

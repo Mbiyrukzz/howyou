@@ -64,7 +64,7 @@ const Tab = styled.TouchableOpacity`
   padding: 12px;
   border-radius: 8px;
   align-items: center;
-  background-color: ${(props) => (props.active ? '#3498db' : 'transparent')};
+  background-color: ${(props) => (props.active ? '#3b82f6' : 'transparent')};
 `
 
 const TabText = styled.Text`
@@ -121,7 +121,7 @@ const CreateRoomCard = styled.TouchableOpacity`
   border-color: #e0f2fe;
   border-style: dashed;
   align-items: center;
-  shadow-color: #3498db;
+  shadow-color: #3b82f6;
   shadow-offset: 0px 2px;
   shadow-opacity: 0.1;
   shadow-radius: 8px;
@@ -132,11 +132,11 @@ const CreateIcon = styled.View`
   width: 64px;
   height: 64px;
   border-radius: 32px;
-  background-color: #3498db;
+  background-color: #3b82f6;
   align-items: center;
   justify-content: center;
   margin-bottom: 16px;
-  shadow-color: #3498db;
+  shadow-color: #3b82f6;
   shadow-offset: 0px 4px;
   shadow-opacity: 0.3;
   shadow-radius: 6px;
@@ -176,7 +176,7 @@ const UserAvatar = styled.View`
   width: 52px;
   height: 52px;
   border-radius: 26px;
-  background-color: ${(props) => props.color || '#3498db'};
+  background-color: ${(props) => props.color || '#3b82f6'};
   align-items: center;
   justify-content: center;
   margin-right: 16px;
@@ -316,8 +316,8 @@ const ModalButton = styled.TouchableOpacity`
   padding: 16px;
   border-radius: 12px;
   align-items: center;
-  background-color: ${(props) => (props.primary ? '#3498db' : '#f1f5f9')};
-  shadow-color: ${(props) => (props.primary ? '#3498db' : 'transparent')};
+  background-color: ${(props) => (props.primary ? '#3b82f6' : '#f1f5f9')};
+  shadow-color: ${(props) => (props.primary ? '#3b82f6' : 'transparent')};
   shadow-offset: 0px 4px;
   shadow-opacity: ${(props) => (props.primary ? 0.3 : 0)};
   shadow-radius: 6px;
@@ -342,11 +342,11 @@ const CategoryChip = styled.TouchableOpacity`
   padding: 10px 16px;
   border-radius: 20px;
   border-width: 1px;
-  border-color: ${(props) => (props.selected ? '#3498db' : '#e2e8f0')};
+  border-color: ${(props) => (props.selected ? '#3b82f6' : '#e2e8f0')};
 `
 
 const CategoryText = styled.Text`
-  color: ${(props) => (props.selected ? '#3498db' : '#64748b')};
+  color: ${(props) => (props.selected ? '#3b82f6' : '#64748b')};
   font-size: 13px;
   font-weight: 600;
 `
@@ -409,7 +409,7 @@ const UserNameContainer = styled.View`
 // Helper function to generate consistent user colors
 const getUserColor = (userId) => {
   const colors = [
-    '#3498db',
+    '#3b82f6',
     '#f59e0b',
     '#10b981',
     '#8b5cf6',
@@ -612,7 +612,7 @@ export default function NewChatScreen({ navigation }) {
       </UserInfo>
       <UserActions>
         <ActionBtn onPress={() => startDirectChat(item)}>
-          <Ionicons name="chatbubble" size={18} color="#3498db" />
+          <Ionicons name="chatbubble" size={18} color="#3b82f6" />
         </ActionBtn>
         <ActionBtn>
           <Ionicons name="call" size={18} color="#64748b" />
@@ -647,7 +647,7 @@ export default function NewChatScreen({ navigation }) {
         </Header>
         <LoadingContainer>
           <LoadingCard>
-            <Ionicons name="people" size={40} color="#3498db" />
+            <Ionicons name="people" size={40} color="#3b82f6" />
             <LoadingText>Loading people...</LoadingText>
           </LoadingCard>
         </LoadingContainer>
@@ -760,7 +760,7 @@ export default function NewChatScreen({ navigation }) {
                   </UserInfo>
                   <UserActions>
                     <ActionBtn>
-                      <Ionicons name="add" size={20} color="#3498db" />
+                      <Ionicons name="add" size={20} color="#3b82f6" />
                     </ActionBtn>
                   </UserActions>
                 </UserCard>
