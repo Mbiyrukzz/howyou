@@ -22,7 +22,11 @@ const CallLogCard = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
   border-width: 1px;
-  border-color: #e2e8f0;
+  border-color: ${(props) => {
+    if (props.status === 'missed') return '#fecaca'
+    if (props.status === 'rejected') return '#fde68a'
+    return '#e2e8f0'
+  }};
   shadow-color: #000;
   shadow-offset: 0px 2px;
   shadow-opacity: 0.08;
@@ -37,6 +41,7 @@ const CallIconContainer = styled.View`
   background-color: ${(props) => {
     if (props.status === 'missed') return '#fee2e2'
     if (props.status === 'rejected') return '#fef3c7'
+    if (props.status === 'cancelled') return '#f3f4f6'
     if (props.callType === 'video') return '#dcfce7'
     return '#dbeafe'
   }};
@@ -47,6 +52,7 @@ const CallIconContainer = styled.View`
   shadow-color: ${(props) => {
     if (props.status === 'missed') return '#ef4444'
     if (props.status === 'rejected') return '#f59e0b'
+    if (props.status === 'cancelled') return '#9ca3af'
     if (props.callType === 'video') return '#10b981'
     return '#3b82f6'
   }};
@@ -82,8 +88,12 @@ const StatusBadge = styled.View`
         return '#fee2e2'
       case 'rejected':
         return '#fef3c7'
-      default:
+      case 'cancelled':
+        return '#f3f4f6'
+      case 'completed':
         return '#dcfce7'
+      default:
+        return '#e0f2fe'
     }
   }};
   padding: 4px 10px;
@@ -101,8 +111,12 @@ const StatusText = styled.Text`
         return '#dc2626'
       case 'rejected':
         return '#d97706'
-      default:
+      case 'cancelled':
+        return '#6b7280'
+      case 'completed':
         return '#16a34a'
+      default:
+        return '#0284c7'
     }
   }};
   margin-left: 4px;
@@ -159,10 +173,18 @@ const getCallIcon = (callType, status, direction) => {
     }
   }
 
-  if (status === 'rejected') {
+  if (status === 'rejected' || status === 'declined') {
     return {
       name: 'close-circle-outline',
       color: '#d97706',
+      size: 22,
+    }
+  }
+
+  if (status === 'cancelled') {
+    return {
+      name: 'ban-outline',
+      color: '#6b7280',
       size: 22,
     }
   }
@@ -184,12 +206,15 @@ const getCallIcon = (callType, status, direction) => {
 
 const getCallStatusText = (status, direction) => {
   if (status === 'missed') {
-    return direction === 'incoming' ? 'Missed' : 'Not answered'
+    return direction === 'incoming' ? 'Missed' : 'Unanswered'
   }
-  if (status === 'rejected') {
-    return direction === 'incoming' ? 'Declined' : 'Declined'
+  if (status === 'rejected' || status === 'declined') {
+    return 'Declined'
   }
-  if (status === 'completed') {
+  if (status === 'cancelled') {
+    return 'Cancelled'
+  }
+  if (status === 'completed' || status === 'ended') {
     return 'Completed'
   }
   return direction === 'incoming' ? 'Incoming' : 'Outgoing'
@@ -238,6 +263,14 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
 
   const callTypeDisplay = callType === 'video' ? 'Video Call' : 'Voice Call'
 
+  // Show callback button for missed, rejected, or cancelled calls
+  const showCallbackButton = [
+    'missed',
+    'rejected',
+    'declined',
+    'cancelled',
+  ].includes(status)
+
   const handleDelete = () => {
     if (Platform.OS === 'web') {
       const confirmed = window.confirm(
@@ -282,7 +315,7 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
 
   return (
     <CallLogContainer>
-      <CallLogCard onPress={handlePress} activeOpacity={0.7}>
+      <CallLogCard onPress={handlePress} activeOpacity={0.7} status={status}>
         <CallIconContainer status={status} callType={callType}>
           <Ionicons name={icon.name} size={icon.size} color={icon.color} />
         </CallIconContainer>
@@ -291,14 +324,10 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
           <CallTypeText>{callTypeDisplay}</CallTypeText>
 
           <MetaRow>
-            {(status === 'missed' ||
-              status === 'rejected' ||
-              status === 'completed') && (
-              <StatusBadge status={status}>
-                <Ionicons name={icon.name} size={14} color={icon.color} />
-                <StatusText status={status}>{statusText}</StatusText>
-              </StatusBadge>
-            )}
+            <StatusBadge status={status}>
+              <Ionicons name={icon.name} size={14} color={icon.color} />
+              <StatusText status={status}>{statusText}</StatusText>
+            </StatusBadge>
 
             {durationText && (
               <DurationBadge>
@@ -311,7 +340,7 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
         </CallInfo>
 
         <Actions>
-          {onCallback && (status === 'missed' || status === 'rejected') && (
+          {onCallback && showCallbackButton && (
             <ActionButton
               color={callType === 'video' ? '#10b981' : '#3b82f6'}
               onPress={(e) => {
