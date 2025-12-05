@@ -1,4 +1,4 @@
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import {
   FlatList,
   Platform,
@@ -13,6 +13,7 @@ import { Ionicons } from '@expo/vector-icons'
 import { LinearGradient } from 'expo-linear-gradient'
 import * as ImagePicker from 'expo-image-picker'
 import { Swipeable } from 'react-native-gesture-handler'
+import { useUserProfile } from '../providers/UserProfileProvider'
 
 /* =================== Styled Components =================== */
 const Column = styled.View`
@@ -572,6 +573,28 @@ export default function SharedChatsSidebar({
     return name.toLowerCase().includes(searchQuery.toLowerCase())
   })
 
+  const { getOtherUserAvatar } = useUserProfile()
+  const [avatarMap, setAvatarMap] = useState({})
+
+  useEffect(() => {
+    const loadAvatars = async () => {
+      const participantIds = chats
+        .map((chat) => chat.participants?.find((p) => p !== currentUser?.uid))
+        .filter(Boolean)
+
+      const urls = await Promise.all(
+        participantIds.map((id) => getOtherUserAvatar(id))
+      )
+      const map = {}
+      participantIds.forEach((id, i) => {
+        if (id) map[id] = urls[i]
+      })
+      setAvatarMap(map)
+    }
+
+    if (chats.length > 0) loadAvatars()
+  }, [chats, currentUser?.uid, getOtherUserAvatar])
+
   /* =================== Camera & Upload Handlers =================== */
 
   const handleCameraPress = () => {
@@ -755,6 +778,8 @@ export default function SharedChatsSidebar({
     const userColor = getUserColor(otherParticipant)
     const isActive = selectedChatId === (item._id || item.id)
     const userName = otherUser?.name || otherUser?.displayName || 'Unknown User'
+
+    const avatarUrl = avatarMap[otherParticipant]
     const chatId = item._id || item.id
 
     const typingUsers = getTypingUsersForChat
@@ -791,8 +816,8 @@ export default function SharedChatsSidebar({
           activeOpacity={0.7}
         >
           <ChatAvatar color={userColor}>
-            {otherUser?.photoURL ? (
-              <ChatAvatarImage source={{ uri: otherUser.photoURL }} />
+            {avatarUrl ? (
+              <ChatAvatarImage source={{ uri: avatarUrl }} />
             ) : (
               <ChatAvatarText>{getInitials(userName)}</ChatAvatarText>
             )}
@@ -871,8 +896,7 @@ export default function SharedChatsSidebar({
     <Column flex={1} borderRight>
       <Header>
         <View>
-          <HeaderTitle>Messages</HeaderTitle>
-          <HeaderSubtitle>{chats.length} conversations</HeaderSubtitle>
+          <HeaderTitle>PeepGram</HeaderTitle>
         </View>
         {showCameraButton && (
           <CameraButton onPress={handleCameraPress} disabled={uploading}>

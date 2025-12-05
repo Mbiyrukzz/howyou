@@ -120,7 +120,7 @@ const CallNotification = () => {
     try {
       // Notify backend that call was rejected
       const response = await fetch(
-        `http://10.156.197.87:5000/answer-call/${route.params?.callId}`,
+        `http://10.68.138.87:5000/answer-call/${route.params?.callId}`,
         {
           method: 'POST',
           headers: {

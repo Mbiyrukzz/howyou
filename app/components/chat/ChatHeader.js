@@ -15,7 +15,7 @@ import {
 } from '../../styles/chatStyles'
 import { getInitials } from '../../utils/chatHelpers'
 
-// Additional styled components for enhanced design
+// Styled components
 const OnlineIndicator = styled.View`
   width: 14px;
   height: 14px;
@@ -56,6 +56,13 @@ const ProfileTouchable = styled.TouchableOpacity`
   margin-left: ${(props) => (props.hasBackButton ? '0px' : '16px')};
 `
 
+// NEW: Avatar image component
+const HeaderAvatarImage = styled.Image`
+  width: 44px;
+  height: 44px;
+  border-radius: 22px;
+`
+
 export const ChatHeader = ({
   showBackButton = true,
   onBack,
@@ -65,6 +72,14 @@ export const ChatHeader = ({
   onVideoCall,
   onAudioCall,
 }) => {
+  const {
+    name = 'Unknown',
+    status = '',
+    color = '#95a5a6',
+    isOnline = false,
+    avatar,
+  } = chatInfo
+
   return (
     <Header>
       {showBackButton && (
@@ -78,17 +93,21 @@ export const ChatHeader = ({
         onPress={onProfilePress}
         activeOpacity={0.7}
       >
-        <HeaderAvatar color={chatInfo.color}>
-          <HeaderAvatarText>{getInitials(chatInfo.name)}</HeaderAvatarText>
-          {chatInfo.isOnline && <OnlineIndicator />}
+        <HeaderAvatar color={color}>
+          {avatar ? (
+            <HeaderAvatarImage source={{ uri: avatar }} />
+          ) : (
+            <HeaderAvatarText>{getInitials(name)}</HeaderAvatarText>
+          )}
+          {isOnline && <OnlineIndicator />}
         </HeaderAvatar>
 
         <HeaderInfo>
-          <HeaderName>{chatInfo.name || 'Unknown'}</HeaderName>
+          <HeaderName>{name}</HeaderName>
           <StatusRow>
-            <StatusDot online={chatInfo.isOnline} />
-            <HeaderStatus online={chatInfo.isOnline}>
-              {chatInfo.status || (chatInfo.isOnline ? 'Online' : 'Offline')}
+            <StatusDot online={isOnline} />
+            <HeaderStatus online={isOnline}>
+              {status || (isOnline ? 'Online' : 'Offline')}
             </HeaderStatus>
           </StatusRow>
         </HeaderInfo>

@@ -15,6 +15,7 @@ import { CallCard } from '../components/calls/CallCard'
 import { CallHistoryCard } from '../components/calls/HistoryCard'
 import { ContactCard } from '../components/calls/ContactCard'
 import { getUserColor, getInitials } from '../utils/chatHelpers'
+import { useUserProfile } from '../providers/UserProfileProvider'
 
 /* =================== Styled Components =================== */
 const Container = styled.View`
@@ -118,7 +119,9 @@ const CallsList = styled.ScrollView`
 export default function CallsScreen({ navigation, route }) {
   const [selectedCallId, setSelectedCallId] = useState(null)
   const [selectedTab, setSelectedTab] = useState('recent')
+  const { getOtherUserAvatar } = useUserProfile()
 
+  const [userAvatars, setUserAvatars] = useState({})
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
 
@@ -132,10 +135,6 @@ export default function CallsScreen({ navigation, route }) {
     onlineUsers,
     getCallHistory,
   } = chatsContext || {}
-
-  console.log('📞 All calls from ChatsContext:', calls)
-  console.log('📞 Chats:', chats)
-  console.log('📞 Users:', users)
 
   useWebNavigation((type, id) => {
     if (type === 'call') {
@@ -152,11 +151,9 @@ export default function CallsScreen({ navigation, route }) {
     })
   }, [chats])
 
-  // Get all calls from all chats
   const allCalls = Object.entries(calls)
     .flatMap(([chatId, chatCalls]) =>
       chatCalls.map((call) => {
-        // Find the chat and other user
         const chat = chats.find((c) => (c._id || c.id) === chatId)
         const otherUserId = chat?.participants?.find((p) => p !== user?.uid)
         const otherUser = users.find(
@@ -166,16 +163,16 @@ export default function CallsScreen({ navigation, route }) {
         return {
           ...call,
           chatId,
-          participantId: otherUserId, // ✅ Store the actual participant ID from chat
+          participantId: otherUserId,
           name: otherUser?.name || 'Unknown User',
           color: getUserColor(otherUserId),
           isOnline: onlineUsers.has(otherUserId),
+          avatar: userAvatars[otherUserId] || null, // Add avatar
         }
       })
     )
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
 
-  // Get contacts (users with chats)
   const contacts = chats
     .filter((chat) => !chat.isGroup)
     .map((chat) => {
@@ -189,13 +186,46 @@ export default function CallsScreen({ navigation, route }) {
       return {
         ...otherUser,
         chatId: chat._id || chat.id,
-        participantId: otherUserId, // ✅ Store the actual participant ID from chat
+        participantId: otherUserId,
         color: getUserColor(otherUserId),
         isOnline: onlineUsers.has(otherUserId),
         status: onlineUsers.has(otherUserId) ? 'Online' : 'Offline',
+        avatar: userAvatars[otherUserId] || null, // Add avatar
       }
     })
     .filter(Boolean)
+
+  useEffect(() => {
+    const loadAvatars = async () => {
+      const avatarPromises = users.map(async (user) => {
+        const userId = user.firebaseUid || user._id
+        if (userId && !userAvatars[userId]) {
+          try {
+            const avatar = await getOtherUserAvatar(userId)
+            return { userId, avatar }
+          } catch (error) {
+            console.error(`Failed to load avatar for ${userId}:`, error)
+            return { userId, avatar: null }
+          }
+        }
+        return null
+      })
+
+      const results = await Promise.all(avatarPromises)
+      const newAvatars = {}
+      results.forEach((result) => {
+        if (result) {
+          newAvatars[result.userId] = result.avatar
+        }
+      })
+
+      setUserAvatars((prev) => ({ ...prev, ...newAvatars }))
+    }
+
+    if (users.length > 0) {
+      loadAvatars()
+    }
+  }, [users, getOtherUserAvatar])
 
   const recentCalls = allCalls.slice(0, 5)
   const missedCalls = allCalls.filter((call) => call.status === 'missed')

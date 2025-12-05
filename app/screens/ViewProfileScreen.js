@@ -19,6 +19,7 @@ import { useWebSidebar } from '../hooks/useWebSidebar'
 import { usePosts } from '../providers/PostsProvider'
 import SharedChatsSidebar from '../components/SharedChatsSidebar'
 import ChatDetailScreen from './ChatDetailScreen' // Import ChatDetailScreen
+import { useUserProfile } from '../providers/UserProfileProvider'
 
 const { width } = Dimensions.get('window')
 const MEDIA_ITEM_SIZE = (width - 64) / 3
@@ -462,6 +463,7 @@ const ProfileColumn = ({
   onVoiceCall,
   onVideoCall,
   onMediaPress,
+  otherUserAvatar,
 }) => {
   if (loading) {
     return (
@@ -524,7 +526,14 @@ const ProfileColumn = ({
         <ProfileHeader>
           <AvatarContainer>
             <Avatar color={userColor}>
-              <AvatarText>{getInitials(profileUser.name)}</AvatarText>
+              {otherUserAvatar ? (
+                <MediaImage
+                  source={{ uri: otherUserAvatar }}
+                  style={{ width: 120, height: 120, borderRadius: 60 }}
+                />
+              ) : (
+                <AvatarText>{getInitials(profileUser.name)}</AvatarText>
+              )}
             </Avatar>
             <OnlineBadge online={isOnline} />
           </AvatarContainer>
@@ -738,6 +747,10 @@ export default function ViewProfileScreen({ navigation, route }) {
   const [activeChatId, setActiveChatId] = useState(initialChatId)
   const [selectedChat, setSelectedChat] = useState(null)
 
+  const [otherUserAvatar, setOtherUserAvatar] = useState(null)
+
+  const { getOtherUserAvatar } = useUserProfile()
+
   const { user: currentUser } = useUser()
   const { createPost } = usePosts()
 
@@ -799,6 +812,28 @@ export default function ViewProfileScreen({ navigation, route }) {
 
     load()
   }, [userId, findUserById, isWebSidebar, currentUser?.uid])
+
+  useEffect(() => {
+    const loadOtherUserAvatar = async () => {
+      if (profileUser) {
+        const userIdToFetch = profileUser.firebaseUid || profileUser._id
+        if (userIdToFetch) {
+          try {
+            const avatar = await getOtherUserAvatar(userIdToFetch)
+            setOtherUserAvatar(avatar)
+          } catch (error) {
+            console.error('Failed to load other user avatar:', error)
+            setOtherUserAvatar(null)
+          }
+        }
+      } else {
+        // Clear avatar if no profile user
+        setOtherUserAvatar(null)
+      }
+    }
+
+    loadOtherUserAvatar()
+  }, [profileUser?.firebaseUid, profileUser?._id, getOtherUserAvatar])
 
   // Load shared media (existing logic)
   useEffect(() => {
@@ -1017,6 +1052,7 @@ export default function ViewProfileScreen({ navigation, route }) {
           onVoiceCall={handleVoiceCall}
           onVideoCall={handleVideoCall}
           onMediaPress={handleMediaPress}
+          otherUserAvatar={otherUserAvatar}
         />
       </Container>
     )
@@ -1069,6 +1105,7 @@ export default function ViewProfileScreen({ navigation, route }) {
           onVoiceCall={handleVoiceCall}
           onVideoCall={handleVideoCall}
           onMediaPress={handleMediaPress}
+          otherUserAvatar={otherUserAvatar}
         />
       </ThreeColumnLayout>
     </Container>

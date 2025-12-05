@@ -1,6 +1,6 @@
 import React from 'react'
 import styled from 'styled-components/native'
-import { Vibration } from 'react-native'
+import { Vibration, Image } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
 const Card = styled.TouchableOpacity`
@@ -19,7 +19,7 @@ const Card = styled.TouchableOpacity`
   elevation: 3;
 `
 
-const Avatar = styled.View`
+const AvatarContainer = styled.View`
   width: 56px;
   height: 56px;
   border-radius: 28px;
@@ -28,11 +28,18 @@ const Avatar = styled.View`
   justify-content: center;
   margin-right: 14px;
   position: relative;
-  shadow-color: ${(props) => props.color || '#3b82f6'};
+  shadow-color: #000;
   shadow-offset: 0px 2px;
   shadow-opacity: 0.3;
   shadow-radius: 4px;
   elevation: 3;
+  overflow: hidden;
+`
+
+const AvatarImage = styled.Image`
+  width: 100%;
+  height: 100%;
+  border-radius: 28px;
 `
 
 const AvatarText = styled.Text`
@@ -51,6 +58,7 @@ const OnlineIndicator = styled.View`
   right: 0;
   border-width: 3px;
   border-color: #fff;
+  z-index: 1;
 `
 
 const Info = styled.View`
@@ -152,6 +160,7 @@ const ActionButton = styled.TouchableOpacity`
   shadow-radius: 6px;
   elevation: 4;
 `
+
 const getStatusText = (type) => {
   switch (type) {
     case 'missed':
@@ -219,6 +228,13 @@ export function CallCard({ call, onPress, onAudioCall, onVideoCall }) {
   const hasDuration =
     call.duration && call.duration !== '0:00' && call.duration !== '00:00'
 
+  const renderAvatar = () => {
+    if (call.avatar) {
+      return <AvatarImage source={{ uri: call.avatar }} />
+    }
+    return <AvatarText>{call.name?.charAt(0)?.toUpperCase() || '?'}</AvatarText>
+  }
+
   return (
     <Card
       onPress={() => {
@@ -227,10 +243,10 @@ export function CallCard({ call, onPress, onAudioCall, onVideoCall }) {
       }}
       activeOpacity={0.7}
     >
-      <Avatar color={call.color}>
-        <AvatarText>{call.name?.charAt(0) || '?'}</AvatarText>
+      <AvatarContainer color={call.color}>
+        {renderAvatar()}
         {call.isOnline && <OnlineIndicator />}
-      </Avatar>
+      </AvatarContainer>
 
       <Info>
         <CallName>{call.name}</CallName>

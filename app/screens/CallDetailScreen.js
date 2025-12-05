@@ -1,8 +1,7 @@
 import styled from 'styled-components/native'
-import { ScrollView } from 'react-native'
+import { ScrollView, Alert, Vibration, FlatList, Image } from 'react-native'
 import { CallHistoryCard } from '../components/calls/HistoryCard'
 import React, { useState, useEffect } from 'react'
-import { Alert, Vibration, FlatList } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { useChats } from '../hooks/useChats'
 
@@ -32,6 +31,13 @@ const ProfileAvatar = styled.View`
   shadow-opacity: 0.2;
   shadow-radius: 12px;
   elevation: 6;
+  overflow: hidden;
+`
+
+const ProfileAvatarImage = styled.Image`
+  width: 100%;
+  height: 100%;
+  border-radius: 50px;
 `
 
 const ProfileAvatarText = styled.Text`
@@ -188,12 +194,15 @@ export function CallDetailScreen({ route, navigation }) {
   const {
     chats,
     calls,
+    users,
     initiateCall,
     getCallHistory,
     deleteCallLog,
     findUserById,
     isUserOnline,
     getLastSeen,
+    onlineUsers,
+    getUserColor,
   } = useChats()
 
   // Get the user ID - try multiple possible properties
@@ -203,11 +212,19 @@ export function CallDetailScreen({ route, navigation }) {
       userInfo?.participantId ||
       userInfo?.firebaseUid ||
       userInfo?._id ||
+      call?.participantId ||
       null
     )
   }
 
   const userId = getUserId()
+
+  // Find the full user object
+  const user =
+    findUserById(userId) ||
+    users?.find(
+      (u) => u._id === userId || u.firebaseUid === userId || u.id === userId
+    )
 
   useEffect(() => {
     if (userId) {
@@ -227,7 +244,21 @@ export function CallDetailScreen({ route, navigation }) {
       for (const chat of userChats) {
         const chatId = chat._id || chat.id
         const chatCalls = calls[chatId] || []
-        allCalls = [...allCalls, ...chatCalls]
+
+        // Enrich each call with user info
+        const enrichedCalls = chatCalls.map((callItem) => {
+          return {
+            ...callItem,
+            // Add user info to each call
+            name: user?.name || displayName,
+            color: userInfo?.color || getUserColor(userId),
+            avatar: user?.avatar || userInfo?.avatar,
+            participantId: userId,
+            isOnline: onlineUsers?.has(userId) || false,
+          }
+        })
+
+        allCalls = [...allCalls, ...enrichedCalls]
       }
 
       allCalls.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -276,8 +307,7 @@ export function CallDetailScreen({ route, navigation }) {
   }
 
   const stats = calculateStats()
-  const user = findUserById(userId)
-  const online = isUserOnline(userId)
+  const online = isUserOnline(userId) || onlineUsers?.has(userId) || false
   const lastSeen = getLastSeen(userId)
 
   const handleCall = async (callType) => {
@@ -431,7 +461,11 @@ export function CallDetailScreen({ route, navigation }) {
   }
 
   const renderCallHistoryItem = ({ item }) => (
-    <CallHistoryCard call={item} onLongPress={() => handleDeleteCall(item)} />
+    <CallHistoryCard
+      call={item}
+      onLongPress={() => handleDeleteCall(item)}
+      showDuration={true}
+    />
   )
 
   const getStatusText = () => {
@@ -452,10 +486,19 @@ export function CallDetailScreen({ route, navigation }) {
     return 'Offline'
   }
 
-  // Get display name
-  const displayName = userInfo?.name || user?.name || 'Unknown'
-  const displayColor = userInfo?.color || '#3b82f6'
-  const displayInitial = displayName.charAt(0) || '?'
+  // Get display info with better fallbacks
+  const displayName = userInfo?.name || user?.name || 'Unknown Contact'
+  const displayColor = userInfo?.color || user?.color || '#3b82f6'
+  const displayAvatar = userInfo?.avatar || user?.avatar
+  const displayInitial = displayName?.charAt(0)?.toUpperCase() || '?'
+
+  // Render avatar
+  const renderAvatar = () => {
+    if (displayAvatar) {
+      return <ProfileAvatarImage source={{ uri: displayAvatar }} />
+    }
+    return <ProfileAvatarText>{displayInitial}</ProfileAvatarText>
+  }
 
   return (
     <DetailContainer>
@@ -469,9 +512,7 @@ export function CallDetailScreen({ route, navigation }) {
             />
           </FavoriteButton>
 
-          <ProfileAvatar color={displayColor}>
-            <ProfileAvatarText>{displayInitial}</ProfileAvatarText>
-          </ProfileAvatar>
+          <ProfileAvatar color={displayColor}>{renderAvatar()}</ProfileAvatar>
 
           <ContactName>{displayName}</ContactName>
           <ContactStatus online={online}>{getStatusText()}</ContactStatus>
@@ -529,11 +570,14 @@ export function CallDetailScreen({ route, navigation }) {
             <FlatList
               data={callHistory}
               renderItem={renderCallHistoryItem}
-              keyExtractor={(item) => (item._id || item.id).toString()}
+              keyExtractor={(item) =>
+                (item._id || item.id || Math.random()).toString()
+              }
               scrollEnabled={false}
             />
           ) : (
             <DetailEmptyState>
+              <Ionicons name="time-outline" size={40} color="#94a3b8" />
               <DetailEmptyStateText>
                 {loading ? 'Loading call history...' : 'No call history yet'}
               </DetailEmptyStateText>

@@ -1,6 +1,6 @@
 import React from 'react'
 import styled from 'styled-components/native'
-import { Vibration } from 'react-native'
+import { Vibration, Image } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 
 const ContactCardContainer = styled.TouchableOpacity`
@@ -19,7 +19,7 @@ const ContactCardContainer = styled.TouchableOpacity`
   elevation: 3;
 `
 
-const ContactAvatar = styled.View`
+const ContactAvatarContainer = styled.View`
   width: 56px;
   height: 56px;
   border-radius: 28px;
@@ -28,11 +28,18 @@ const ContactAvatar = styled.View`
   justify-content: center;
   margin-right: 14px;
   position: relative;
-  shadow-color: ${(props) => props.color || '#3b82f6'};
+  shadow-color: #000;
   shadow-offset: 0px 2px;
   shadow-opacity: 0.3;
   shadow-radius: 4px;
   elevation: 3;
+  overflow: hidden;
+`
+
+const ContactAvatarImage = styled.Image`
+  width: 100%;
+  height: 100%;
+  border-radius: 28px;
 `
 
 const ContactAvatarText = styled.Text`
@@ -101,6 +108,7 @@ const OnlineIndicator = styled.View`
   right: 0;
   border-width: 3px;
   border-color: #fff;
+  z-index: 1;
 `
 
 export function ContactCard({
@@ -111,6 +119,17 @@ export function ContactCard({
   onMessage,
   showActions = true,
 }) {
+  const renderAvatar = () => {
+    if (contact.avatar) {
+      return <ContactAvatarImage source={{ uri: contact.avatar }} />
+    }
+    return (
+      <ContactAvatarText>
+        {contact.name?.charAt(0)?.toUpperCase() || '?'}
+      </ContactAvatarText>
+    )
+  }
+
   return (
     <ContactCardContainer
       onPress={() => {
@@ -119,10 +138,10 @@ export function ContactCard({
       }}
       activeOpacity={0.7}
     >
-      <ContactAvatar color={contact.color}>
-        <ContactAvatarText>{contact.name?.charAt(0) || '?'}</ContactAvatarText>
+      <ContactAvatarContainer color={contact.color}>
+        {renderAvatar()}
         {contact.isOnline && <OnlineIndicator />}
-      </ContactAvatar>
+      </ContactAvatarContainer>
 
       <ContactInfo>
         <ContactName>{contact.name}</ContactName>

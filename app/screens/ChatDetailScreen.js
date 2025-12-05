@@ -39,6 +39,7 @@ import { useMediaPicker } from '../hooks/useMediaPicker'
 import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useMessageActions } from '../hooks/useMessageActions'
 import { getUserColor, getInitials } from '../utils/chatHelpers'
+import { useUserProfile } from '../providers/UserProfileProvider'
 
 export default function ChatDetailScreen({
   navigation,
@@ -54,6 +55,10 @@ export default function ChatDetailScreen({
   const { chatId } = route?.params || {}
   const chatsContext = useContext(ChatsContext)
   const { user } = useUser()
+
+  const [otherUserAvatar, setOtherUserAvatar] = useState(null)
+
+  const { getOtherUserAvatar } = useUserProfile()
 
   const {
     handleTypingInput,
@@ -129,6 +134,22 @@ export default function ChatDetailScreen({
   const otherUserId = currentChat?.participants?.find((id) => id !== user?.uid)
   const otherUser = getOtherUser(user?.uid)
 
+  useEffect(() => {
+    const loadOtherUserAvatar = async () => {
+      if (otherUserId) {
+        try {
+          const avatar = await getOtherUserAvatar(otherUserId)
+          setOtherUserAvatar(avatar)
+        } catch (error) {
+          console.error('Failed to load other user avatar:', error)
+          setOtherUserAvatar(null)
+        }
+      }
+    }
+
+    loadOtherUserAvatar()
+  }, [otherUserId, getOtherUserAvatar])
+
   const getChatInfo = () => {
     if (!otherUser) {
       return {
@@ -158,6 +179,7 @@ export default function ChatDetailScreen({
       status: statusText,
       color: getUserColor(otherUser._id || otherUser.id),
       isOnline,
+      avatar: otherUserAvatar,
     }
   }
 

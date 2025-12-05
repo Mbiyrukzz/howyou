@@ -5,6 +5,7 @@ import React, {
   useState,
   useCallback,
   useEffect,
+  useRef,
 } from 'react'
 import { Platform } from 'react-native'
 import { auth } from '../firebase/setUpFirebase'
@@ -15,6 +16,8 @@ import useAuthedRequest from '../hooks/useAuthedRequest'
 // CONTEXT
 // ==============================
 const UserProfileContext = createContext(null)
+
+const API_URL = 'http://10.68.138.87:5000'
 
 // ==============================
 // CUSTOM HOOK
@@ -38,6 +41,8 @@ export const UserProfileProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [isLoading, setIsLoading] = useState(false)
   const [isInitializing, setIsInitializing] = useState(true)
+
+  const avatarCache = useRef(new Map())
 
   // ==============================
   // HELPER FUNCTIONS
@@ -90,7 +95,7 @@ export const UserProfileProvider = ({ children }) => {
         }
 
         const data = await get(
-          `http://10.156.197.87:5000/users/${userId}/profile`
+          `http://10.68.138.87:5000/users/${userId}/profile`
         )
 
         if (data.success) {
@@ -141,7 +146,7 @@ export const UserProfileProvider = ({ children }) => {
         }
 
         const result = await put(
-          `http://10.156.197.87:5000/users/${userId}/profile`,
+          `http://10.68.138.87:5000/users/${userId}/profile`,
           updateData
         )
 
@@ -236,12 +241,12 @@ export const UserProfileProvider = ({ children }) => {
 
         console.log(
           '📤 Uploading to:',
-          `http://10.156.197.87:5000/users/${userId}/profile-picture`
+          `http://10.68.138.87:5000/users/${userId}/profile-picture`
         )
 
         // Use fetch instead of put() - SAME AS POSTS
         const response = await fetch(
-          `http://10.156.197.87:5000/users/${userId}/profile-picture`,
+          `http://10.68.138.87:5000/users/${userId}/profile-picture`,
           {
             method: 'PUT',
             headers: {
@@ -286,6 +291,43 @@ export const UserProfileProvider = ({ children }) => {
     },
     [getCurrentUserId]
   )
+
+  const getOtherUserAvatar = useCallback(
+    async (userId, { bypassCache = false } = {}) => {
+      if (!userId) return null
+
+      // Return from cache if we have it and not forcing refresh
+      if (!bypassCache && avatarCache.current.has(userId)) {
+        return avatarCache.current.get(userId)
+      }
+
+      try {
+        const response = await fetch(`${API_URL}/users/${userId}/avatar`, {
+          method: 'GET',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        })
+
+        if (!response.ok) throw new Error('Failed to fetch avatar')
+
+        const data = await response.json()
+
+        if (data.success && data.profilePicture) {
+          avatarCache.current.set(userId, data.profilePicture)
+          return data.profilePicture
+        } else {
+          avatarCache.current.set(userId, null) // cache null too
+          return null
+        }
+      } catch (error) {
+        console.warn(`Failed to load avatar for ${userId}:`, error.message)
+        return null
+      }
+    },
+    []
+  )
+
   // ==============================
   // DELETE PROFILE PICTURE
   // ==============================
@@ -300,7 +342,7 @@ export const UserProfileProvider = ({ children }) => {
       console.log('🗑️ [UserProfile] Deleting profile picture for:', userId)
 
       const result = await del(
-        `http://10.156.197.87:5000/users/${userId}/profile-picture`
+        `http://10.68.138.87:5000/users/${userId}/profile-picture`
       )
 
       if (!result.success) {
@@ -347,7 +389,7 @@ export const UserProfileProvider = ({ children }) => {
         console.log('🔐 [UserProfile] Changing password for:', userId)
 
         const result = await put(
-          `http://10.156.197.87:5000/users/${userId}/password`,
+          `http://10.68.138.87:5000/users/${userId}/password`,
           {
             currentPassword,
             newPassword,
@@ -411,6 +453,8 @@ export const UserProfileProvider = ({ children }) => {
     changePassword,
     refreshProfile,
     fetchUserProfile,
+
+    getOtherUserAvatar,
   }
 
   return (
