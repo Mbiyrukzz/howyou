@@ -15,16 +15,52 @@ import LoadingIndicator from '../components/LoadingIndicator'
 
 const Stack = createNativeStackNavigator()
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+
 export default function AppNavigator() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [userCreated, setUserCreated] = useState(false)
   const navigationRef = useRef()
 
   useNotifications(navigationRef)
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
+
+      // If user is authenticated, verify/create user in backend
+      if (currentUser) {
+        try {
+          const token = await currentUser.getIdToken()
+
+          const response = await fetch(`${API_URL}/users`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              name: currentUser.displayName || 'User',
+              email: currentUser.email,
+            }),
+          })
+
+          const data = await response.json()
+
+          if (data.success) {
+            console.log('✅ User verified/created in backend')
+            setUserCreated(true)
+          } else {
+            console.error('❌ Failed to create/verify user:', data.error)
+          }
+        } catch (error) {
+          console.error('❌ Error verifying user in backend:', error)
+        }
+      } else {
+        setUserCreated(false)
+      }
+
       setLoading(false)
     })
     return unsubscribe
@@ -66,7 +102,7 @@ export default function AppNavigator() {
 
   return (
     <NavigationContainer ref={navigationRef}>
-      {user ? (
+      {user && userCreated ? (
         <>
           <BottomTabs />
           <IncomingCallHandler />

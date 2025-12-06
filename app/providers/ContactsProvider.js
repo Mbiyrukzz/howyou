@@ -2,6 +2,7 @@
 import React, { createContext, useContext, useState, useCallback } from 'react'
 import { auth } from '../firebase/setUpFirebase'
 import useAuthedRequest from '../hooks/useAuthedRequest'
+import { useUser } from '../hooks/useUser'
 
 // ==============================
 // CONTEXT
@@ -26,6 +27,8 @@ export const useContacts = () => {
 // ==============================
 export const ContactsProvider = ({ children }) => {
   const { isReady: isAuthReady, get, post, put, del } = useAuthedRequest()
+
+  const { user } = useUser()
 
   // State
   const [contacts, setContacts] = useState([])

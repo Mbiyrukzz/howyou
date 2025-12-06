@@ -5,6 +5,8 @@ import { Ionicons } from '@expo/vector-icons'
 import { signInWithEmailAndPassword } from 'firebase/auth'
 import { auth } from '../firebase/setUpFirebase'
 
+const API_URL = process.env.EXPO_PUBLIC_API_URL
+
 const Container = styled.View`
   flex: 1;
   background-color: #1a1a2e;
@@ -105,6 +107,8 @@ const LoginButton = styled.TouchableOpacity`
   padding: 18px;
   align-items: center;
   margin-top: 10px;
+  flex-direction: row;
+  justify-content: center;
   shadow-color: #3396d3;
   shadow-offset: 0px 8px;
   shadow-opacity: 0.3;
@@ -212,8 +216,37 @@ export default function LoginScreen({ navigation }) {
 
     setLoading(true)
     try {
-      await signInWithEmailAndPassword(auth, email.trim(), password)
-      navigation.replace('Chats')
+      // Sign in with Firebase
+      const userCredential = await signInWithEmailAndPassword(
+        auth,
+        email.trim(),
+        password
+      )
+
+      // Get the ID token
+      const token = await userCredential.user.getIdToken()
+
+      // Create or verify user in backend
+      const response = await fetch(`${API_URL}/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          name: userCredential.user.displayName || 'User',
+          email: userCredential.user.email,
+        }),
+      })
+
+      const data = await response.json()
+
+      if (data.success) {
+        console.log('✅ User authenticated and verified in backend')
+        navigation.replace('Main')
+      } else {
+        throw new Error(data.error || 'Failed to verify user')
+      }
     } catch (error) {
       console.error('Login error:', error)
 
@@ -234,6 +267,9 @@ export default function LoginScreen({ navigation }) {
           break
         case 'auth/too-many-requests':
           errorMessage = 'Too many failed attempts. Please try again later.'
+          break
+        case 'auth/invalid-credential':
+          errorMessage = 'Invalid email or password.'
           break
       }
 
@@ -273,7 +309,7 @@ export default function LoginScreen({ navigation }) {
         >
           <Header>
             <Logo>
-              <LogoText>A</LogoText>
+              <LogoText>C</LogoText>
             </Logo>
             <WelcomeTitle>Welcome Back</WelcomeTitle>
             <WelcomeSubtitle>
@@ -339,14 +375,10 @@ export default function LoginScreen({ navigation }) {
               onPress={handleLogin}
               disabled={!isFormValid || loading}
             >
-              {loading ? (
-                <>
-                  <LoadingIndicator color="white" size="small" />
-                  <LoginButtonText>Signing In...</LoginButtonText>
-                </>
-              ) : (
-                <LoginButtonText>Sign In</LoginButtonText>
-              )}
+              {loading && <LoadingIndicator color="white" size="small" />}
+              <LoginButtonText>
+                {loading ? 'Signing In...' : 'Sign In'}
+              </LoginButtonText>
             </LoginButton>
 
             <ForgotPasswordLink onPress={handleForgotPassword}>

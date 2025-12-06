@@ -5,18 +5,21 @@ import CommentsProvider from './CommentsProvider'
 import { SafeAreaProvider } from 'react-native-safe-area-context'
 import { GestureHandlerRootView } from 'react-native-gesture-handler'
 import { UserProfileProvider } from './UserProfileProvider'
+import ContactsProvider from './ContactsProvider'
 
 const AppProviders = ({ children }) => {
   return (
     <GestureHandlerRootView>
       <SafeAreaProvider>
-        <ChatsProvider>
-          <CommentsProvider>
-            <PostsProvider>
-              <UserProfileProvider>{children}</UserProfileProvider>
-            </PostsProvider>
-          </CommentsProvider>
-        </ChatsProvider>
+        <ContactsProvider>
+          <ChatsProvider>
+            <CommentsProvider>
+              <PostsProvider>
+                <UserProfileProvider>{children}</UserProfileProvider>
+              </PostsProvider>
+            </CommentsProvider>
+          </ChatsProvider>
+        </ContactsProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   )

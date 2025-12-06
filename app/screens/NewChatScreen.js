@@ -1,11 +1,19 @@
-import React, { useState, useContext } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import styled from 'styled-components/native'
-import { FlatList, Modal, Alert, TouchableWithoutFeedback } from 'react-native'
+import {
+  FlatList,
+  Modal,
+  Alert,
+  TouchableWithoutFeedback,
+  RefreshControl,
+  TouchableOpacity,
+} from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { Ionicons } from '@expo/vector-icons'
-import ContactsContext from '../contexts/ContactsContext'
-import ChatsContext from '../contexts/ChatsContext'
+
 import { useUser } from '../hooks/useUser'
+import { useContacts } from '../providers/ContactsProvider'
+import { useChats } from '../hooks/useChats'
 
 const Container = styled.View`
   flex: 1;
@@ -44,6 +52,17 @@ const HeaderTitle = styled.Text`
   font-weight: 800;
   color: #1e293b;
   flex: 1;
+`
+
+const ReloadButton = styled.TouchableOpacity`
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #f1f5f9;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  opacity: ${(props) => (props.disabled ? 0.5 : 1)};
 `
 
 const TabContainer = styled.View`
@@ -406,7 +425,59 @@ const UserNameContainer = styled.View`
   align-items: center;
 `
 
-// Helper function to generate consistent user colors
+// Add Contact Button Components
+const AddContactButton = styled.TouchableOpacity`
+  background-color: #3b82f6;
+  padding: 12px 20px;
+  border-radius: 12px;
+  margin-top: 16px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+`
+
+const AddContactText = styled.Text`
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  margin-left: 8px;
+`
+
+// Debug Components
+const DebugContainer = styled.View`
+  background-color: rgba(0, 0, 0, 0.8);
+  padding: 16px;
+  margin: 16px;
+  border-radius: 12px;
+`
+
+const DebugTitle = styled.Text`
+  color: #fff;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 8px;
+`
+
+const DebugText = styled.Text`
+  color: #fff;
+  font-size: 12px;
+  margin-bottom: 4px;
+`
+
+const DebugButton = styled.TouchableOpacity`
+  background-color: #3b82f6;
+  padding: 8px 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+  align-items: center;
+`
+
+const DebugButtonText = styled.Text`
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+`
+
 const getUserColor = (userId) => {
   const colors = [
     '#3b82f6',
@@ -432,41 +503,111 @@ export default function NewChatScreen({ navigation }) {
   const [roomName, setRoomName] = useState('')
   const [roomDescription, setRoomDescription] = useState('')
   const [selectedCategories, setSelectedCategories] = useState([])
+  const [refreshing, setRefreshing] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
 
-  const contactsContext = useContext(ContactsContext)
-  const chatsContext = useContext(ChatsContext)
+  // Use the custom hooks instead of useContext
+  const {
+    contacts,
+    loading: contactsLoading,
+    loadContacts,
+    favoriteContacts,
+    onlineContacts,
+    offlineContacts,
+  } = useContacts() // This will throw an error if not in provider
+
+  // Use chats hook if available, otherwise provide fallback
+  let chatsContext
+  try {
+    chatsContext = useChats?.() || {
+      chats: [],
+      createChat: () => Promise.resolve({ success: false }),
+    }
+  } catch {
+    chatsContext = {
+      chats: [],
+      createChat: () => Promise.resolve({ success: false }),
+    }
+  }
+
   const { user } = useUser()
   const nav = useNavigation()
 
-  const contacts = contactsContext?.contacts || []
-  const contactsLoading = contactsContext?.loading || false
-
-  const users = chatsContext?.users || []
-  const usersLoading = chatsContext?.loading || false
+  const debugTapCount = useRef(0)
 
   const createChat =
     chatsContext?.createChat || (() => Promise.resolve({ success: false }))
   const chats = chatsContext?.chats || []
 
-  // Combine contacts and users, prioritizing contacts
-  const allPeople = React.useMemo(() => {
-    const contactIds = new Set(contacts.map((c) => c._id || c.id))
-    const contactsWithType = contacts.map((c) => ({ ...c, type: 'contact' }))
-    const usersWithType = users
-      .filter((u) => !contactIds.has(u._id || u.id))
-      .map((u) => ({
-        ...u,
-        type: 'user',
-        name: u.name || u.username || 'Unknown User',
-        status: u.status || 'User',
-        online: u.online || false,
-        color: u.color || getUserColor(u._id || u.id),
-      }))
+  // Debug logging - updated
+  useEffect(() => {
+    console.log('📊 NewChatScreen contacts data:', {
+      contactsCount: contacts?.length || 0,
+      contactsLoading,
+      contactsAvailable: !!contacts,
+      contactsSample: contacts?.slice(0, 3).map((c) => ({
+        id: c.contactUserId,
+        name: c.userDetails?.name || c.contactName,
+        hasUserDetails: !!c.userDetails,
+      })),
+    })
+  }, [contacts, contactsLoading])
 
-    return [...contactsWithType, ...usersWithType]
-  }, [contacts, users])
+  // Load contacts when screen comes into focus
+  useEffect(() => {
+    const unsubscribe = nav.addListener('focus', () => {
+      console.log('🔄 NewChatScreen focused, loading contacts')
+      if (loadContacts) {
+        loadContacts()
+      }
+    })
 
-  const loading = contactsLoading || usersLoading
+    return unsubscribe
+  }, [nav, loadContacts])
+
+  // Also load contacts on initial mount
+  useEffect(() => {
+    console.log('🔄 Initial mount, loading contacts')
+    if (loadContacts) {
+      loadContacts()
+    }
+  }, [loadContacts])
+
+  // Process contacts with better error handling
+  const contactsWithType = React.useMemo(() => {
+    console.log('🔄 Processing contacts:', contacts?.length || 0)
+
+    if (!contacts || contacts.length === 0) {
+      console.log('📭 No contacts to process')
+      return []
+    }
+
+    const processed = contacts.map((c) => {
+      const name = c.userDetails?.name || c.contactName || 'Unknown User'
+      const email = c.userDetails?.email || ''
+      const online = c.userDetails?.online || false
+      const color = getUserColor(c.contactUserId)
+
+      console.log(`👤 Processing contact: ${name} (${c.contactUserId})`, {
+        hasUserDetails: !!c.userDetails,
+        userDetails: c.userDetails,
+        contactName: c.contactName,
+      })
+
+      return {
+        ...c,
+        type: 'contact',
+        name,
+        email,
+        online,
+        color,
+        firebaseUid: c.contactUserId,
+      }
+    })
+
+    console.log('✅ Processed contacts:', processed.length)
+    return processed
+  }, [contacts])
 
   const categories = [
     'Technology',
@@ -481,14 +622,13 @@ export default function NewChatScreen({ navigation }) {
     'Food',
   ]
 
-  const filteredPeople = allPeople.filter(
-    (person) =>
-      person.name?.toLowerCase().includes(searchText.toLowerCase()) ||
-      person.email?.toLowerCase().includes(searchText.toLowerCase()) ||
-      person.username?.toLowerCase().includes(searchText.toLowerCase())
+  const filteredContacts = contactsWithType.filter(
+    (contact) =>
+      contact.name?.toLowerCase().includes(searchText.toLowerCase()) ||
+      contact.email?.toLowerCase().includes(searchText.toLowerCase())
   )
 
-  const startDirectChat = async (person) => {
+  const startDirectChat = async (contact) => {
     if (!user?.uid) {
       Alert.alert(
         'Authentication Error',
@@ -499,27 +639,50 @@ export default function NewChatScreen({ navigation }) {
     }
 
     try {
-      const personUid = person.firebaseUid || person._id || person.id
+      const contactUid = contact.contactUserId || contact.firebaseUid
+
+      if (!contactUid) {
+        Alert.alert('Error', 'Invalid contact ID', [{ text: 'OK' }])
+        return
+      }
+
+      console.log('💬 Starting chat with:', {
+        contactName: contact.name,
+        contactUid,
+        currentUser: user.uid,
+      })
+
+      // Check if chat already exists
       const existingChat = chats.find(
         (chat) =>
-          chat.participants.length === 2 &&
-          chat.participants.includes(personUid) &&
+          chat.participants?.length === 2 &&
+          chat.participants.includes(contactUid) &&
           chat.participants.includes(user?.uid)
       )
 
       if (existingChat) {
+        console.log(
+          '💬 Found existing chat:',
+          existingChat._id || existingChat.id
+        )
         nav.navigate('ChatDetail', {
           chatId: existingChat._id || existingChat.id,
         })
         return
       }
 
-      const participantId = person.firebaseUid || person._id || person.id
-      const data = await createChat([participantId], person.name)
+      // Create new chat
+      console.log('💬 Creating new chat...')
+      const data = await createChat([contactUid], contact.name)
 
       if (data.success && data.chat) {
+        console.log(
+          '💬 Chat created successfully:',
+          data.chat._id || data.chat.id
+        )
         nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
       } else {
+        console.error('💬 Failed to create chat:', data.error)
         Alert.alert(
           'Error',
           data.error || 'Failed to create chat. Please try again.',
@@ -527,7 +690,7 @@ export default function NewChatScreen({ navigation }) {
         )
       }
     } catch (error) {
-      console.error('Error starting direct chat:', error)
+      console.error('❌ Error starting direct chat:', error)
       Alert.alert('Error', 'Failed to start chat. Please try again.', [
         { text: 'OK' },
       ])
@@ -582,9 +745,24 @@ export default function NewChatScreen({ navigation }) {
     }
   }
 
-  const renderPerson = ({ item }) => (
+  const onRefresh = async () => {
+    setRefreshing(true)
+    try {
+      console.log('🔄 Manual refresh triggered')
+      if (loadContacts) {
+        await loadContacts()
+      }
+    } catch (error) {
+      console.error('Error refreshing contacts:', error)
+      Alert.alert('Error', 'Failed to refresh contacts', [{ text: 'OK' }])
+    } finally {
+      setRefreshing(false)
+    }
+  }
+
+  const renderContact = ({ item }) => (
     <UserCard onPress={() => startDirectChat(item)}>
-      <UserAvatar color={item.color || getUserColor(item._id || item.id)}>
+      <UserAvatar color={item.color}>
         <UserAvatarText>
           {item.name
             .split(' ')
@@ -598,16 +776,13 @@ export default function NewChatScreen({ navigation }) {
       <UserInfo>
         <UserNameContainer>
           <UserName>{item.name}</UserName>
-          {item.type === 'contact' && (
-            <UserBadge>
-              <UserBadgeText>Contact</UserBadgeText>
-            </UserBadge>
-          )}
+          <UserBadge>
+            <UserBadgeText>Contact</UserBadgeText>
+          </UserBadge>
         </UserNameContainer>
         <UserStatus>
-          {item.type === 'contact'
-            ? item.status || 'Contact'
-            : item.status || 'User'}
+          {item.email || 'No email'}
+          {item.online && ' • Online'}
         </UserStatus>
       </UserInfo>
       <UserActions>
@@ -621,20 +796,101 @@ export default function NewChatScreen({ navigation }) {
     </UserCard>
   )
 
-  const renderEmptyPeople = () => (
+  const renderEmptyContacts = () => (
     <EmptyContainer>
       <EmptyIcon>
         <Ionicons name="people-outline" size={40} color="#94a3b8" />
       </EmptyIcon>
       <EmptyText>
         {searchText
-          ? `No people found matching "${searchText}"`
-          : 'No people available to chat with.'}
+          ? `No contacts found matching "${searchText}"`
+          : contactsLoading
+          ? 'Loading contacts...'
+          : 'No contacts yet.\nAdd contacts to start chatting!'}
       </EmptyText>
+      {!searchText && !contactsLoading && (
+        <AddContactButton onPress={() => nav.navigate('AddContacts')}>
+          <Ionicons name="person-add" size={16} color="#fff" />
+          <AddContactText>Add Contacts</AddContactText>
+        </AddContactButton>
+      )}
     </EmptyContainer>
   )
 
-  if (loading) {
+  const renderContactList = () => {
+    if (contactsLoading && !refreshing) {
+      return (
+        <LoadingContainer>
+          <LoadingCard>
+            <Ionicons name="people" size={40} color="#3b82f6" />
+            <LoadingText>Loading contacts...</LoadingText>
+          </LoadingCard>
+        </LoadingContainer>
+      )
+    }
+
+    return (
+      <>
+        <SectionTitle>Contacts ({filteredContacts.length})</SectionTitle>
+        {filteredContacts.length === 0 ? (
+          renderEmptyContacts()
+        ) : (
+          <FlatList
+            data={filteredContacts}
+            renderItem={renderContact}
+            keyExtractor={(item) => (item._id || item.contactUserId).toString()}
+            showsVerticalScrollIndicator={false}
+            contentContainerStyle={{ paddingBottom: 20 }}
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onRefresh}
+                colors={['#3b82f6']}
+                tintColor="#3b82f6"
+              />
+            }
+          />
+        )}
+      </>
+    )
+  }
+
+  const renderDebugInfo = () => (
+    <DebugContainer>
+      <DebugTitle>Debug Info</DebugTitle>
+      <DebugText>Contacts Count: {contacts?.length || 0}</DebugText>
+      <DebugText>Loading: {contactsLoading.toString()}</DebugText>
+      <DebugText>Filtered: {filteredContacts.length}</DebugText>
+      <DebugText>Contacts With Type: {contactsWithType.length}</DebugText>
+      <DebugText>User ID: {user?.uid || 'Not logged in'}</DebugText>
+      <DebugText>User Email: {user?.email || 'No email'}</DebugText>
+      <DebugText>Using useContacts Hook: Yes</DebugText>
+      {contacts?.slice(0, 5).map((c, i) => (
+        <DebugText key={i}>
+          {i + 1}: {c.userDetails?.name || c.contactName || 'No name'}
+          (ID: {c.contactUserId?.substring(0, 8) || 'No ID'})
+          {c.userDetails ? ' ✓' : ' ✗ No details'}
+        </DebugText>
+      ))}
+      <DebugButton onPress={() => setDebugMode(false)}>
+        <DebugButtonText>Hide Debug</DebugButtonText>
+      </DebugButton>
+    </DebugContainer>
+  )
+
+  const handleHeaderPress = () => {
+    debugTapCount.current += 1
+    if (debugTapCount.current === 3) {
+      setDebugMode(!debugMode)
+      debugTapCount.current = 0
+    }
+
+    setTimeout(() => {
+      debugTapCount.current = 0
+    }, 1000)
+  }
+
+  if (contactsLoading && !refreshing) {
     return (
       <Container>
         <Header>
@@ -643,12 +899,22 @@ export default function NewChatScreen({ navigation }) {
               <Ionicons name="arrow-back" size={20} color="#64748b" />
             </BackButton>
             <HeaderTitle>New Chat</HeaderTitle>
+            <ReloadButton
+              onPress={() => loadContacts?.()}
+              disabled={contactsLoading}
+            >
+              <Ionicons
+                name="reload"
+                size={20}
+                color={contactsLoading ? '#94a3b8' : '#3b82f6'}
+              />
+            </ReloadButton>
           </HeaderContent>
         </Header>
         <LoadingContainer>
           <LoadingCard>
             <Ionicons name="people" size={40} color="#3b82f6" />
-            <LoadingText>Loading people...</LoadingText>
+            <LoadingText>Loading contacts...</LoadingText>
           </LoadingCard>
         </LoadingContainer>
       </Container>
@@ -657,21 +923,33 @@ export default function NewChatScreen({ navigation }) {
 
   return (
     <Container>
-      <Header>
-        <HeaderContent>
-          <BackButton onPress={() => nav?.goBack()}>
-            <Ionicons name="arrow-back" size={20} color="#64748b" />
-          </BackButton>
-          <HeaderTitle>New Chat</HeaderTitle>
-        </HeaderContent>
-      </Header>
+      <TouchableOpacity onPress={handleHeaderPress} activeOpacity={1}>
+        <Header>
+          <HeaderContent>
+            <BackButton onPress={() => nav?.goBack()}>
+              <Ionicons name="arrow-back" size={20} color="#64748b" />
+            </BackButton>
+            <HeaderTitle>New Chat</HeaderTitle>
+            <ReloadButton
+              onPress={() => loadContacts?.()}
+              disabled={contactsLoading}
+            >
+              <Ionicons
+                name="reload"
+                size={20}
+                color={contactsLoading ? '#94a3b8' : '#3b82f6'}
+              />
+            </ReloadButton>
+          </HeaderContent>
+        </Header>
+      </TouchableOpacity>
 
       <TabContainer>
         <Tab
           active={activeTab === 'contacts'}
           onPress={() => setActiveTab('contacts')}
         >
-          <TabText active={activeTab === 'contacts'}>People</TabText>
+          <TabText active={activeTab === 'contacts'}>Contacts</TabText>
         </Tab>
         <Tab
           active={activeTab === 'rooms'}
@@ -687,7 +965,7 @@ export default function NewChatScreen({ navigation }) {
           <SearchInput
             placeholder={
               activeTab === 'contacts'
-                ? 'Search people...'
+                ? 'Search contacts...'
                 : 'Search public rooms...'
             }
             value={searchText}
@@ -698,21 +976,10 @@ export default function NewChatScreen({ navigation }) {
       </SearchContainer>
 
       <ContentContainer>
+        {debugMode && renderDebugInfo()}
+
         {activeTab === 'contacts' ? (
-          <>
-            <SectionTitle>People ({filteredPeople.length})</SectionTitle>
-            {filteredPeople.length === 0 ? (
-              renderEmptyPeople()
-            ) : (
-              <FlatList
-                data={filteredPeople}
-                renderItem={renderPerson}
-                keyExtractor={(item) => (item._id || item.id).toString()}
-                showsVerticalScrollIndicator={false}
-                contentContainerStyle={{ paddingBottom: 20 }}
-              />
-            )}
-          </>
+          renderContactList()
         ) : (
           <>
             <CreateRoomCard onPress={() => setShowCreateModal(true)}>
