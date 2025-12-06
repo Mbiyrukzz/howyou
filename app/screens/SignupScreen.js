@@ -261,7 +261,7 @@ const LoadingIndicator = styled.ActivityIndicator`
   margin-right: 10px;
 `
 
-const API_URL = 'http://10.68.138.87:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 export default function SignupScreen({ navigation }) {
   const [email, setEmail] = useState('')

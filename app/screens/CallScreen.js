@@ -23,6 +23,7 @@ const Container = styled.View`
 const VideoContainer = styled.View`
   flex: 1;
 `
+const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 const CallScreen = () => {
   const route = useRoute()
@@ -221,7 +222,7 @@ const CallScreen = () => {
 
     try {
       const response = await fetch(
-        `http://10.68.138.87:5000/answer-call/${route.params?.callId}`,
+        `${API_URL}/answer-call/${route.params?.callId}`,
         {
           method: 'POST',
           headers: {

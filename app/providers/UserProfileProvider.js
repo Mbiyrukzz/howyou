@@ -17,7 +17,7 @@ import useAuthedRequest from '../hooks/useAuthedRequest'
 // ==============================
 const UserProfileContext = createContext(null)
 
-const API_URL = 'http://10.68.138.87:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 // ==============================
 // CUSTOM HOOK
@@ -94,9 +94,8 @@ export const UserProfileProvider = ({ children }) => {
           await auth.currentUser.getIdToken(true)
         }
 
-        const data = await get(
-          `http://10.68.138.87:5000/users/${userId}/profile`
-        )
+        // ✅ FIXED: Correct API endpoint path
+        const data = await get(`${API_URL}/users/${userId}/profile`)
 
         if (data.success) {
           console.log('✅ [UserProfile] User profile loaded:', {
@@ -145,8 +144,9 @@ export const UserProfileProvider = ({ children }) => {
           throw new Error('At least one field (name or email) is required')
         }
 
+        // ✅ FIXED: Correct API endpoint path
         const result = await put(
-          `http://10.68.138.87:5000/users/${userId}/profile`,
+          `${API_URL}/users/${userId}/profile`,
           updateData
         )
 
@@ -241,12 +241,14 @@ export const UserProfileProvider = ({ children }) => {
 
         console.log(
           '📤 Uploading to:',
-          `http://10.68.138.87:5000/users/${userId}/profile-picture`
+          // ✅ FIXED: Correct API endpoint path
+          `${API_URL}/users/${userId}/profile-picture`
         )
 
         // Use fetch instead of put() - SAME AS POSTS
         const response = await fetch(
-          `http://10.68.138.87:5000/users/${userId}/profile-picture`,
+          // ✅ FIXED: Correct API endpoint path
+          `${API_URL}/users/${userId}/profile-picture`,
           {
             method: 'PUT',
             headers: {
@@ -292,6 +294,9 @@ export const UserProfileProvider = ({ children }) => {
     [getCurrentUserId]
   )
 
+  // ==============================
+  // GET OTHER USER AVATAR
+  // ==============================
   const getOtherUserAvatar = useCallback(
     async (userId, { bypassCache = false } = {}) => {
       if (!userId) return null
@@ -302,6 +307,7 @@ export const UserProfileProvider = ({ children }) => {
       }
 
       try {
+        // ✅ FIXED: Correct API endpoint path
         const response = await fetch(`${API_URL}/users/${userId}/avatar`, {
           method: 'GET',
           headers: {
@@ -341,9 +347,8 @@ export const UserProfileProvider = ({ children }) => {
     try {
       console.log('🗑️ [UserProfile] Deleting profile picture for:', userId)
 
-      const result = await del(
-        `http://10.68.138.87:5000/users/${userId}/profile-picture`
-      )
+      // ✅ FIXED: Correct API endpoint path
+      const result = await del(`${API_URL}/users/${userId}/profile-picture`)
 
       if (!result.success) {
         throw new Error(result.error || 'Failed to delete profile picture')
@@ -388,13 +393,11 @@ export const UserProfileProvider = ({ children }) => {
       try {
         console.log('🔐 [UserProfile] Changing password for:', userId)
 
-        const result = await put(
-          `http://10.68.138.87:5000/users/${userId}/password`,
-          {
-            currentPassword,
-            newPassword,
-          }
-        )
+        // ✅ FIXED: Correct API endpoint path
+        const result = await put(`${API_URL}/users/${userId}/password`, {
+          currentPassword,
+          newPassword,
+        })
 
         if (!result.success) {
           throw new Error(result.error || 'Failed to change password')

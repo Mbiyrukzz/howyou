@@ -6,7 +6,7 @@ import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
 import { Platform } from 'react-native'
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://10.68.138.87:5000'
+const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 const CommentsProvider = ({ children }) => {
   const [comments, setComments] = useState({})

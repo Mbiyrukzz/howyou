@@ -19,7 +19,8 @@ export default function AppNavigator() {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const navigationRef = useRef()
-  const { notification } = useNotifications()
+
+  useNotifications(navigationRef)
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
