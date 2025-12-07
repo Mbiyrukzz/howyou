@@ -54,6 +54,25 @@ const HeaderTitle = styled.Text`
   flex: 1;
 `
 
+const HeaderActions = styled.View`
+  flex-direction: row;
+  gap: 8px;
+`
+
+const AddContactHeaderButton = styled.TouchableOpacity`
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: #3b82f6;
+  align-items: center;
+  justify-content: center;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.3;
+  shadow-radius: 4px;
+  elevation: 3;
+`
+
 const ReloadButton = styled.TouchableOpacity`
   width: 40px;
   height: 40px;
@@ -61,7 +80,6 @@ const ReloadButton = styled.TouchableOpacity`
   background-color: #f1f5f9;
   align-items: center;
   justify-content: center;
-  margin-left: auto;
   opacity: ${(props) => (props.disabled ? 0.5 : 1)};
 `
 
@@ -130,7 +148,6 @@ const SectionTitle = styled.Text`
   margin-bottom: 16px;
 `
 
-// Create Room Components
 const CreateRoomCard = styled.TouchableOpacity`
   background-color: #fff;
   border-radius: 16px;
@@ -176,7 +193,6 @@ const CreateSubtitle = styled.Text`
   line-height: 20px;
 `
 
-// User/Contact Components
 const UserCard = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
@@ -263,7 +279,6 @@ const ActionBtn = styled.TouchableOpacity`
   justify-content: center;
 `
 
-// Modal Components
 const ModalOverlay = styled.View`
   flex: 1;
   background-color: rgba(0, 0, 0, 0.5);
@@ -425,7 +440,6 @@ const UserNameContainer = styled.View`
   align-items: center;
 `
 
-// Add Contact Button Components
 const AddContactButton = styled.TouchableOpacity`
   background-color: #3b82f6;
   padding: 12px 20px;
@@ -434,6 +448,11 @@ const AddContactButton = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
   justify-content: center;
+  shadow-color: #3b82f6;
+  shadow-offset: 0px 4px;
+  shadow-opacity: 0.3;
+  shadow-radius: 6px;
+  elevation: 4;
 `
 
 const AddContactText = styled.Text`
@@ -441,41 +460,6 @@ const AddContactText = styled.Text`
   font-size: 14px;
   font-weight: 600;
   margin-left: 8px;
-`
-
-// Debug Components
-const DebugContainer = styled.View`
-  background-color: rgba(0, 0, 0, 0.8);
-  padding: 16px;
-  margin: 16px;
-  border-radius: 12px;
-`
-
-const DebugTitle = styled.Text`
-  color: #fff;
-  font-size: 16px;
-  font-weight: 700;
-  margin-bottom: 8px;
-`
-
-const DebugText = styled.Text`
-  color: #fff;
-  font-size: 12px;
-  margin-bottom: 4px;
-`
-
-const DebugButton = styled.TouchableOpacity`
-  background-color: #3b82f6;
-  padding: 8px 12px;
-  border-radius: 8px;
-  margin-top: 8px;
-  align-items: center;
-`
-
-const DebugButtonText = styled.Text`
-  color: #fff;
-  font-size: 12px;
-  font-weight: 600;
 `
 
 const getUserColor = (userId) => {
@@ -504,19 +488,9 @@ export default function NewChatScreen({ navigation }) {
   const [roomDescription, setRoomDescription] = useState('')
   const [selectedCategories, setSelectedCategories] = useState([])
   const [refreshing, setRefreshing] = useState(false)
-  const [debugMode, setDebugMode] = useState(false)
 
-  // Use the custom hooks instead of useContext
-  const {
-    contacts,
-    loading: contactsLoading,
-    loadContacts,
-    favoriteContacts,
-    onlineContacts,
-    offlineContacts,
-  } = useContacts() // This will throw an error if not in provider
+  const { contacts, loading: contactsLoading, loadContacts } = useContacts()
 
-  // Use chats hook if available, otherwise provide fallback
   let chatsContext
   try {
     chatsContext = useChats?.() || {
@@ -533,27 +507,10 @@ export default function NewChatScreen({ navigation }) {
   const { user } = useUser()
   const nav = useNavigation()
 
-  const debugTapCount = useRef(0)
-
   const createChat =
     chatsContext?.createChat || (() => Promise.resolve({ success: false }))
   const chats = chatsContext?.chats || []
 
-  // Debug logging - updated
-  useEffect(() => {
-    console.log('📊 NewChatScreen contacts data:', {
-      contactsCount: contacts?.length || 0,
-      contactsLoading,
-      contactsAvailable: !!contacts,
-      contactsSample: contacts?.slice(0, 3).map((c) => ({
-        id: c.contactUserId,
-        name: c.userDetails?.name || c.contactName,
-        hasUserDetails: !!c.userDetails,
-      })),
-    })
-  }, [contacts, contactsLoading])
-
-  // Load contacts when screen comes into focus
   useEffect(() => {
     const unsubscribe = nav.addListener('focus', () => {
       console.log('🔄 NewChatScreen focused, loading contacts')
@@ -565,7 +522,6 @@ export default function NewChatScreen({ navigation }) {
     return unsubscribe
   }, [nav, loadContacts])
 
-  // Also load contacts on initial mount
   useEffect(() => {
     console.log('🔄 Initial mount, loading contacts')
     if (loadContacts) {
@@ -573,26 +529,16 @@ export default function NewChatScreen({ navigation }) {
     }
   }, [loadContacts])
 
-  // Process contacts with better error handling
   const contactsWithType = React.useMemo(() => {
-    console.log('🔄 Processing contacts:', contacts?.length || 0)
-
     if (!contacts || contacts.length === 0) {
-      console.log('📭 No contacts to process')
       return []
     }
 
-    const processed = contacts.map((c) => {
+    return contacts.map((c) => {
       const name = c.userDetails?.name || c.contactName || 'Unknown User'
       const email = c.userDetails?.email || ''
       const online = c.userDetails?.online || false
       const color = getUserColor(c.contactUserId)
-
-      console.log(`👤 Processing contact: ${name} (${c.contactUserId})`, {
-        hasUserDetails: !!c.userDetails,
-        userDetails: c.userDetails,
-        contactName: c.contactName,
-      })
 
       return {
         ...c,
@@ -604,9 +550,6 @@ export default function NewChatScreen({ navigation }) {
         firebaseUid: c.contactUserId,
       }
     })
-
-    console.log('✅ Processed contacts:', processed.length)
-    return processed
   }, [contacts])
 
   const categories = [
@@ -646,13 +589,6 @@ export default function NewChatScreen({ navigation }) {
         return
       }
 
-      console.log('💬 Starting chat with:', {
-        contactName: contact.name,
-        contactUid,
-        currentUser: user.uid,
-      })
-
-      // Check if chat already exists
       const existingChat = chats.find(
         (chat) =>
           chat.participants?.length === 2 &&
@@ -661,28 +597,17 @@ export default function NewChatScreen({ navigation }) {
       )
 
       if (existingChat) {
-        console.log(
-          '💬 Found existing chat:',
-          existingChat._id || existingChat.id
-        )
         nav.navigate('ChatDetail', {
           chatId: existingChat._id || existingChat.id,
         })
         return
       }
 
-      // Create new chat
-      console.log('💬 Creating new chat...')
       const data = await createChat([contactUid], contact.name)
 
       if (data.success && data.chat) {
-        console.log(
-          '💬 Chat created successfully:',
-          data.chat._id || data.chat.id
-        )
         nav.navigate('ChatDetail', { chatId: data.chat._id || data.chat.id })
       } else {
-        console.error('💬 Failed to create chat:', data.error)
         Alert.alert(
           'Error',
           data.error || 'Failed to create chat. Please try again.',
@@ -748,7 +673,6 @@ export default function NewChatScreen({ navigation }) {
   const onRefresh = async () => {
     setRefreshing(true)
     try {
-      console.log('🔄 Manual refresh triggered')
       if (loadContacts) {
         await loadContacts()
       }
@@ -758,6 +682,10 @@ export default function NewChatScreen({ navigation }) {
     } finally {
       setRefreshing(false)
     }
+  }
+
+  const navigateToAddContacts = () => {
+    nav.navigate('Contacts')
   }
 
   const renderContact = ({ item }) => (
@@ -809,7 +737,7 @@ export default function NewChatScreen({ navigation }) {
           : 'No contacts yet.\nAdd contacts to start chatting!'}
       </EmptyText>
       {!searchText && !contactsLoading && (
-        <AddContactButton onPress={() => nav.navigate('AddContacts')}>
+        <AddContactButton onPress={navigateToAddContacts}>
           <Ionicons name="person-add" size={16} color="#fff" />
           <AddContactText>Add Contacts</AddContactText>
         </AddContactButton>
@@ -855,41 +783,6 @@ export default function NewChatScreen({ navigation }) {
     )
   }
 
-  const renderDebugInfo = () => (
-    <DebugContainer>
-      <DebugTitle>Debug Info</DebugTitle>
-      <DebugText>Contacts Count: {contacts?.length || 0}</DebugText>
-      <DebugText>Loading: {contactsLoading.toString()}</DebugText>
-      <DebugText>Filtered: {filteredContacts.length}</DebugText>
-      <DebugText>Contacts With Type: {contactsWithType.length}</DebugText>
-      <DebugText>User ID: {user?.uid || 'Not logged in'}</DebugText>
-      <DebugText>User Email: {user?.email || 'No email'}</DebugText>
-      <DebugText>Using useContacts Hook: Yes</DebugText>
-      {contacts?.slice(0, 5).map((c, i) => (
-        <DebugText key={i}>
-          {i + 1}: {c.userDetails?.name || c.contactName || 'No name'}
-          (ID: {c.contactUserId?.substring(0, 8) || 'No ID'})
-          {c.userDetails ? ' ✓' : ' ✗ No details'}
-        </DebugText>
-      ))}
-      <DebugButton onPress={() => setDebugMode(false)}>
-        <DebugButtonText>Hide Debug</DebugButtonText>
-      </DebugButton>
-    </DebugContainer>
-  )
-
-  const handleHeaderPress = () => {
-    debugTapCount.current += 1
-    if (debugTapCount.current === 3) {
-      setDebugMode(!debugMode)
-      debugTapCount.current = 0
-    }
-
-    setTimeout(() => {
-      debugTapCount.current = 0
-    }, 1000)
-  }
-
   if (contactsLoading && !refreshing) {
     return (
       <Container>
@@ -899,16 +792,21 @@ export default function NewChatScreen({ navigation }) {
               <Ionicons name="arrow-back" size={20} color="#64748b" />
             </BackButton>
             <HeaderTitle>New Chat</HeaderTitle>
-            <ReloadButton
-              onPress={() => loadContacts?.()}
-              disabled={contactsLoading}
-            >
-              <Ionicons
-                name="reload"
-                size={20}
-                color={contactsLoading ? '#94a3b8' : '#3b82f6'}
-              />
-            </ReloadButton>
+            <HeaderActions>
+              <AddContactHeaderButton onPress={navigateToAddContacts}>
+                <Ionicons name="person-add" size={20} color="#fff" />
+              </AddContactHeaderButton>
+              <ReloadButton
+                onPress={() => loadContacts?.()}
+                disabled={contactsLoading}
+              >
+                <Ionicons
+                  name="reload"
+                  size={20}
+                  color={contactsLoading ? '#94a3b8' : '#3b82f6'}
+                />
+              </ReloadButton>
+            </HeaderActions>
           </HeaderContent>
         </Header>
         <LoadingContainer>
@@ -923,13 +821,16 @@ export default function NewChatScreen({ navigation }) {
 
   return (
     <Container>
-      <TouchableOpacity onPress={handleHeaderPress} activeOpacity={1}>
-        <Header>
-          <HeaderContent>
-            <BackButton onPress={() => nav?.goBack()}>
-              <Ionicons name="arrow-back" size={20} color="#64748b" />
-            </BackButton>
-            <HeaderTitle>New Chat</HeaderTitle>
+      <Header>
+        <HeaderContent>
+          <BackButton onPress={() => nav?.goBack()}>
+            <Ionicons name="arrow-back" size={20} color="#64748b" />
+          </BackButton>
+          <HeaderTitle>New Chat</HeaderTitle>
+          <HeaderActions>
+            <AddContactHeaderButton onPress={navigateToAddContacts}>
+              <Ionicons name="person-add" size={20} color="#fff" />
+            </AddContactHeaderButton>
             <ReloadButton
               onPress={() => loadContacts?.()}
               disabled={contactsLoading}
@@ -940,9 +841,9 @@ export default function NewChatScreen({ navigation }) {
                 color={contactsLoading ? '#94a3b8' : '#3b82f6'}
               />
             </ReloadButton>
-          </HeaderContent>
-        </Header>
-      </TouchableOpacity>
+          </HeaderActions>
+        </HeaderContent>
+      </Header>
 
       <TabContainer>
         <Tab
@@ -976,8 +877,6 @@ export default function NewChatScreen({ navigation }) {
       </SearchContainer>
 
       <ContentContainer>
-        {debugMode && renderDebugInfo()}
-
         {activeTab === 'contacts' ? (
           renderContactList()
         ) : (
