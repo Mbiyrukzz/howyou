@@ -99,21 +99,26 @@ export function useWebRTC(
     }
   }
 
-  const createPeerConnection = async (remoteUserId, chatId) => {
-    try {
+  const createPeerConnection = useCallback(
+    async (remoteUserId, chatId, currentUserId) => {
       const pc = new RTCPeerConnection(iceServers)
       pcRef.current = pc
 
+      // 🔑 CRITICAL: declare intent BEFORE offer/answer
+      pc.addTransceiver('audio', { direction: 'sendrecv' })
+
+      if (callType === 'video') {
+        pc.addTransceiver('video', { direction: 'sendrecv' })
+      }
+
       if (localStreamRef.current) {
-        const tracks = localStreamRef.current.getTracks()
-        tracks.forEach((track) => {
+        localStreamRef.current.getTracks().forEach((track) => {
           pc.addTrack(track, localStreamRef.current)
         })
       }
 
       pc.ontrack = (event) => {
-        console.log('🎥 Received remote track:', event.track.kind)
-        if (event.streams && event.streams[0]) {
+        if (event.streams?.[0]) {
           setRemoteStream(event.streams[0])
           onRemoteStream?.(event.streams[0])
         }
@@ -123,83 +128,72 @@ export function useWebRTC(
         if (event.candidate) {
           sendWebSocketMessage({
             type: 'webrtc-ice-candidate',
-            candidate: event.candidate,
             to: remoteUserId,
+            from: currentUserId,
+            candidate: event.candidate,
             chatId,
           })
         }
       }
 
-      pc.onconnectionstatechange = () => {
-        console.log('📶 Connection state:', pc.connectionState)
-        onConnectionStateChange?.(pc.connectionState)
-      }
-
-      pc.oniceconnectionstatechange = () => {
-        console.log('🧊 ICE state:', pc.iceConnectionState)
-        if (pc.iceConnectionState === 'failed') {
-          pc.restartIce()
-        }
-      }
-
       return pc
-    } catch (error) {
-      console.error('❌ Create peer connection error:', error)
-      throw error
-    }
-  }
+    },
+    [callType, sendWebSocketMessage, onRemoteStream]
+  )
 
-  const createOffer = async (remoteUserId, chatId, userId) => {
-    try {
-      if (!pcRef.current || !localStreamRef.current) {
-        console.error('❌ Cannot create offer: missing pc or stream')
-        return
+  const createOffer = useCallback(
+    async (remoteUserId, chatId, currentUserId) => {
+      if (!pcRef.current) {
+        throw new Error('PeerConnection not initialized')
       }
 
-      const offer = await pcRef.current.createOffer({
-        offerToReceiveAudio: true,
-        offerToReceiveVideo: callType === 'video',
-      })
-
+      const offer = await pcRef.current.createOffer()
       await pcRef.current.setLocalDescription(offer)
 
       sendWebSocketMessage({
         type: 'webrtc-offer',
+        to: remoteUserId,
+        from: currentUserId,
         offer,
-        to: remoteUserId,
         chatId,
-        from: userId,
       })
-    } catch (error) {
-      console.error('❌ Create offer error:', error)
-    }
-  }
+    },
+    [sendWebSocketMessage]
+  )
 
-  const handleOffer = async (offer, remoteUserId, chatId, userId) => {
-    try {
-      if (!pcRef.current) return
+  const handleOffer = useCallback(
+    async (offer, remoteUserId, chatId, currentUserId) => {
+      try {
+        if (!pcRef.current) {
+          await createPeerConnection(remoteUserId, chatId, currentUserId)
+        }
 
-      await pcRef.current.setRemoteDescription(new RTCSessionDescription(offer))
+        await pcRef.current.setRemoteDescription(
+          new RTCSessionDescription(offer)
+        )
 
-      while (candidatesQueue.current.length > 0) {
-        const candidate = candidatesQueue.current.shift()
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+        while (candidatesQueue.current.length > 0) {
+          const candidate = candidatesQueue.current.shift()
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+        }
+
+        const answer = await pcRef.current.createAnswer()
+        await pcRef.current.setLocalDescription(answer)
+
+        sendWebSocketMessage({
+          type: 'webrtc-answer',
+          to: remoteUserId,
+          from: currentUserId,
+          answer,
+          chatId,
+        })
+      } catch (error) {
+        console.error('Handle offer failed:', error)
+        Alert.alert('Connection Error', 'Failed to establish call connection.')
       }
-
-      const answer = await pcRef.current.createAnswer()
-      await pcRef.current.setLocalDescription(answer)
-
-      sendWebSocketMessage({
-        type: 'webrtc-answer',
-        answer,
-        to: remoteUserId,
-        chatId,
-        from: userId,
-      })
-    } catch (error) {
-      console.error('❌ Handle offer error:', error)
-    }
-  }
+    },
+    [sendWebSocketMessage, createPeerConnection]
+  )
 
   const handleAnswer = async (answer) => {
     try {

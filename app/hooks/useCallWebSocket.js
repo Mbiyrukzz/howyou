@@ -12,12 +12,19 @@ export function useWebSocket(user, chatId, onMessage, navigation) {
 
   useEffect(() => {
     if (!user?.uid || !chatId) {
-      console.warn('🕓 Waiting for user or chatId...')
+      console.warn('🕓 Waiting for user or chatId...', {
+        hasUser: !!user?.uid,
+        hasChatId: !!chatId,
+      })
       return
     }
 
     const wsUrl = `${SIGNALING_URL}/signaling?userId=${user.uid}&chatId=${chatId}`
-    console.log('🔌 Connecting WebSocket:', wsUrl)
+    console.log('🔌 Connecting to signaling WebSocket:', {
+      url: wsUrl,
+      userId: user.uid,
+      chatId,
+    })
 
     const ws = new WebSocket(wsUrl)
     wsRef.current = ws
@@ -25,24 +32,57 @@ export function useWebSocket(user, chatId, onMessage, navigation) {
     let intentionalClose = false
 
     ws.onopen = () => {
-      console.log('✅ WebSocket connected')
+      console.log('✅ Signaling WebSocket connected')
       setIsConnected(true)
 
-      ws.send(
-        JSON.stringify({
-          type: 'join-call',
-          chatId,
-          userId: user.uid,
-        })
-      )
+      // Send join-call message
+      const joinMessage = {
+        type: 'join-call',
+        chatId,
+        userId: user.uid,
+      }
+      console.log('📤 Sending join-call:', joinMessage)
+      ws.send(JSON.stringify(joinMessage))
     }
 
     ws.onmessage = async (event) => {
       try {
         const data = JSON.parse(event.data)
+
+        // ✅ Log ALL incoming messages with full data for debugging
+        console.log('📨 [WebSocket] Received message:', {
+          type: data.type,
+          from: data.from,
+          to: data.to,
+          userId: data.userId,
+          chatId: data.chatId,
+          callId: data.callId,
+          recipientId: data.recipientId,
+          timestamp: data.timestamp || new Date().toISOString(),
+        })
+
+        // Log the FULL message for call-related events
+        if (data.type?.includes('call') || data.type?.includes('webrtc')) {
+          console.log('🔍 [Full Message Data]:', JSON.stringify(data, null, 2))
+        }
+
+        // Handle ping/pong
+        if (data.type === 'ping') {
+          ws.send(JSON.stringify({ type: 'pong' }))
+          return
+        }
+
+        if (data.type === 'connected') {
+          console.log('✅ Connection confirmed by server:', data)
+          return
+        }
+
+        // Forward to message handler
         onMessage(data)
       } catch (error) {
-        console.error('❌ WebSocket message error:', error)
+        console.error('❌ WebSocket message parse error:', error, {
+          raw: event.data,
+        })
       }
     }
 
@@ -52,9 +92,15 @@ export function useWebSocket(user, chatId, onMessage, navigation) {
     }
 
     ws.onclose = (event) => {
-      console.log('🔴 WebSocket disconnected:', event.code)
+      console.log('🔴 WebSocket disconnected:', {
+        code: event.code,
+        reason: event.reason,
+        wasClean: event.wasClean,
+        intentional: intentionalClose,
+      })
       setIsConnected(false)
 
+      // Only show alert if unexpected close
       if (!intentionalClose && event.code !== 1000 && event.code !== 1006) {
         Alert.alert('Connection Lost', 'Call connection was lost.', [
           { text: 'OK', onPress: () => navigation.goBack() },
@@ -63,7 +109,7 @@ export function useWebSocket(user, chatId, onMessage, navigation) {
     }
 
     return () => {
-      console.log('🧹 Cleaning up WebSocket')
+      console.log('🧹 Cleaning up signaling WebSocket')
       intentionalClose = true
       if (
         ws.readyState === WebSocket.OPEN ||
@@ -76,10 +122,20 @@ export function useWebSocket(user, chatId, onMessage, navigation) {
 
   const sendMessage = (message) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
+      console.log('📤 [WebSocket] Sending:', {
+        type: message.type,
+        to: message.to,
+        from: message.from,
+      })
       wsRef.current.send(JSON.stringify(message))
       return true
+    } else {
+      console.warn('⚠️ Cannot send message - WebSocket not open:', {
+        readyState: wsRef.current?.readyState,
+        message: message.type,
+      })
+      return false
     }
-    return false
   }
 
   return { wsRef, isConnected, sendMessage }

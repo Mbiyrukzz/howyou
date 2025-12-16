@@ -48,6 +48,7 @@ const CallScreen = () => {
   const [isConnected, setIsConnected] = useState(false)
   const [callAnswered, setCallAnswered] = useState(!isIncoming)
   const setupInProgress = useRef(false)
+  const peerConnectionReady = useRef(false)
 
   // Custom hooks
   const { stopRingtones } = useRingtones(isIncoming, callAnswered)
@@ -64,51 +65,137 @@ const CallScreen = () => {
   const { clearRingTimer } = useRingTimer(handleTimeout, !callAnswered)
 
   const handleWebSocketMessage = async (data) => {
-    console.log('📨 Received:', data.type)
+    console.log('📨 Received:', data.type, {
+      from: data.from,
+      userId: data.userId,
+      currentUser: user?.uid,
+      isIncoming,
+      callAnswered,
+    })
 
     switch (data.type) {
       case 'user-joined':
       case 'user-already-in-room':
+        // Another user joined the call room
         if (data.userId !== user?.uid) {
+          console.log('👤 Remote user detected:', data.userId)
           stopRingtones()
           clearRingTimer()
 
+          // For INCOMING calls, this means the caller joined
+          // We should be ready to receive their offer
+          if (isIncoming && callAnswered) {
+            console.log(
+              '📱 Incoming call: Remote caller joined, ready for offer'
+            )
+          }
+
+          // For OUTGOING calls, don't do anything here
+          // Wait for explicit call_accepted message
           if (!isIncoming) {
-            const waitForSetup = setInterval(() => {
-              if (
-                !setupInProgress.current &&
-                pcRef.current &&
-                localStreamRef.current
-              ) {
-                clearInterval(waitForSetup)
-                setTimeout(() => {
-                  if (pcRef.current && !pcRef.current.localDescription) {
-                    createOffer(remoteUserId, chatId, user?.uid)
-                  }
-                }, 500)
-              }
-            }, 100)
-            setTimeout(() => clearInterval(waitForSetup), 5000)
+            console.log(
+              '📞 Outgoing call: Remote user joined, but waiting for call_accepted...'
+            )
           }
         }
         break
 
+      case 'call_accepted':
+      case 'call-accepted':
+        // CRITICAL: This confirms the recipient answered
+        console.log('✅ Call accepted message received:', {
+          from: data.from,
+          isForMe: data.from !== user?.uid,
+          isOutgoing: !isIncoming,
+        })
+
+        if (data.from !== user?.uid && !isIncoming) {
+          console.log('✅ Recipient answered! Creating offer...')
+          stopRingtones()
+          clearRingTimer()
+          setCallStatus('connecting')
+
+          // Wait for peer connection to be ready
+          const waitForPeerConnection = () => {
+            return new Promise((resolve, reject) => {
+              const startTime = Date.now()
+              const checkInterval = setInterval(() => {
+                if (pcRef.current && localStreamRef.current) {
+                  clearInterval(checkInterval)
+                  console.log('✅ Peer connection ready, creating offer')
+                  resolve()
+                } else if (Date.now() - startTime > 5000) {
+                  clearInterval(checkInterval)
+                  console.error('❌ Timeout waiting for peer connection')
+                  reject(new Error('Timeout waiting for peer connection'))
+                }
+              }, 100)
+            })
+          }
+
+          try {
+            await waitForPeerConnection()
+
+            // Double-check we don't already have a local description
+            if (!pcRef.current.localDescription) {
+              console.log('📤 Creating offer...')
+              await createOffer(remoteUserId, chatId, user?.uid)
+            } else {
+              console.log(
+                '⏭️ Already have local description, skipping offer creation'
+              )
+            }
+          } catch (error) {
+            console.error('❌ Error creating offer after acceptance:', error)
+            Alert.alert(
+              'Connection Error',
+              'Failed to establish call connection.',
+              [{ text: 'OK', onPress: handleEndCall }]
+            )
+          }
+        }
+        break
+
+      // In the switch case for 'webrtc-offer':
       case 'webrtc-offer':
-        if (data.from !== user?.uid) {
+        console.log('📥 WEBRTC OFFER RECEIVED FROM:', data.from)
+        console.log('📥 Full offer data:', JSON.stringify(data, null, 2))
+
+        if (data.from !== user?.uid && data.offer) {
+          console.log('✅ Valid offer - handling...')
+          setCallStatus('connecting')
+
+          // If we're in an incoming call and just answered, make sure media is ready
+          if (isIncoming && callAnswered && !localStreamRef.current) {
+            console.log(
+              '🔄 Incoming call: initializing media before handling offer'
+            )
+            await initializeMedia()
+          }
+
           await handleOffer(data.offer, remoteUserId, chatId, user?.uid)
+        } else {
+          console.warn('⚠️ Invalid offer - missing data or from self', data)
         }
         break
 
       case 'webrtc-answer':
         if (data.from !== user?.uid) {
+          console.log('📥 Received answer from:', data.from)
           await handleAnswer(data.answer)
         }
         break
 
       case 'webrtc-ice-candidate':
         if (data.from !== user?.uid) {
+          console.log('🧊 Received ICE candidate from:', data.from)
           await handleICECandidate(data.candidate)
         }
+        break
+
+      case 'user-already-in-room':
+        console.log('👤 Caller already in room:', data.userId)
+        // This means we should expect an offer soon
         break
 
       case 'user-left':
@@ -119,6 +206,7 @@ const CallScreen = () => {
 
       case 'call-ended':
       case 'call_ended':
+        console.log('🔴 Call ended:', data.reason)
         stopRingtones()
         clearRingTimer()
         cleanup()
@@ -126,6 +214,9 @@ const CallScreen = () => {
           { text: 'OK', onPress: () => navigation.goBack() },
         ])
         break
+
+      default:
+        console.log('⚠️ Unhandled message type:', data.type)
     }
   }
 
@@ -200,27 +291,51 @@ const CallScreen = () => {
     setupInProgress.current = true
 
     try {
+      console.log('🎥 Initializing media...')
       await initializeMedia()
-      await new Promise((resolve) => setTimeout(resolve, 300))
-      await createPeerConnection(remoteUserId, chatId)
+
+      if (!isIncoming && !pcRef.current) {
+        console.log('🔗 Creating peer connection (outgoing call)')
+        await createPeerConnection(remoteUserId, chatId, user?.uid)
+      }
+
+      console.log('✅ Call setup complete', {
+        hasPeerConnection: !!pcRef.current,
+        hasLocalStream: !!localStreamRef.current,
+      })
     } catch (error) {
       console.error('❌ Setup call error:', error)
-      Alert.alert('Setup Error', 'Failed to initialize call.', [
-        { text: 'OK', onPress: handleEndCall },
-      ])
+      Alert.alert('Setup Error', 'Failed to initialize call.')
     } finally {
       setupInProgress.current = false
     }
   }
 
-  // Call handlers
   const handleAnswerCall = async () => {
+    console.log('📞 Answering call...')
     stopRingtones()
     clearRingTimer()
     setCallAnswered(true)
     setCallStatus('connecting')
 
     try {
+      // CRITICAL: First, make sure we have media
+      if (!localStreamRef.current) {
+        console.log('🎥 Initializing media for incoming call...')
+        await initializeMedia()
+      }
+
+      // CRITICAL: Create peer connection BEFORE telling backend
+      console.log('🔗 Creating peer connection immediately on answer...')
+
+      // Store the current user ID
+      const currentUserId = user?.uid
+
+      // Create peer connection with explicit user IDs
+      await createPeerConnection(remoteUserId, chatId, currentUserId)
+      console.log('✅ Peer connection created, ready for offers')
+
+      // Now tell backend we answered
       const response = await fetch(
         `${API_URL}/answer-call/${route.params?.callId}`,
         {
@@ -234,10 +349,16 @@ const CallScreen = () => {
       )
 
       const data = await response.json()
+
       if (!data.success) {
+        console.error('❌ Backend rejected call acceptance')
         Alert.alert('Error', 'Failed to answer call')
         navigation.goBack()
+        return
       }
+
+      console.log('✅ Backend confirmed call acceptance')
+      console.log('📱 Now waiting for offer from caller...')
     } catch (error) {
       console.error('❌ Error answering call:', error)
       Alert.alert('Error', 'Failed to answer call')
@@ -303,6 +424,7 @@ const CallScreen = () => {
     webrtcCleanup()
     setIsConnected(false)
     setupInProgress.current = false
+    peerConnectionReady.current = false
   }
 
   // Control handlers

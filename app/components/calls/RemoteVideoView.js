@@ -3,6 +3,17 @@ import { Platform } from 'react-native'
 import styled from 'styled-components/native'
 import { Ionicons } from '@expo/vector-icons'
 
+let RTCView, Video
+
+if (Platform.OS === 'android' || Platform.OS === 'ios') {
+  const WebRTC = require('react-native-webrtc')
+  RTCView = WebRTC.RTCView
+}
+
+if (Platform.OS === 'ios') {
+  Video = require('expo-av').Video
+}
+
 const RemoteVideoWrapper = styled.View`
   flex: 1;
   background-color: #0f172a;
@@ -125,7 +136,7 @@ export function RemoteVideoView({
   }
 
   // Placeholder when no remote stream
-  if (!remoteStream || !isConnected) {
+  if (!remoteStream) {
     return (
       <PlaceholderView>
         <PlaceholderAvatar>
@@ -137,8 +148,8 @@ export function RemoteVideoView({
     )
   }
 
-  // Video rendering
-  if (Platform.OS === 'android') {
+  // Android video rendering
+  if (Platform.OS === 'android' && RTCView) {
     return (
       <RemoteVideoWrapper>
         <RTCView
@@ -152,7 +163,8 @@ export function RemoteVideoView({
     )
   }
 
-  if (Platform.OS === 'ios') {
+  // iOS video rendering
+  if (Platform.OS === 'ios' && Video) {
     return (
       <RemoteVideoWrapper>
         <Video
@@ -167,24 +179,40 @@ export function RemoteVideoView({
     )
   }
 
-  // Web
+  // Web video rendering
+  if (Platform.OS === 'web') {
+    return (
+      <RemoteVideoWrapper>
+        <video
+          ref={(video) => {
+            if (video && remoteStream) {
+              video.srcObject = remoteStream
+              video.muted = true // 🔑 REQUIRED
+              video.play().catch(() => {})
+            }
+          }}
+          autoPlay
+          playsInline
+          muted // 🔑 REQUIRED
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover',
+            backgroundColor: '#0f172a',
+          }}
+        />
+      </RemoteVideoWrapper>
+    )
+  }
+
+  // Fallback placeholder for unsupported platforms
   return (
-    <RemoteVideoWrapper>
-      <video
-        ref={(video) => {
-          if (video && remoteStream) {
-            video.srcObject = remoteStream
-          }
-        }}
-        autoPlay
-        playsInline
-        style={{
-          width: '100%',
-          height: '100%',
-          objectFit: 'cover',
-          backgroundColor: '#0f172a',
-        }}
-      />
-    </RemoteVideoWrapper>
+    <PlaceholderView>
+      <PlaceholderAvatar>
+        <AvatarText>{remoteUserName?.[0]?.toUpperCase() || '?'}</AvatarText>
+      </PlaceholderAvatar>
+      <StatusTextLarge>{remoteUserName}</StatusTextLarge>
+      <StatusTextSmall>Video stream not available</StatusTextSmall>
+    </PlaceholderView>
   )
 }

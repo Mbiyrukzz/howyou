@@ -72,7 +72,7 @@ const CallName = styled.Text`
   margin-bottom: 6px;
 `
 
-const Meta = styled.View`
+const Meta = styled.Text`
   flex-direction: row;
   align-items: center;
   flex-wrap: wrap;

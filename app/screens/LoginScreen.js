@@ -243,7 +243,6 @@ export default function LoginScreen({ navigation }) {
 
       if (data.success) {
         console.log('✅ User authenticated and verified in backend')
-        navigation.replace('Main')
       } else {
         throw new Error(data.error || 'Failed to verify user')
       }
