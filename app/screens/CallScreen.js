@@ -247,6 +247,7 @@ const CallScreen = () => {
     }
   }
 
+  // In CallScreen.js, update the useWebRTC call:
   const {
     localStream,
     remoteStream,
@@ -266,7 +267,11 @@ const CallScreen = () => {
     isFrontCamera,
     sendMessage,
     handleRemoteStream,
-    handleConnectionStateChange
+    handleConnectionStateChange,
+    null, // onScreenFrame
+    null, // onScreenSharingChange
+    remoteUserId, // ADD THIS
+    chatId // ADD THIS
   )
 
   // Setup call
