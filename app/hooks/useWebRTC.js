@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { Platform, Alert } from 'react-native'
 import { Audio } from 'expo-av'
 import { Camera } from 'expo-camera'
@@ -32,10 +32,15 @@ export function useWebRTC(
   isFrontCamera,
   sendWebSocketMessage,
   onRemoteStream,
-  onConnectionStateChange
+  onConnectionStateChange,
+  onScreenFrame,
+  onScreenSharingChange
 ) {
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
+
+  const [isScreenSharing, setIsScreenSharing] = useState(false)
+  const [screenStream, setScreenStream] = useState(null)
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
   const candidatesQueue = useRef([])
@@ -254,6 +259,103 @@ export function useWebRTC(
     return false
   }
 
+  // Start real screen sharing (web only)
+  const startScreenShare = async () => {
+    if (Platform.OS !== 'web') return false
+
+    try {
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
+        video: { cursor: 'always' },
+        audio: false,
+      })
+
+      // Replace video track in existing peer connection
+      const videoTrack = displayStream.getVideoTracks()[0]
+      const sender = pcRef.current
+        .getSenders()
+        .find((s) => s.track?.kind === 'video')
+
+      if (sender) {
+        await sender.replaceTrack(videoTrack)
+      } else {
+        pcRef.current.addTrack(videoTrack, displayStream)
+      }
+
+      setScreenStream(displayStream)
+      setIsScreenSharing(true)
+
+      // Notify remote
+      sendWebSocketMessage({
+        type: 'screen-sharing',
+        enabled: true,
+        to: remoteUserId,
+        chatId,
+      })
+
+      // Stop when user stops sharing
+      videoTrack.onended = () => stopScreenShare()
+
+      return true
+    } catch (err) {
+      console.warn('Screen share cancelled or failed:', err)
+      return false
+    }
+  }
+
+  // Stop screen sharing
+  const stopScreenShare = () => {
+    if (screenStream) {
+      screenStream.getTracks().forEach((t) => t.stop())
+      setScreenStream(null)
+    }
+
+    if (pcRef.current) {
+      const videoSender = pcRef.current
+        .getSenders()
+        .find((s) => s.track?.kind === 'video')
+
+      if (videoSender && localStreamRef.current) {
+        const originalVideo = localStreamRef.current.getVideoTracks()[0]
+        if (originalVideo) videoSender.replaceTrack(originalVideo)
+      }
+    }
+
+    setIsScreenSharing(false)
+
+    sendWebSocketMessage({
+      type: 'screen-sharing',
+      enabled: false,
+      to: remoteUserId,
+      chatId,
+    })
+  }
+
+  const toggleScreenShare = async () => {
+    if (isScreenSharing) {
+      stopScreenShare()
+    } else {
+      if (Platform.OS === 'web') {
+        await startScreenShare()
+      } else {
+        // Mobile: just toggle flag – actual sending happens in CallScreen
+        setIsScreenSharing((prev) => !prev)
+        sendWebSocketMessage({
+          type: 'screen-sharing',
+          enabled: !isScreenSharing,
+          to: remoteUserId,
+          chatId,
+        })
+      }
+    }
+  }
+
+  // Handle incoming screen-sharing flag
+  useEffect(() => {
+    if (onScreenSharingChange) {
+      onScreenSharingChange(isScreenSharing)
+    }
+  }, [isScreenSharing])
+
   const cleanup = () => {
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -270,6 +372,11 @@ export function useWebRTC(
   }
 
   return {
+    isScreenSharing,
+    screenStream,
+    toggleScreenShare,
+    startScreenShare,
+    stopScreenShare,
     localStream,
     remoteStream,
     pcRef,
