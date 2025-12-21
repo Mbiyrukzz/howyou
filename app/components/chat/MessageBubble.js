@@ -170,16 +170,61 @@ const ReactionCount = styled.Text`
   font-weight: 600;
 `
 
+// ✅ NEW: Better styled components for reply content with improved readability
+const ReplyContainer = styled.View`
+  margin-bottom: ${(props) => (props.hasContent ? '8px' : '0px')};
+  padding: 10px;
+  background-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.15)' : '#f1f5f9'};
+  border-left-width: 3px;
+  border-left-color: ${(props) =>
+    props.isOwn ? 'rgba(255, 255, 255, 0.6)' : '#3b82f6'};
+  border-radius: 8px;
+`
+
+const ReplyHeaderRow = styled.View`
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4px;
+`
+
+const ReplySenderText = styled.Text`
+  margin-left: 6px;
+  font-size: 12px;
+  color: ${(props) => (props.isOwn ? 'rgba(255, 255, 255, 0.95)' : '#3b82f6')};
+  font-weight: 700;
+`
+
+const ReplyContentText = styled.Text`
+  font-size: 13.5px;
+  color: ${(props) => (props.isOwn ? 'rgba(255, 255, 255, 0.85)' : '#475569')};
+  line-height: 18px;
+`
+
+const ReplyMediaRow = styled.View`
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+`
+
+const ReplyMediaText = styled.Text`
+  font-size: 13px;
+  color: ${(props) => (props.isOwn ? 'rgba(255, 255, 255, 0.75)' : '#64748b')};
+  font-style: italic;
+`
+
 export const MessageBubble = ({
   message,
   isOwn,
   displayName,
   navigation,
   onImagePress,
+  currentUserId, // ✅ ADD THIS PROP
+  users, // ✅ ADD THIS PROP
   showDisplayName = false,
   isVerified = false,
-  priority, // 'normal', 'high', 'urgent'
-  reactions = [], // Array of { emoji: '👍', count: 2 }
+  priority,
+  reactions = [],
 }) => {
   const isEdited =
     message.updatedAt &&
@@ -197,6 +242,29 @@ export const MessageBubble = ({
       default:
         return 'information-circle'
     }
+  }
+
+  // ✅ HELPER FUNCTION: Get reply sender display name
+  const getReplyDisplayName = () => {
+    if (!message.replyTo || !message.replyTo.senderId) return 'Unknown'
+
+    // If replying to current user's message, show "You"
+    if (message.replyTo.senderId === currentUserId) {
+      return 'You'
+    }
+
+    // Otherwise, find and return the actual sender's name
+    const sender = users?.find(
+      (u) =>
+        u._id === message.replyTo.senderId || u.id === message.replyTo.senderId
+    )
+
+    return (
+      sender?.name ||
+      sender?.username ||
+      message.replyTo.senderName ||
+      'Unknown'
+    )
   }
 
   return (
@@ -235,6 +303,57 @@ export const MessageBubble = ({
         )}
 
         <Bubble isOwn={isOwn}>
+          {/* REPLY PREVIEW - ✅ FIXED with better readability */}
+          {message.replyTo && (
+            <ReplyContainer
+              isOwn={isOwn}
+              hasContent={message.content || message.files?.length > 0}
+            >
+              <ReplyHeaderRow>
+                <Ionicons
+                  name="arrow-undo-outline"
+                  size={14}
+                  color={isOwn ? 'rgba(255, 255, 255, 0.9)' : '#3b82f6'}
+                />
+                <ReplySenderText isOwn={isOwn}>
+                  {getReplyDisplayName()}
+                </ReplySenderText>
+              </ReplyHeaderRow>
+
+              {message.replyTo.content ? (
+                <ReplyContentText isOwn={isOwn} numberOfLines={2}>
+                  {message.replyTo.content.trim()}
+                </ReplyContentText>
+              ) : (
+                <ReplyMediaRow>
+                  <Ionicons
+                    name={
+                      message.replyTo.type === 'image'
+                        ? 'image-outline'
+                        : message.replyTo.type === 'video'
+                        ? 'videocam-outline'
+                        : message.replyTo.type === 'audio'
+                        ? 'mic-outline'
+                        : 'document-outline'
+                    }
+                    size={14}
+                    color={isOwn ? 'rgba(255, 255, 255, 0.75)' : '#64748b'}
+                  />
+                  <ReplyMediaText isOwn={isOwn}>
+                    {message.replyTo.type === 'image'
+                      ? 'Photo'
+                      : message.replyTo.type === 'video'
+                      ? 'Video'
+                      : message.replyTo.type === 'audio'
+                      ? 'Voice message'
+                      : 'File'}
+                  </ReplyMediaText>
+                </ReplyMediaRow>
+              )}
+            </ReplyContainer>
+          )}
+
+          {/* ORIGINAL CONTENT */}
           {message.content && message.content.trim().length > 0 && (
             <MessageText isOwn={isOwn}>{message.content.trim()}</MessageText>
           )}

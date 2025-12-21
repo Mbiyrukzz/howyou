@@ -5,13 +5,28 @@ import {
   Text,
   ActivityIndicator,
   Image,
+  Alert,
+  Platform,
+  Dimensions,
 } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
+import { File, Paths } from 'expo-file-system'
 import styled from 'styled-components/native'
 
+const { width: screenWidth } = Dimensions.get('window')
+
+// Calculate video dimensions
+const getVideoDimensions = () => {
+  const maxWidth = screenWidth > 768 ? 300 : screenWidth * 0.7 // 70% of screen width on mobile
+  const height = maxWidth * 0.5625 // 16:9 aspect ratio
+  return { width: maxWidth, height }
+}
+
+const { width: videoWidth, height: videoHeight } = getVideoDimensions()
+
 const VideoContainer = styled(TouchableOpacity)`
-  width: 300px;
-  height: 160px;
+  width: ${videoWidth}px;
+  height: ${videoHeight}px;
   border-radius: 16px;
   overflow: hidden;
   background-color: #0f172a;
@@ -54,7 +69,7 @@ const PlayButton = styled(View)`
 const DurationBadge = styled(View)`
   position: absolute;
   bottom: 12px;
-  right: 12px;
+  left: 12px;
   background-color: rgba(0, 0, 0, 0.85);
   padding: 6px 10px;
   border-radius: 8px;
@@ -74,7 +89,7 @@ const BadgeText = styled(Text)`
 const FileSizeBadge = styled(View)`
   position: absolute;
   top: 12px;
-  right: 12px;
+  left: 12px;
   background-color: rgba(0, 0, 0, 0.85);
   padding: 4px 8px;
   border-radius: 6px;
@@ -130,14 +145,85 @@ export const VideoAttachment = ({
 }) => {
   const [imageLoading, setImageLoading] = useState(true)
   const [imageError, setImageError] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   const handleImageLoad = () => {
+    console.log('✅ Video thumbnail loaded')
     setImageLoading(false)
   }
 
   const handleImageError = () => {
+    console.log('❌ Video thumbnail error')
     setImageLoading(false)
     setImageError(true)
+  }
+
+  const downloadVideo = async (e) => {
+    // Stop event propagation to prevent triggering onPress
+    if (e && e.stopPropagation) {
+      e.stopPropagation()
+    }
+
+    console.log('🎬 Download button pressed')
+
+    if (!videoUrl) {
+      Alert.alert('Error', 'Video URL is missing')
+      return
+    }
+
+    setDownloading(true)
+
+    try {
+      // Extract extension from URL or default to mp4
+      const urlParts = videoUrl.split('.')
+      const extension = urlParts[urlParts.length - 1].split('?')[0] || 'mp4'
+      const fileName = `video_${Date.now()}.${extension}`
+
+      console.log('📥 Starting video download:', {
+        from: videoUrl,
+        fileName: fileName,
+      })
+
+      if (Platform.OS === 'web') {
+        // Web: Create download link
+        const link = document.createElement('a')
+        link.href = videoUrl
+        link.download = fileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        Alert.alert('Success', 'Video download started')
+      } else {
+        // iOS/Android: Use new File API
+        const downloadPath = `${Paths.document}/${fileName}`
+        const file = new File(downloadPath)
+
+        console.log('Downloading to:', downloadPath)
+
+        await file.create()
+        const response = await fetch(videoUrl)
+
+        if (!response.ok) {
+          throw new Error(`Download failed with status: ${response.status}`)
+        }
+
+        const blob = await response.blob()
+        await file.write(blob)
+
+        console.log('✅ Download completed:', downloadPath)
+
+        Alert.alert('Download Complete', `Video saved: ${fileName}`)
+      }
+    } catch (error) {
+      console.error('❌ Download error:', error)
+      Alert.alert(
+        'Download Failed',
+        error.message || 'Failed to download video'
+      )
+    } finally {
+      setDownloading(false)
+    }
   }
 
   const renderThumbnail = () => {
@@ -172,6 +258,12 @@ export const VideoAttachment = ({
     )
   }
 
+  console.log('🎥 Video render state:', {
+    imageLoading,
+    imageError,
+    downloading,
+  })
+
   return (
     <VideoContainer
       activeOpacity={0.9}
@@ -182,23 +274,59 @@ export const VideoAttachment = ({
     >
       {renderThumbnail()}
 
-      <Overlay pointerEvents="none">
+      <Overlay pointerEvents="box-none">
         <PlayButton>
           <Ionicons name="play" size={28} color="white" />
         </PlayButton>
       </Overlay>
 
-      {fileSize && (
+      {fileSize && !imageLoading && (
         <FileSizeBadge>
           <FileSizeText>{formatFileSize(fileSize)}</FileSizeText>
         </FileSizeBadge>
       )}
 
-      {duration && duration !== '0:00' && (
+      {duration && duration !== '0:00' && !imageLoading && (
         <DurationBadge>
           <Ionicons name="time-outline" size={14} color="white" />
           <BadgeText>{duration}</BadgeText>
         </DurationBadge>
+      )}
+
+      {!imageLoading && (
+        <View
+          style={{
+            position: 'absolute',
+            bottom: 12,
+            right: 12,
+            zIndex: 999,
+          }}
+        >
+          <TouchableOpacity
+            onPress={(e) => {
+              e.stopPropagation()
+              downloadVideo(e)
+            }}
+            disabled={downloading}
+            activeOpacity={0.8}
+            style={{
+              backgroundColor: 'rgba(59, 130, 246, 0.95)',
+              padding: 10,
+              borderRadius: 50,
+              shadowColor: '#3b82f6',
+              shadowOffset: { width: 0, height: 2 },
+              shadowOpacity: 0.4,
+              shadowRadius: 4,
+              elevation: 8,
+            }}
+          >
+            {downloading ? (
+              <Ionicons name="refresh" size={20} color="white" />
+            ) : (
+              <Ionicons name="download-outline" size={20} color="white" />
+            )}
+          </TouchableOpacity>
+        </View>
       )}
     </VideoContainer>
   )

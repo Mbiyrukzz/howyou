@@ -329,7 +329,13 @@ export const AudioWaveform = styled.View`
 export const WaveBar = styled.View`
   width: 3px;
   background-color: ${(props) =>
-    props.isOwn ? 'rgba(255, 255, 255, 0.6)' : '#3b82f6'};
+    props.isPlaying
+      ? props.isOwn
+        ? '#4ade80'
+        : '#10b981'
+      : props.isOwn
+      ? 'rgba(255, 255, 255, 0.6)'
+      : '#3b82f6'};
   border-radius: 2px;
   height: ${(props) => props.height || 12}px;
 `

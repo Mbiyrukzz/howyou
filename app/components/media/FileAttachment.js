@@ -1,13 +1,11 @@
 import React from 'react'
+import { Alert, Platform } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
-import { MessageFile, FileIcon, FileText } from '../../styles/chatStyles'
+import { File, Paths } from 'expo-file-system'
+import { MessageFile, FileIcon } from '../../styles/chatStyles'
 import styled from 'styled-components/native'
 
-// Enhanced File Component with additional info
-const FileContainer = styled.View`
-  flex-direction: column;
-`
-
+// Styled components (same as before)
 const FileInfo = styled.View`
   flex: 1;
   flex-direction: column;
@@ -44,11 +42,19 @@ const FileExtension = styled.Text`
   text-transform: uppercase;
 `
 
-const DownloadIcon = styled.View`
+const DownloadIcon = styled.TouchableOpacity`
   margin-left: 8px;
 `
 
-export const FileAttachment = ({ fileName, fileSize, isOwn, onPress }) => {
+export const FileAttachment = ({
+  fileName,
+  fileSize,
+  isOwn,
+  fileUrl,
+  onPress,
+}) => {
+  const [isDownloading, setIsDownloading] = React.useState(false)
+
   // Format file size from bytes to readable format
   const formatFileSize = (bytes) => {
     if (!bytes) return null
@@ -88,12 +94,90 @@ export const FileAttachment = ({ fileName, fileSize, isOwn, onPress }) => {
     return 'document-text'
   }
 
+  // Function to download and save file using new expo-file-system API
+  const downloadFile = async () => {
+    if (!fileUrl) {
+      Alert.alert('Error', 'File URL is missing')
+      return
+    }
+
+    setIsDownloading(true)
+
+    try {
+      // Create a filename
+      const originalFileName = fileName || `file_${Date.now()}`
+      const fileExtension = getFileExtension(originalFileName)
+      const finalFileName = `${
+        originalFileName.split('.')[0]
+      }_${Date.now()}.${fileExtension}`
+
+      console.log('📥 Starting download:', {
+        from: fileUrl,
+        fileName: finalFileName,
+      })
+
+      // Platform-specific handling
+      if (Platform.OS === 'web') {
+        // For web: Create a download link
+        const link = document.createElement('a')
+        link.href = fileUrl
+        link.download = finalFileName
+        document.body.appendChild(link)
+        link.click()
+        document.body.removeChild(link)
+
+        Alert.alert('Success', 'File download started')
+      } else {
+        // For iOS/Android: Use new File API
+        const downloadPath = Paths.document + '/' + finalFileName
+        const file = new File(downloadPath)
+
+        console.log('Downloading to:', downloadPath)
+
+        // Download the file
+        await file.create()
+        const response = await fetch(fileUrl)
+
+        if (!response.ok) {
+          throw new Error(`Download failed with status: ${response.status}`)
+        }
+
+        const blob = await response.blob()
+        await file.write(blob)
+
+        console.log('✅ Download completed:', downloadPath)
+
+        // Show success message
+        Alert.alert('Download Complete', `File saved: ${finalFileName}`, [
+          {
+            text: 'OK',
+            style: 'default',
+          },
+        ])
+      }
+    } catch (error) {
+      console.error('❌ Download error:', error)
+      Alert.alert('Download Failed', error.message || 'Failed to download file')
+    } finally {
+      setIsDownloading(false)
+    }
+  }
+
   const formattedSize = formatFileSize(fileSize)
   const extension = getFileExtension(fileName)
   const iconName = getFileIcon(fileName)
 
+  // Combine onPress (if provided) with download functionality
+  const handlePress = () => {
+    if (onPress) {
+      onPress()
+    } else {
+      downloadFile()
+    }
+  }
+
   return (
-    <MessageFile isOwn={isOwn} onPress={onPress} activeOpacity={0.7}>
+    <MessageFile isOwn={isOwn} onPress={handlePress} activeOpacity={0.7}>
       <FileIcon isOwn={isOwn}>
         <Ionicons
           name={iconName}
@@ -121,12 +205,20 @@ export const FileAttachment = ({ fileName, fileSize, isOwn, onPress }) => {
         )}
       </FileInfo>
 
-      <DownloadIcon>
-        <Ionicons
-          name="download-outline"
-          size={20}
-          color={isOwn ? 'rgba(255, 255, 255, 0.75)' : '#64748b'}
-        />
+      <DownloadIcon onPress={downloadFile} disabled={isDownloading}>
+        {isDownloading ? (
+          <Ionicons
+            name="refresh"
+            size={20}
+            color={isOwn ? 'rgba(255, 255, 255, 0.75)' : '#64748b'}
+          />
+        ) : (
+          <Ionicons
+            name="download-outline"
+            size={20}
+            color={isOwn ? 'rgba(255, 255, 255, 0.75)' : '#64748b'}
+          />
+        )}
       </DownloadIcon>
     </MessageFile>
   )

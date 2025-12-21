@@ -1,5 +1,6 @@
 import { useContext, useCallback, useEffect, useRef } from 'react'
 import ChatsContext from '../contexts/ChatsContext'
+import LoadingIndicator from '../components/LoadingIndicator'
 
 export const useChatHelpers = (chatId = null) => {
   const context = useContext(ChatsContext)
@@ -75,17 +76,13 @@ export const useChatHelpers = (chatId = null) => {
    */
   const typingUsers = chatId ? getTypingUsersForChat(chatId) : []
 
-  /**
-   * Get formatted typing text
-   * Returns: "John is typing...", "John and Mary are typing...", etc.
-   */
   const getTypingText = useCallback(() => {
     if (!typingUsers || typingUsers.length === 0) return ''
 
     const names = typingUsers.map((u) => u.name || 'Someone')
 
     if (names.length === 1) {
-      return `${names[0]} is typing...`
+      return <LoadingIndicator showCard={false} size={8} />
     } else if (names.length === 2) {
       return `${names[0]} and ${names[1]} are typing...`
     } else {

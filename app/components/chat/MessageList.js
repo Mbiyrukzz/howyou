@@ -12,6 +12,7 @@ export const MessageList = ({
   navigation,
   onImagePress,
   onMessageLongPress,
+  onReply,
   onThreeDotsPress,
   hoveredMessageId,
   setHoveredMessageId,
@@ -27,6 +28,20 @@ export const MessageList = ({
       flatListRef.current?.scrollToEnd({ animated: true })
     }, 100)
   }, [combinedItems.length])
+
+  const scrollToMessage = (messageId) => {
+    const index = combinedItems.findIndex(
+      (item) =>
+        item.type === 'message' && (item.data._id || item.data.id) === messageId
+    )
+    if (index !== -1) {
+      flatListRef.current?.scrollToIndex({
+        index,
+        animated: true,
+        viewPosition: 0.5,
+      })
+    }
+  }
 
   const renderItem = ({ item, index }) => {
     if (item.type === 'call') {
@@ -54,7 +69,9 @@ export const MessageList = ({
         onImagePress={onImagePress}
         onLongPress={onMessageLongPress}
         onThreeDotsPress={onThreeDotsPress}
+        onReply={onReply}
         hoveredMessageId={hoveredMessageId}
+        onReplyPress={scrollToMessage}
         setHoveredMessageId={setHoveredMessageId}
       />
     )

@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react'
 import { Platform, Alert } from 'react-native'
 import { Audio } from 'expo-av'
 import { Camera } from 'expo-camera'
+import InCallManager from 'react-native-incall-manager'
 
 let RTCPeerConnection, RTCSessionDescription, RTCIceCandidate, mediaDevices
 
@@ -22,9 +23,54 @@ const iceServers = {
   iceServers: [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
+    {
+      urls: 'turn:standard.relay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:standard.relay.metered.ca:443',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:standard.relay.metered.ca:80?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
+    {
+      urls: 'turn:standard.relay.metered.ca:443?transport=tcp',
+      username: 'openrelayproject',
+      credential: 'openrelayproject',
+    },
   ],
   iceCandidatePoolSize: 10,
+}
+
+// InCallManager helper functions
+const startCallAudio = () => {
+  if (Platform.OS === 'web') return
+
+  try {
+    console.log('🔊 Starting InCallManager audio')
+    InCallManager.start({ media: 'audio' })
+    // Force loudspeaker (critical for Android)
+    InCallManager.setSpeakerphoneOn(true)
+    InCallManager.setForceSpeakerphoneOn(true)
+  } catch (err) {
+    console.warn('⚠️ InCallManager start failed:', err)
+  }
+}
+
+const stopCallAudio = () => {
+  if (Platform.OS === 'web') return
+
+  try {
+    console.log('🔇 Stopping InCallManager audio')
+    InCallManager.stop()
+  } catch (err) {
+    console.warn('⚠️ InCallManager stop failed:', err)
+  }
 }
 
 export function useWebRTC(
@@ -35,18 +81,22 @@ export function useWebRTC(
   onConnectionStateChange,
   onScreenFrame,
   onScreenSharingChange,
-  remoteUserId, // ADD THIS
-  chatId // ADD THIS
+  remoteUserId,
+  chatId,
+  currentUserId
 ) {
   const [localStream, setLocalStream] = useState(null)
   const [remoteStream, setRemoteStream] = useState(null)
-
   const [isScreenSharing, setIsScreenSharing] = useState(false)
   const [screenStream, setScreenStream] = useState(null)
+
   const pcRef = useRef(null)
   const localStreamRef = useRef(null)
   const candidatesQueue = useRef([])
-  const isOfferPending = useRef(false) // Track if we're creating an offer
+  const isOfferPending = useRef(false)
+  const makingOffer = useRef(false)
+  const ignoreOffer = useRef(false)
+  const isSettingRemoteAnswerPending = useRef(false)
 
   const requestPermissions = async () => {
     if (Platform.OS !== 'web') {
@@ -73,11 +123,20 @@ export function useWebRTC(
       }
 
       const constraints = {
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-        },
+        audio:
+          Platform.OS === 'web'
+            ? {
+                echoCancellation: true,
+                noiseSuppression: true,
+                autoGainControl: true,
+              }
+            : {
+                mandatory: {
+                  echoCancellation: true,
+                  noiseSuppression: true,
+                  autoGainControl: true,
+                },
+              },
         video:
           callType === 'video'
             ? {
@@ -107,135 +166,242 @@ export function useWebRTC(
     }
   }
 
-  const createPeerConnection = useCallback(
-    async (remoteUserId, chatId, currentUserId) => {
-      console.log('🔗 Creating peer connection...')
-      const pc = new RTCPeerConnection(iceServers)
-      pcRef.current = pc
+  const createPeerConnection = useCallback(async () => {
+    console.log('🔗 Creating peer connection...')
 
-      // Connection state monitoring
-      pc.onconnectionstatechange = () => {
-        console.log('🔌 Connection state:', pc.connectionState)
-        onConnectionStateChange?.(pc.connectionState)
+    if (pcRef.current) {
+      console.log('⚠️ Peer connection already exists, closing old one')
+      pcRef.current.close()
+    }
+
+    const pc = new RTCPeerConnection(iceServers)
+    pcRef.current = pc
+
+    // Connection state monitoring with InCallManager integration
+    pc.onconnectionstatechange = () => {
+      console.log('🔌 Connection state:', pc.connectionState)
+      onConnectionStateChange?.(pc.connectionState)
+
+      // Start audio when connected
+      if (pc.connectionState === 'connected') {
+        startCallAudio()
       }
 
-      pc.oniceconnectionstatechange = () => {
-        console.log('🧊 ICE connection state:', pc.iceConnectionState)
+      // Stop audio when disconnected
+      if (
+        pc.connectionState === 'disconnected' ||
+        pc.connectionState === 'failed' ||
+        pc.connectionState === 'closed'
+      ) {
+        stopCallAudio()
       }
+    }
 
-      pc.onicegatheringstatechange = () => {
-        console.log('📊 ICE gathering state:', pc.iceGatheringState)
-      }
+    pc.oniceconnectionstatechange = () => {
+      console.log('🧊 ICE connection state:', pc.iceConnectionState)
+    }
 
-      // 🔑 CRITICAL: declare intent BEFORE offer/answer
-      pc.addTransceiver('audio', { direction: 'sendrecv' })
+    pc.onicegatheringstatechange = () => {
+      console.log('📊 ICE gathering state:', pc.iceGatheringState)
+    }
 
-      if (callType === 'video') {
-        pc.addTransceiver('video', { direction: 'sendrecv' })
-      }
-
-      if (localStreamRef.current) {
-        console.log('📤 Adding local tracks to peer connection')
-        localStreamRef.current.getTracks().forEach((track) => {
-          pc.addTrack(track, localStreamRef.current)
-        })
-      }
-
-      pc.ontrack = (event) => {
-        console.log('📥 Remote track received:', event.track.kind)
-        if (event.streams?.[0]) {
-          console.log('✅ Setting remote stream')
-          setRemoteStream(event.streams[0])
-          onRemoteStream?.(event.streams[0])
-        }
-      }
-
-      pc.onicecandidate = (event) => {
-        if (event.candidate) {
-          console.log('🧊 Sending ICE candidate')
-          sendWebSocketMessage({
-            type: 'webrtc-ice-candidate',
-            to: remoteUserId,
-            from: currentUserId,
-            candidate: event.candidate,
-            chatId,
-          })
-        } else {
-          console.log('🧊 ICE gathering complete')
-        }
-      }
-
-      console.log('✅ Peer connection created')
-      return pc
-    },
-    [callType, sendWebSocketMessage, onRemoteStream, onConnectionStateChange]
-  )
-
-  const createOffer = useCallback(
-    async (remoteUserId, chatId, currentUserId) => {
-      if (!pcRef.current) {
-        throw new Error('PeerConnection not initialized')
-      }
-
-      if (isOfferPending.current) {
-        console.log('⏭️ Offer creation already in progress, skipping...')
-        return
-      }
-
-      if (pcRef.current.localDescription) {
-        console.log(
-          '⏭️ Already have local description, skipping offer creation'
-        )
-        return
-      }
-
+    // Note: onnegotiationneeded kept for renegotiation scenarios
+    // but initial offer will be created manually
+    pc.onnegotiationneeded = async () => {
       try {
-        isOfferPending.current = true
-        console.log('📤 Creating offer...')
+        console.log('🤝 negotiationneeded event fired')
 
-        const offer = await pcRef.current.createOffer({
-          offerToReceiveAudio: true,
-          offerToReceiveVideo: callType === 'video',
-        })
+        // Prevent creating offer while another is in progress
+        if (makingOffer.current) {
+          console.log('⚠️ Already making offer, skipping')
+          return
+        }
 
-        console.log('📤 Setting local description...')
-        await pcRef.current.setLocalDescription(offer)
+        makingOffer.current = true
 
-        console.log('📤 Sending offer via WebSocket')
+        // Wait for stable state
+        if (pc.signalingState !== 'stable') {
+          console.log('⚠️ Not in stable state, waiting...', pc.signalingState)
+          return
+        }
+
+        console.log('📤 Creating offer from negotiationneeded')
+        const offer = await pc.createOffer()
+
+        // Check state again before setting (race condition protection)
+        if (pc.signalingState !== 'stable') {
+          console.log('⚠️ State changed during offer creation, aborting')
+          return
+        }
+
+        await pc.setLocalDescription(offer)
+
         sendWebSocketMessage({
           type: 'webrtc-offer',
           to: remoteUserId,
           from: currentUserId,
-          offer: pcRef.current.localDescription,
+          offer: pc.localDescription,
           chatId,
         })
 
-        console.log('✅ Offer created and sent')
-      } catch (error) {
-        console.error('❌ Create offer error:', error)
-        throw error
+        console.log('✅ Negotiation offer sent')
+      } catch (err) {
+        console.error('❌ Negotiation error:', err)
       } finally {
-        isOfferPending.current = false
+        makingOffer.current = false
       }
-    },
-    [callType, sendWebSocketMessage]
-  )
+    }
+
+    // CRITICAL: Add local tracks if available
+    if (localStreamRef.current) {
+      const tracks = localStreamRef.current.getTracks()
+      console.log('📤 Adding', tracks.length, 'local tracks to peer connection')
+
+      tracks.forEach((track) => {
+        console.log(
+          '➕ Adding track:',
+          track.kind,
+          track.id,
+          'enabled:',
+          track.enabled
+        )
+        const sender = pc.addTrack(track, localStreamRef.current)
+        console.log('✅ Track added, sender:', sender)
+      })
+
+      // Verify tracks were added
+      const senders = pc.getSenders()
+      console.log('📊 Total senders after adding tracks:', senders.length)
+
+      if (senders.length !== tracks.length) {
+        console.error(
+          '⚠️ Mismatch: Expected',
+          tracks.length,
+          'senders but got',
+          senders.length
+        )
+      }
+    } else {
+      console.warn('⚠️ No local stream available when creating peer connection')
+    }
+
+    pc.ontrack = (event) => {
+      console.log('📥 Remote track received:', event.track.kind)
+      if (event.streams?.[0]) {
+        console.log('✅ Setting remote stream')
+        setRemoteStream(event.streams[0])
+        onRemoteStream?.(event.streams[0])
+      }
+    }
+
+    pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('🧊 Sending ICE candidate:', event.candidate.type)
+        sendWebSocketMessage({
+          type: 'webrtc-ice-candidate',
+          to: remoteUserId,
+          from: currentUserId,
+          candidate: event.candidate,
+          chatId,
+        })
+      } else {
+        console.log('🧊 ICE gathering complete')
+      }
+    }
+
+    console.log('✅ Peer connection created successfully')
+    return pc
+  }, [
+    callType,
+    sendWebSocketMessage,
+    onRemoteStream,
+    onConnectionStateChange,
+    remoteUserId,
+    chatId,
+    currentUserId,
+  ])
+
+  const createOffer = useCallback(async () => {
+    if (!pcRef.current) {
+      throw new Error('PeerConnection not initialized')
+    }
+
+    // FIXED: Prevent multiple simultaneous offers
+    if (isOfferPending.current || makingOffer.current) {
+      console.log('⏭️ Offer creation already in progress, skipping...')
+      return
+    }
+
+    // FIXED: Check signaling state before creating offer
+    if (pcRef.current.signalingState !== 'stable') {
+      console.log(
+        '⚠️ Signaling state not stable:',
+        pcRef.current.signalingState
+      )
+      console.log('⚠️ Waiting for stable state before creating offer')
+      return
+    }
+
+    try {
+      isOfferPending.current = true
+      makingOffer.current = true
+
+      console.log('📤 Creating offer...')
+      console.log('📤 Current senders:', pcRef.current.getSenders().length)
+
+      const offer = await pcRef.current.createOffer()
+
+      // FIXED: Verify state hasn't changed during async operation
+      if (pcRef.current.signalingState !== 'stable') {
+        console.log('⚠️ State changed during offer creation, aborting')
+        return
+      }
+
+      console.log('📤 Setting local description...')
+      await pcRef.current.setLocalDescription(offer)
+
+      console.log('📤 Sending offer via WebSocket')
+      sendWebSocketMessage({
+        type: 'webrtc-offer',
+        to: remoteUserId,
+        from: currentUserId,
+        offer: pcRef.current.localDescription,
+        chatId,
+      })
+
+      console.log('✅ Offer created and sent successfully')
+    } catch (error) {
+      console.error('❌ Create offer error:', error)
+      throw error
+    } finally {
+      isOfferPending.current = false
+      makingOffer.current = false
+    }
+  }, [sendWebSocketMessage, remoteUserId, chatId, currentUserId])
 
   const handleOffer = useCallback(
-    async (offer, remoteUserId, chatId, currentUserId) => {
+    async (offer) => {
       try {
         console.log('📥 Handling offer...')
+        console.log(
+          '📥 Current signaling state:',
+          pcRef.current?.signalingState
+        )
 
         if (!pcRef.current) {
           console.log('🔗 Creating peer connection to handle offer')
-          await createPeerConnection(remoteUserId, chatId, currentUserId)
+          await createPeerConnection()
         }
 
-        if (pcRef.current.signalingState !== 'stable') {
-          console.warn(
-            '⚠️ Signaling state not stable:',
-            pcRef.current.signalingState
-          )
+        // FIXED: Handle offer collisions using perfect negotiation pattern
+        const offerCollision =
+          pcRef.current.signalingState !== 'stable' || makingOffer.current
+
+        ignoreOffer.current = offerCollision
+
+        if (ignoreOffer.current) {
+          console.log('⚠️ Offer collision detected, ignoring offer')
+          return
         }
 
         console.log('📥 Setting remote description (offer)...')
@@ -244,13 +410,18 @@ export function useWebRTC(
         )
         console.log('✅ Remote description set')
 
-        // Process queued ICE candidates
+        // FIXED: Process queued ICE candidates after remote description is set
         console.log(
           `🧊 Processing ${candidatesQueue.current.length} queued ICE candidates`
         )
         while (candidatesQueue.current.length > 0) {
           const candidate = candidatesQueue.current.shift()
-          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+          try {
+            await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+            console.log('✅ Added queued candidate')
+          } catch (err) {
+            console.error('❌ Error adding queued candidate:', err)
+          }
         }
 
         console.log('📤 Creating answer...')
@@ -274,7 +445,13 @@ export function useWebRTC(
         Alert.alert('Connection Error', 'Failed to establish call connection.')
       }
     },
-    [sendWebSocketMessage, createPeerConnection]
+    [
+      sendWebSocketMessage,
+      createPeerConnection,
+      remoteUserId,
+      chatId,
+      currentUserId,
+    ]
   )
 
   const handleAnswer = async (answer) => {
@@ -283,6 +460,25 @@ export function useWebRTC(
 
       if (!pcRef.current) {
         console.error('❌ No peer connection to handle answer')
+        return
+      }
+
+      // FIXED: Prevent race condition with multiple answers
+      if (isSettingRemoteAnswerPending.current) {
+        console.log('⏭️ Already setting remote answer, skipping')
+        return
+      }
+
+      isSettingRemoteAnswerPending.current = true
+
+      console.log('📥 Current signaling state:', pcRef.current.signalingState)
+
+      // FIXED: Verify we're in the correct state to receive an answer
+      if (pcRef.current.signalingState !== 'have-local-offer') {
+        console.warn(
+          '⚠️ Not expecting answer in state:',
+          pcRef.current.signalingState
+        )
         return
       }
 
@@ -298,18 +494,32 @@ export function useWebRTC(
       )
       while (candidatesQueue.current.length > 0) {
         const candidate = candidatesQueue.current.shift()
-        await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+        try {
+          await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
+          console.log('✅ Added queued candidate')
+        } catch (err) {
+          console.error('❌ Error adding queued candidate:', err)
+        }
       }
 
       console.log('✅ Answer handled successfully')
     } catch (error) {
       console.error('❌ Handle answer error:', error)
+    } finally {
+      isSettingRemoteAnswerPending.current = false
     }
   }
 
   const handleICECandidate = async (candidate) => {
     try {
-      if (pcRef.current && pcRef.current.remoteDescription) {
+      if (!pcRef.current) {
+        console.log('🧊 No peer connection yet, queuing candidate')
+        candidatesQueue.current.push(candidate)
+        return
+      }
+
+      // FIXED: Only add candidates when we have remote description
+      if (pcRef.current.remoteDescription) {
         console.log('🧊 Adding ICE candidate immediately')
         await pcRef.current.addIceCandidate(new RTCIceCandidate(candidate))
       } else {
@@ -317,7 +527,15 @@ export function useWebRTC(
         candidatesQueue.current.push(candidate)
       }
     } catch (error) {
-      console.error('❌ Handle ICE candidate error:', error)
+      // FIXED: Don't fail on invalid candidates, just log
+      if (error.name === 'OperationError') {
+        console.warn(
+          '⚠️ Failed to add ICE candidate (might be okay):',
+          error.message
+        )
+      } else {
+        console.error('❌ Handle ICE candidate error:', error)
+      }
     }
   }
 
@@ -327,7 +545,13 @@ export function useWebRTC(
     const stream = await getUserMedia()
     setLocalStream(stream)
     localStreamRef.current = stream
-    console.log('✅ Media initialized')
+    console.log(
+      '✅ Media initialized with tracks:',
+      stream
+        .getTracks()
+        .map((t) => `${t.kind}:${t.enabled}`)
+        .join(', ')
+    )
     return stream
   }
 
@@ -353,7 +577,6 @@ export function useWebRTC(
     return false
   }
 
-  // Start real screen sharing (web only)
   const startScreenShare = async () => {
     if (Platform.OS !== 'web') return false
 
@@ -363,7 +586,6 @@ export function useWebRTC(
         audio: false,
       })
 
-      // Replace video track in existing peer connection
       const videoTrack = displayStream.getVideoTracks()[0]
       const sender = pcRef.current
         .getSenders()
@@ -378,7 +600,6 @@ export function useWebRTC(
       setScreenStream(displayStream)
       setIsScreenSharing(true)
 
-      // Notify remote
       sendWebSocketMessage({
         type: 'screen-sharing',
         enabled: true,
@@ -386,7 +607,6 @@ export function useWebRTC(
         chatId,
       })
 
-      // Stop when user stops sharing
       videoTrack.onended = () => stopScreenShare()
 
       return true
@@ -396,7 +616,6 @@ export function useWebRTC(
     }
   }
 
-  // Stop screen sharing
   const stopScreenShare = () => {
     if (screenStream) {
       screenStream.getTracks().forEach((t) => t.stop())
@@ -431,7 +650,6 @@ export function useWebRTC(
       if (Platform.OS === 'web') {
         await startScreenShare()
       } else {
-        // Mobile: just toggle flag – actual sending happens in CallScreen
         setIsScreenSharing((prev) => !prev)
         sendWebSocketMessage({
           type: 'screen-sharing',
@@ -443,15 +661,17 @@ export function useWebRTC(
     }
   }
 
-  // Handle incoming screen-sharing flag
   useEffect(() => {
     if (onScreenSharingChange) {
       onScreenSharingChange(isScreenSharing)
     }
-  }, [isScreenSharing])
+  }, [isScreenSharing, onScreenSharingChange])
 
   const cleanup = () => {
     console.log('🧹 Cleaning up WebRTC...')
+
+    // Stop InCallManager audio
+    stopCallAudio()
 
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop())
@@ -472,6 +692,9 @@ export function useWebRTC(
     setRemoteStream(null)
     setIsScreenSharing(false)
     isOfferPending.current = false
+    makingOffer.current = false
+    ignoreOffer.current = false
+    isSettingRemoteAnswerPending.current = false
     candidatesQueue.current = []
 
     console.log('✅ WebRTC cleanup complete')

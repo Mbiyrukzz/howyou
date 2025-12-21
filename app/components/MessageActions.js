@@ -27,7 +27,7 @@ const ActionMenuItem = styled.TouchableOpacity`
   flex-direction: row;
   align-items: center;
   padding: 18px 24px;
-  background-color: ${(props) => (props.destructive ? '#fff' : '#fff')};
+  background-color: #fff;
 `
 
 const ActionIconWrapper = styled.View`
@@ -36,6 +36,8 @@ const ActionIconWrapper = styled.View`
   border-radius: 20px;
   background-color: ${(props) => {
     if (props.destructive) return '#fee2e2'
+    if (props.reply && props.isOwnMessage) return '#e0f2fe'
+    if (props.reply) return '#dbeafe'
     return '#dbeafe'
   }};
   align-items: center;
@@ -107,7 +109,7 @@ const DropdownItem = styled.TouchableOpacity`
   align-items: center;
   padding: 14px 18px;
   gap: 12px;
-  background-color: ${(props) => (props.destructive ? 'white' : 'white')};
+  background-color: white;
 
   &:hover {
     background-color: ${(props) => (props.destructive ? '#fef2f2' : '#f9fafb')};
@@ -120,6 +122,8 @@ const DropdownIconWrapper = styled.View`
   border-radius: 18px;
   background-color: ${(props) => {
     if (props.destructive) return '#fee2e2'
+    if (props.reply && props.isOwnMessage) return '#e0f2fe'
+    if (props.reply) return '#dbeafe'
     return '#dbeafe'
   }};
   align-items: center;
@@ -231,6 +235,64 @@ const EditModalButtonText = styled.Text`
   color: ${(props) => (props.primary ? '#fff' : '#64748b')};
 `
 
+/* =================== Reply Preview Bar Styles =================== */
+const ReplyBarContainer = styled.View`
+  background-color: #f8f9fa;
+  border-top-width: 3px;
+  border-top-color: #3b82f6;
+  padding: 12px 16px;
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+`
+
+const ReplyIconWrapper = styled.View`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #dbeafe;
+  align-items: center;
+  justify-content: center;
+`
+
+const ReplyContent = styled.View`
+  flex: 1;
+`
+
+const ReplyHeader = styled.View`
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 4px;
+`
+
+const ReplyLabel = styled.Text`
+  font-size: 12px;
+  color: #64748b;
+  font-weight: 600;
+  margin-right: 6px;
+`
+
+const ReplySenderName = styled.Text`
+  font-size: 12px;
+  font-weight: 700;
+  color: #3b82f6;
+`
+
+const ReplyText = styled.Text`
+  font-size: 14px;
+  color: #1e293b;
+  line-height: 18px;
+`
+
+const ReplyCloseButton = styled.TouchableOpacity`
+  width: 36px;
+  height: 36px;
+  border-radius: 18px;
+  background-color: #e5e7eb;
+  align-items: center;
+  justify-content: center;
+`
+
 /* =================== Exported Styled Components =================== */
 export const ThreeDotsButton = styled.TouchableOpacity`
   padding: 8px;
@@ -250,7 +312,14 @@ export const MessageEditedLabel = styled.Text`
 `
 
 /* =================== Component: MessageActionMenu =================== */
-export const MessageActionMenu = ({ visible, onClose, onEdit, onDelete }) => {
+export const MessageActionMenu = ({
+  visible,
+  onClose,
+  onReply,
+  onEdit,
+  onDelete,
+  isOwnMessage,
+}) => {
   if (Platform.OS === 'web') return null
 
   return (
@@ -262,23 +331,37 @@ export const MessageActionMenu = ({ visible, onClose, onEdit, onDelete }) => {
     >
       <ActionMenuOverlay activeOpacity={1} onPress={onClose}>
         <ActionMenuContainer>
-          <ActionMenuItem onPress={onEdit}>
-            <ActionIconWrapper>
-              <Ionicons name="pencil" size={20} color="#3b82f6" />
+          {/* ✅ REPLY - Always show, with proper color */}
+          <ActionMenuItem onPress={onReply}>
+            <ActionIconWrapper reply isOwnMessage={isOwnMessage}>
+              <Ionicons name="arrow-undo" size={20} color="#3b82f6" />
             </ActionIconWrapper>
-            <ActionMenuText>Edit Message</ActionMenuText>
+            <ActionMenuText>Reply</ActionMenuText>
             <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
           </ActionMenuItem>
 
-          <MenuDivider />
+          {/* Rest of the menu items... */}
+          {isOwnMessage && (
+            <>
+              <MenuDivider />
+              <ActionMenuItem onPress={onEdit}>
+                <ActionIconWrapper>
+                  <Ionicons name="pencil" size={20} color="#3b82f6" />
+                </ActionIconWrapper>
+                <ActionMenuText>Edit Message</ActionMenuText>
+                <Ionicons name="chevron-forward" size={20} color="#cbd5e1" />
+              </ActionMenuItem>
 
-          <ActionMenuItem destructive onPress={onDelete}>
-            <ActionIconWrapper destructive>
-              <Ionicons name="trash" size={20} color="#dc2626" />
-            </ActionIconWrapper>
-            <ActionMenuText destructive>Delete Message</ActionMenuText>
-            <Ionicons name="chevron-forward" size={20} color="#fca5a5" />
-          </ActionMenuItem>
+              <MenuDivider />
+              <ActionMenuItem destructive onPress={onDelete}>
+                <ActionIconWrapper destructive>
+                  <Ionicons name="trash" size={20} color="#dc2626" />
+                </ActionIconWrapper>
+                <ActionMenuText destructive>Delete Message</ActionMenuText>
+                <Ionicons name="chevron-forward" size={20} color="#fca5a5" />
+              </ActionMenuItem>
+            </>
+          )}
         </ActionMenuContainer>
 
         <ActionMenuCancel onPress={onClose}>
@@ -294,21 +377,24 @@ export const WebMessageDropdown = ({
   visible,
   onClose,
   position,
+  onReply,
   onEdit,
   onDelete,
+  isOwnMessage,
 }) => {
   useEffect(() => {
     console.log('WebMessageDropdown State:', {
       visible,
       position,
       platform: Platform.OS,
+      isOwnMessage,
     })
-  }, [visible, position])
+  }, [visible, position, isOwnMessage])
 
   if (Platform.OS !== 'web' || !visible) return null
 
   const menuWidth = 180
-  const menuHeight = 110
+  const menuHeight = isOwnMessage ? 165 : 55
   const padding = 10
 
   const windowWidth = typeof window !== 'undefined' ? window.innerWidth : 800
@@ -329,27 +415,35 @@ export const WebMessageDropdown = ({
   return (
     <DropdownOverlay pointerEvents="auto">
       <DropdownBackdrop onPress={onClose} activeOpacity={1} />
-      <DropdownMenu
-        style={{
-          left: safeX,
-          top: safeY,
-        }}
-      >
-        <DropdownItem onPress={onEdit}>
-          <DropdownIconWrapper>
-            <Ionicons name="pencil" size={18} color="#3b82f6" />
+      <DropdownMenu style={{ left: safeX, top: safeY }}>
+        {/* ✅ REPLY - with proper color */}
+        <DropdownItem onPress={onReply}>
+          <DropdownIconWrapper reply isOwnMessage={isOwnMessage}>
+            <Ionicons name="arrow-undo" size={18} color="#3b82f6" />
           </DropdownIconWrapper>
-          <DropdownText>Edit</DropdownText>
+          <DropdownText>Reply</DropdownText>
         </DropdownItem>
 
-        <WebDivider />
+        {/* Rest remains the same... */}
+        {isOwnMessage && (
+          <>
+            <WebDivider />
+            <DropdownItem onPress={onEdit}>
+              <DropdownIconWrapper>
+                <Ionicons name="pencil" size={18} color="#3b82f6" />
+              </DropdownIconWrapper>
+              <DropdownText>Edit</DropdownText>
+            </DropdownItem>
 
-        <DropdownItem destructive onPress={onDelete}>
-          <DropdownIconWrapper destructive>
-            <Ionicons name="trash" size={18} color="#dc2626" />
-          </DropdownIconWrapper>
-          <DropdownText destructive>Delete</DropdownText>
-        </DropdownItem>
+            <WebDivider />
+            <DropdownItem destructive onPress={onDelete}>
+              <DropdownIconWrapper destructive>
+                <Ionicons name="trash" size={18} color="#dc2626" />
+              </DropdownIconWrapper>
+              <DropdownText destructive>Delete</DropdownText>
+            </DropdownItem>
+          </>
+        )}
       </DropdownMenu>
     </DropdownOverlay>
   )
@@ -437,5 +531,51 @@ export const EditMessageModal = ({
         </EditModalContent>
       </EditModalContainer>
     </Modal>
+  )
+}
+
+/* =================== Component: ReplyPreviewBar =================== */
+export const ReplyPreviewBar = ({ replyTo, onClose, currentUserId }) => {
+  if (!replyTo) return null
+
+  const truncateText = (text, maxLength = 80) => {
+    if (!text) return ''
+    return text.length > maxLength ? `${text.substring(0, maxLength)}...` : text
+  }
+
+  const getMediaLabel = () => {
+    if (replyTo.type === 'image') return '📷 Photo'
+    if (replyTo.type === 'video') return '🎥 Video'
+    if (replyTo.type === 'audio') return '🎵 Audio'
+    if (replyTo.type === 'file') return '📎 File'
+    return ''
+  }
+
+  // ✅ Fix: Determine if replying to own message
+  const isReplyingToSelf = replyTo.senderId === currentUserId
+  const displayName = isReplyingToSelf ? 'You' : replyTo.senderName || 'User'
+
+  return (
+    <ReplyBarContainer>
+      <ReplyIconWrapper>
+        <Ionicons name="arrow-undo" size={18} color="#3b82f6" />
+      </ReplyIconWrapper>
+
+      <ReplyContent>
+        <ReplyHeader>
+          <ReplyLabel>Replying to</ReplyLabel>
+          <ReplySenderName>{displayName}</ReplySenderName>
+        </ReplyHeader>
+        <ReplyText numberOfLines={2}>
+          {replyTo.content
+            ? truncateText(replyTo.content)
+            : getMediaLabel() || 'Message'}
+        </ReplyText>
+      </ReplyContent>
+
+      <ReplyCloseButton onPress={onClose} activeOpacity={0.7}>
+        <Ionicons name="close" size={18} color="#64748b" />
+      </ReplyCloseButton>
+    </ReplyBarContainer>
   )
 }

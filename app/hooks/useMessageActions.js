@@ -1,13 +1,19 @@
 import { useState } from 'react'
 import { Alert, Platform } from 'react-native'
 
-export const useMessageActions = (chatId, updateMessage, deleteMessage) => {
+export const useMessageActions = (
+  chatId,
+  updateMessage,
+  deleteMessage,
+  currentUserId
+) => {
   const [actionMenuVisible, setActionMenuVisible] = useState(false)
   const [selectedMessage, setSelectedMessage] = useState(null)
   const [editModalVisible, setEditModalVisible] = useState(false)
   const [webDropdownVisible, setWebDropdownVisible] = useState(false)
   const [dropdownPosition, setDropdownPosition] = useState({ x: 0, y: 0 })
   const [savingEdit, setSavingEdit] = useState(false)
+  const [replyToMessage, setReplyToMessage] = useState(null)
 
   const handleMessageLongPress = (message) => {
     if (Platform.OS !== 'web') {
@@ -24,6 +30,30 @@ export const useMessageActions = (chatId, updateMessage, deleteMessage) => {
         y: position?.y || 150,
       })
       setWebDropdownVisible(true)
+    }
+  }
+
+  const handleReplyMessage = (message) => {
+    const messageToReply = message || selectedMessage
+    if (!messageToReply) return
+
+    // ✅ CRITICAL FIX: Store actual sender info, not display name
+    // Each user's UI will decide whether to show "You" or the actual name
+    setReplyToMessage({
+      _id: messageToReply._id || messageToReply.id,
+      content: messageToReply.content,
+      type: messageToReply.type,
+      senderId: messageToReply.senderId, // Store actual senderId
+      senderName: messageToReply.senderName || 'Unknown', // Store actual name (not "You")
+    })
+
+    // Close menus
+    setActionMenuVisible(false)
+    setWebDropdownVisible(false)
+
+    // Clear selected message if we're using it
+    if (!message) {
+      setSelectedMessage(null)
     }
   }
 
@@ -78,6 +108,10 @@ export const useMessageActions = (chatId, updateMessage, deleteMessage) => {
     }
   }
 
+  const clearReply = () => {
+    setReplyToMessage(null)
+  }
+
   return {
     actionMenuVisible,
     selectedMessage,
@@ -85,13 +119,16 @@ export const useMessageActions = (chatId, updateMessage, deleteMessage) => {
     webDropdownVisible,
     dropdownPosition,
     savingEdit,
+    replyToMessage,
     handleMessageLongPress,
     handleThreeDotsPress,
+    handleReplyMessage,
     handleEditMessage,
     handleDeleteMessage,
     handleSaveEdit,
     closeActionMenu,
     closeWebDropdown,
     closeEditModal,
+    clearReply,
   }
 }

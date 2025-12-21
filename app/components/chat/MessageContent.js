@@ -62,11 +62,8 @@ export const MessageContent = ({
               key={`file-${index}`}
               fileName={file.originalname || `File ${index + 1}`}
               fileSize={file.size}
+              fileUrl={file.url} // ✅ Add this line
               isOwn={isOwn}
-              onPress={() => {
-                // Handle file download/open
-                console.log('Open file:', file.url)
-              }}
             />
           )
         }

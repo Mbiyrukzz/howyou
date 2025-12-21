@@ -1,6 +1,12 @@
 // screens/VideoPlayerScreen.js
 import React, { useState, useRef } from 'react'
-import { View, TouchableOpacity, Platform, StatusBar } from 'react-native'
+import {
+  View,
+  TouchableOpacity,
+  Platform,
+  StatusBar,
+  PanResponder,
+} from 'react-native'
 import styled from 'styled-components/native'
 import { Video } from 'expo-av'
 import { Ionicons } from '@expo/vector-icons'
@@ -36,7 +42,7 @@ const VideoContainer = styled.View`
   align-items: center;
 `
 
-const ControlsOverlay = styled.TouchableOpacity`
+const ControlsOverlay = styled.View`
   position: absolute;
   top: 0;
   left: 0;
@@ -46,6 +52,13 @@ const ControlsOverlay = styled.TouchableOpacity`
   align-items: center;
   background-color: ${(props) =>
     props.showControls ? 'rgba(0, 0, 0, 0.3)' : 'transparent'};
+`
+
+const CenterControls = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
 `
 
 const PlayPauseButton = styled.TouchableOpacity`
@@ -76,12 +89,17 @@ const TimeText = styled.Text`
   min-width: 40px;
 `
 
-const ProgressBar = styled.View`
+const ProgressBarContainer = styled.View`
   flex: 1;
+  height: 40px;
+  justify-content: center;
+`
+
+const ProgressBar = styled.View`
   height: 4px;
   background-color: rgba(255, 255, 255, 0.3);
   border-radius: 2px;
-  overflow: hidden;
+  overflow: visible;
 `
 
 const ProgressFill = styled.View`
@@ -90,12 +108,34 @@ const ProgressFill = styled.View`
   width: ${(props) => props.progress}%;
 `
 
+const Scrubber = styled.View`
+  position: absolute;
+  left: ${(props) => props.progress}%;
+  top: 50%;
+  margin-left: -8px;
+  margin-top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 8px;
+  background-color: white;
+  shadow-color: #000;
+  shadow-offset: 0px 2px;
+  shadow-opacity: 0.3;
+  shadow-radius: 3px;
+  elevation: 5;
+`
+
 export default function VideoPlayerScreen({ navigation, route }) {
   const { videoUrl } = route.params
   const [isPlaying, setIsPlaying] = useState(false)
   const [showControls, setShowControls] = useState(true)
   const [status, setStatus] = useState({})
+  const [isSeeking, setIsSeeking] = useState(false)
+  const [isVideoReady, setIsVideoReady] = useState(false)
   const videoRef = useRef(null)
+  const progressBarRef = useRef(null)
+  const progressBarLayout = useRef({ width: 0 })
+  const seekStartX = useRef(0)
 
   const handlePlayPause = async () => {
     if (videoRef.current) {
@@ -109,7 +149,9 @@ export default function VideoPlayerScreen({ navigation, route }) {
   }
 
   const toggleControls = () => {
-    setShowControls(!showControls)
+    if (!isSeeking) {
+      setShowControls(!showControls)
+    }
   }
 
   const formatTime = (millis) => {
@@ -119,6 +161,96 @@ export default function VideoPlayerScreen({ navigation, route }) {
     const seconds = totalSeconds % 60
     return `${minutes}:${seconds.toString().padStart(2, '0')}`
   }
+
+  const seekToPosition = async (percentage) => {
+    console.log('seekToPosition called with percentage:', percentage)
+    console.log('videoRef.current:', videoRef.current ? 'exists' : 'null')
+    console.log('status.durationMillis:', status.durationMillis)
+
+    if (videoRef.current && status.durationMillis) {
+      const position = percentage * status.durationMillis
+      const seekPosition = Math.max(
+        0,
+        Math.min(position, status.durationMillis)
+      )
+      console.log('Seeking to position:', seekPosition, 'ms')
+      try {
+        await videoRef.current.setPositionAsync(seekPosition)
+        console.log('Seek completed')
+      } catch (error) {
+        console.error('Seek error:', error)
+      }
+    } else {
+      console.log('Cannot seek - missing videoRef or duration')
+    }
+  }
+
+  const panResponder = useRef(
+    PanResponder.create({
+      onStartShouldSetPanResponder: () => true,
+      onStartShouldSetPanResponderCapture: () => true,
+      onMoveShouldSetPanResponder: () => true,
+      onMoveShouldSetPanResponderCapture: () => true,
+      onPanResponderTerminationRequest: () => false,
+      onPanResponderGrant: (evt, gestureState) => {
+        console.log('Touch started!')
+
+        // Don't allow seeking until video is ready
+        if (!isVideoReady || !status.durationMillis) {
+          console.log('Video not ready for seeking yet')
+          return
+        }
+
+        setIsSeeking(true)
+        setShowControls(true)
+
+        // Store the initial X position relative to the progress bar
+        seekStartX.current = evt.nativeEvent.locationX
+
+        const percentage = Math.max(
+          0,
+          Math.min(seekStartX.current / progressBarLayout.current.width, 1)
+        )
+        console.log(
+          'Initial Touch X:',
+          seekStartX.current,
+          'Percentage:',
+          percentage
+        )
+        seekToPosition(percentage)
+      },
+      onPanResponderMove: (evt, gestureState) => {
+        console.log(
+          'Touch moving! dx:',
+          gestureState.dx,
+          'moveX:',
+          gestureState.moveX
+        )
+        if (progressBarLayout.current.width && status.durationMillis) {
+          // Calculate position: initial touch + how far we've moved
+          const currentX = seekStartX.current + gestureState.dx
+          const percentage = Math.max(
+            0,
+            Math.min(currentX / progressBarLayout.current.width, 1)
+          )
+          console.log('Current X:', currentX, 'Percentage:', percentage)
+          seekToPosition(percentage)
+        }
+      },
+      onPanResponderRelease: (evt, gestureState) => {
+        console.log('Touch released!')
+        if (progressBarLayout.current.width && status.durationMillis) {
+          const currentX = seekStartX.current + gestureState.dx
+          const percentage = Math.max(
+            0,
+            Math.min(currentX / progressBarLayout.current.width, 1)
+          )
+          seekToPosition(percentage)
+        }
+        setTimeout(() => setIsSeeking(false), 100)
+      },
+    })
+  ).current
 
   const progress = status.durationMillis
     ? (status.positionMillis / status.durationMillis) * 100
@@ -141,40 +273,93 @@ export default function VideoPlayerScreen({ navigation, route }) {
           style={{ width: '100%', height: '100%' }}
           resizeMode="contain"
           useNativeControls={false}
-          onPlaybackStatusUpdate={(status) => {
-            console.log('Video status:', {
-              isLoaded: status.isLoaded,
-              isPlaying: status.isPlaying,
-              position: status.positionMillis,
-              duration: status.durationMillis,
-              error: status.error,
-            })
-            setStatus(status)
+          shouldPlay={false}
+          onPlaybackStatusUpdate={(newStatus) => {
+            console.log(
+              'Status update - isLoaded:',
+              newStatus.isLoaded,
+              'duration:',
+              newStatus.durationMillis
+            )
+            if (newStatus.isLoaded) {
+              // Always update status when we first get duration
+              if (newStatus.durationMillis && !status.durationMillis) {
+                console.log(
+                  'Setting initial status with duration:',
+                  newStatus.durationMillis
+                )
+                setStatus(newStatus)
+                setIsVideoReady(true)
+              }
+              // Only update position/playing state when not seeking
+              else if (!isSeeking) {
+                setStatus(newStatus)
+                if (newStatus.isPlaying !== isPlaying) {
+                  setIsPlaying(newStatus.isPlaying)
+                }
+              }
+            }
           }}
-          onLoad={(data) => console.log('Video loaded:', data)}
+          onLoad={(data) => {
+            console.log('Video loaded:', data)
+            // Force initial status update
+            if (videoRef.current) {
+              videoRef.current.getStatusAsync().then((status) => {
+                console.log('Initial status:', status)
+                if (status.isLoaded && status.durationMillis) {
+                  setStatus(status)
+                  setIsVideoReady(true)
+                }
+              })
+            }
+          }}
           onError={(error) => console.error('Video ERROR:', error)}
         />
 
-        <ControlsOverlay
-          activeOpacity={1}
-          onPress={toggleControls}
-          showControls={showControls}
-        >
+        <ControlsOverlay showControls={showControls} pointerEvents="box-none">
           {showControls && (
             <>
-              <PlayPauseButton onPress={handlePlayPause}>
-                <Ionicons
-                  name={isPlaying ? 'pause' : 'play'}
-                  size={40}
-                  color="#2c3e50"
-                />
-              </PlayPauseButton>
+              <CenterControls>
+                <TouchableOpacity
+                  style={{
+                    flex: 1,
+                    width: '100%',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                  }}
+                  onPress={toggleControls}
+                  activeOpacity={1}
+                >
+                  <PlayPauseButton onPress={handlePlayPause}>
+                    <Ionicons
+                      name={isPlaying ? 'pause' : 'play'}
+                      size={40}
+                      color="#2c3e50"
+                    />
+                  </PlayPauseButton>
+                </TouchableOpacity>
+              </CenterControls>
 
               <ControlsBar>
                 <TimeText>{formatTime(status.positionMillis)}</TimeText>
-                <ProgressBar>
-                  <ProgressFill progress={progress} />
-                </ProgressBar>
+                <ProgressBarContainer
+                  ref={progressBarRef}
+                  onLayout={(e) => {
+                    progressBarLayout.current = {
+                      width: e.nativeEvent.layout.width,
+                    }
+                    console.log(
+                      'Progress bar width:',
+                      e.nativeEvent.layout.width
+                    )
+                  }}
+                  {...panResponder.panHandlers}
+                >
+                  <ProgressBar>
+                    <ProgressFill progress={progress} />
+                    <Scrubber progress={progress} />
+                  </ProgressBar>
+                </ProgressBarContainer>
                 <TimeText>{formatTime(status.durationMillis)}</TimeText>
               </ControlsBar>
             </>

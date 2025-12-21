@@ -1,9 +1,10 @@
 import React, { useState } from 'react'
-import { View, TouchableOpacity, Platform } from 'react-native'
+import { View, TouchableOpacity, Platform, Animated } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import { DateSeparator } from './DateSeparator'
 import { MessageBubble } from './MessageBubble'
 import { formatMessageDate, findUserByAnyId } from '../../utils/chatHelpers'
+import { Swipeable } from 'react-native-gesture-handler'
 
 export const MessageItem = React.memo(
   ({
@@ -15,6 +16,8 @@ export const MessageItem = React.memo(
     onImagePress,
     onLongPress,
     onThreeDotsPress,
+    onReply, // Reply callback from ChatDetailScreen
+    onReplyPress, // Callback to scroll to replied message
     hoveredMessageId,
     setHoveredMessageId,
   }) => {
@@ -33,7 +36,7 @@ export const MessageItem = React.memo(
     const displayName = isOwn ? 'You' : sender?.name || 'Unknown'
 
     const handleMessageLongPress = () => {
-      if (isOwn && Platform.OS !== 'web') {
+      if (Platform.OS !== 'web') {
         setShowOptions(true)
         setTimeout(() => setShowOptions(false), 200)
         onLongPress(item)
@@ -50,7 +53,93 @@ export const MessageItem = React.memo(
       }
     }
 
-    return (
+    // ✅ FIXED: Pass actual sender info, not display name
+    const handleReply = () => {
+      if (!onReply) return
+
+      console.log('📬 MessageItem: Reply button clicked for message:', {
+        messageId: item._id || item.id,
+        senderId: item.senderId,
+        currentUserId,
+        isOwn,
+      })
+
+      // Get the actual sender name from the sender object (not displayName which could be "You")
+      const actualSenderName = sender?.name || sender?.username || 'Unknown'
+
+      // Format reply data correctly with actual sender info
+      const replyData = {
+        _id: item._id || item.id,
+        content: item.content || '',
+        type: item.type || 'text',
+        senderName: actualSenderName, // Always use actual name from sender object
+        senderId: item.senderId,
+      }
+
+      console.log('📬 MessageItem: Calling onReply with:', replyData)
+      onReply(replyData)
+    }
+
+    // Swipe action for mobile
+    const renderRightActions = (progress, dragX) => {
+      const trans = dragX.interpolate({
+        inputRange: [0, 50, 100, 101],
+        outputRange: [0, 0, 0, 1],
+      })
+
+      return (
+        <TouchableOpacity
+          onPress={handleReply}
+          style={{
+            justifyContent: 'center',
+            alignItems: 'center',
+            width: 70,
+            backgroundColor: '#3b82f6',
+            marginVertical: 4,
+            borderRadius: 12,
+          }}
+        >
+          <Animated.View
+            style={{
+              transform: [{ translateX: trans }],
+            }}
+          >
+            <Ionicons name="arrow-undo" size={24} color="#fff" />
+          </Animated.View>
+        </TouchableOpacity>
+      )
+    }
+
+    const renderLeftActions = (progress, dragX) => {
+      const trans = dragX.interpolate({
+        inputRange: [-101, -100, -50, 0],
+        outputRange: [-1, 0, 0, 0],
+      })
+
+      return (
+        <TouchableOpacity
+          onPress={handleReply}
+          style={{
+            justifyContent: 'center',
+            alignItems: 'center',
+            width: 70,
+            backgroundColor: '#3b82f6',
+            marginVertical: 4,
+            borderRadius: 12,
+          }}
+        >
+          <Animated.View
+            style={{
+              transform: [{ translateX: trans }],
+            }}
+          >
+            <Ionicons name="arrow-undo" size={24} color="#fff" />
+          </Animated.View>
+        </TouchableOpacity>
+      )
+    }
+
+    const messageContent = (
       <View style={{ marginVertical: 4 }}>
         {showDate && <DateSeparator date={formatMessageDate(item.createdAt)} />}
 
@@ -68,7 +157,38 @@ export const MessageItem = React.memo(
             Platform.OS === 'web' && setHoveredMessageId(null)
           }
         >
-          {/* Three Dots Button */}
+          {/* Reply Button (Web) */}
+          {Platform.OS === 'web' && (
+            <View
+              style={{
+                marginLeft: isOwn ? 8 : 0,
+                marginRight: isOwn ? 0 : 8,
+                opacity: isHovered ? 1 : 0,
+                transition: 'opacity 0.2s',
+              }}
+            >
+              <TouchableOpacity
+                onPress={handleReply}
+                style={{
+                  backgroundColor: isHovered ? '#dbeafe' : '#f8f9fa',
+                  padding: 8,
+                  borderRadius: 16,
+                  width: 32,
+                  height: 32,
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                }}
+              >
+                <Ionicons
+                  name="arrow-undo"
+                  size={16}
+                  color={isHovered ? '#3b82f6' : '#7f8c8d'}
+                />
+              </TouchableOpacity>
+            </View>
+          )}
+
+          {/* Three Dots Button (Web) - Only for own messages */}
           {Platform.OS === 'web' && isOwn && (
             <View
               style={{
@@ -127,11 +247,30 @@ export const MessageItem = React.memo(
                 displayName={displayName}
                 navigation={navigation}
                 onImagePress={onImagePress}
+                currentUserId={currentUserId}
+                users={users}
+                onReplyPress={onReplyPress}
               />
             </TouchableOpacity>
           </View>
         </View>
       </View>
     )
+
+    // Wrap with swipeable for mobile
+    if (Platform.OS !== 'web') {
+      return (
+        <Swipeable
+          renderRightActions={isOwn ? renderRightActions : null}
+          renderLeftActions={!isOwn ? renderLeftActions : null}
+          overshootRight={false}
+          overshootLeft={false}
+        >
+          {messageContent}
+        </Swipeable>
+      )
+    }
+
+    return messageContent
   }
 )

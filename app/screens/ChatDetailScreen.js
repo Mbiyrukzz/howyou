@@ -4,6 +4,7 @@ import React, {
   useContext,
   useCallback,
   useMemo,
+  useRef,
 } from 'react'
 import {
   StatusBar,
@@ -40,6 +41,7 @@ import { useAudioRecorder } from '../hooks/useAudioRecorder'
 import { useMessageActions } from '../hooks/useMessageActions'
 import { getUserColor, getInitials } from '../utils/chatHelpers'
 import { useUserProfile } from '../providers/UserProfileProvider'
+import { ReplyPreviewBar } from '../components/chat/ReplyPreviewBar'
 
 export default function ChatDetailScreen({
   navigation,
@@ -51,6 +53,8 @@ export default function ChatDetailScreen({
   const [imagePreviewVisible, setImagePreviewVisible] = useState(false)
   const [previewImageUrl, setPreviewImageUrl] = useState('')
   const [hoveredMessageId, setHoveredMessageId] = useState(null)
+
+  const messageListRef = useRef(null)
 
   const { chatId } = route?.params || {}
   const chatsContext = useContext(ChatsContext)
@@ -120,15 +124,18 @@ export default function ChatDetailScreen({
     webDropdownVisible,
     dropdownPosition,
     savingEdit,
+    replyToMessage,
     handleMessageLongPress,
     handleThreeDotsPress,
+    handleReplyMessage,
     handleEditMessage,
     handleDeleteMessage,
     handleSaveEdit,
     closeActionMenu,
     closeWebDropdown,
     closeEditModal,
-  } = useMessageActions(chatId, updateMessage, deleteMessage)
+    clearReply,
+  } = useMessageActions(chatId, updateMessage, deleteMessage, user?.uid)
 
   const currentChat = chats.find((chat) => (chat._id || chat.id) === chatId)
   const otherUserId = currentChat?.participants?.find((id) => id !== user?.uid)
@@ -217,16 +224,32 @@ export default function ChatDetailScreen({
         else messageType = 'file'
       }
 
-      const result = await contextSendMessage({
+      // ✅ Build message data with reply info
+      const messageData = {
         chatId,
         content: message.trim() || undefined,
         files: filesToSend,
         messageType,
-      })
+      }
+
+      // ✅ ADD REPLY DATA IF PRESENT
+      if (replyToMessage) {
+        console.log('📬 Including reply data in message:', replyToMessage)
+        messageData.replyTo = {
+          messageId: replyToMessage._id,
+          content: replyToMessage.content,
+          type: replyToMessage.type,
+          senderName: replyToMessage.senderName,
+          senderId: replyToMessage.senderId,
+        }
+      }
+
+      const result = await contextSendMessage(messageData)
 
       if (result.success) {
         setMessage('')
         clearFiles()
+        clearReply() // ✅ Clear reply after successful send
         stopTyping()
       } else {
         Alert.alert('Error', result.error || 'Failed to send message')
@@ -237,6 +260,34 @@ export default function ChatDetailScreen({
     } finally {
       setSending(false)
     }
+  }
+
+  // In ChatDetailScreen.js, update handleDirectReply:
+  const handleDirectReply = (replyData) => {
+    console.log('📬 ChatDetailScreen: Direct reply handler called:', replyData)
+
+    // First set the selected message, then call handleReplyMessage
+    if (handleReplyMessage) {
+      // Set the selected message first
+      setSelectedMessage(replyData)
+
+      // Then call handleReplyMessage (which uses selectedMessage)
+      handleReplyMessage()
+
+      // Or if you update the hook to accept parameters:
+      // handleReplyMessage(replyData);
+    }
+
+    // Close any open menus
+    closeActionMenu()
+    closeWebDropdown()
+  }
+
+  const scrollToMessage = (messageId) => {
+    // This will scroll to the replied message
+    // Implementation depends on your FlatList structure
+    console.log('Scroll to message:', messageId)
+    // You can implement this with FlatList's scrollToIndex or scrollToOffset
   }
 
   const showImagePickerOptions = () => {
@@ -603,6 +654,7 @@ export default function ChatDetailScreen({
           onImagePress={handleImagePress}
           onMessageLongPress={handleMessageLongPress}
           onThreeDotsPress={handleThreeDotsPress}
+          onReply={handleReplyMessage}
           hoveredMessageId={hoveredMessageId}
           setHoveredMessageId={setHoveredMessageId}
           onCallCallback={handleCallCallback}
@@ -612,6 +664,8 @@ export default function ChatDetailScreen({
         />
 
         <SelectedFilesBar files={selectedFiles} onRemoveFile={removeFile} />
+
+        <ReplyPreviewBar replyTo={replyToMessage} onClose={clearReply} />
 
         {!showRecordingUI && (
           <ChatInput
@@ -646,12 +700,13 @@ export default function ChatDetailScreen({
         imageUrl={previewImageUrl}
         onClose={closeImagePreview}
       />
-
       <MessageActionMenu
         visible={actionMenuVisible}
         onClose={closeActionMenu}
+        onReply={handleReplyMessage} // ✅ This is already correct
         onEdit={handleEditMessage}
         onDelete={handleDeleteMessage}
+        isOwnMessage={selectedMessage?.senderId === user?.uid} // ✅ ADD THIS
       />
 
       {Platform.OS === 'web' && webDropdownVisible && (
@@ -659,8 +714,10 @@ export default function ChatDetailScreen({
           visible={true}
           onClose={closeWebDropdown}
           position={dropdownPosition}
+          onReply={handleReplyMessage} // ✅ This is already correct
           onEdit={handleEditMessage}
           onDelete={handleDeleteMessage}
+          isOwnMessage={selectedMessage?.senderId === user?.uid} // ✅ ADD THIS
         />
       )}
 

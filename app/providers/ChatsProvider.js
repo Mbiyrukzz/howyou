@@ -874,7 +874,7 @@ const ChatsProvider = ({ children }) => {
   )
 
   const sendMessage = useCallback(
-    async ({ chatId, content, files = [], messageType = 'text' }) => {
+    async ({ chatId, content, files = [], messageType = 'text', replyTo }) => {
       if (!isReady || !chatId) {
         return { success: false, error: 'Invalid parameters' }
       }
@@ -894,6 +894,7 @@ const ChatsProvider = ({ children }) => {
             filesCount: files.length,
             messageType,
             hasContent: !!(content && content.trim()),
+            hasReply: !!replyTo, // ✅ Log reply info
           })
 
           const formData = new FormData()
@@ -918,6 +919,12 @@ const ChatsProvider = ({ children }) => {
 
           if (content && content.trim()) {
             formData.append('content', content.trim())
+          }
+
+          // ✅ ADD REPLY DATA TO FORMDATA
+          if (replyTo) {
+            console.log('📬 Adding reply data to FormData:', replyTo)
+            formData.append('replyTo', JSON.stringify(replyTo))
           }
 
           for (let i = 0; i < files.length; i++) {
@@ -977,11 +984,19 @@ const ChatsProvider = ({ children }) => {
             }
           }
 
-          data = await post(`${API_URL}/send-message`, {
+          // ✅ INCLUDE REPLY DATA IN JSON REQUEST
+          const requestBody = {
             chatId,
             content: content.trim(),
             messageType: 'text',
-          })
+          }
+
+          if (replyTo) {
+            console.log('📬 Adding reply data to JSON request:', replyTo)
+            requestBody.replyTo = replyTo
+          }
+
+          data = await post(`${API_URL}/send-message`, requestBody)
         }
 
         if (data.success && data.message) {
@@ -994,15 +1009,13 @@ const ChatsProvider = ({ children }) => {
             sentAt: data.message.sentAt || new Date().toISOString(),
             deliveredBy: data.message.deliveredBy || [],
             readBy: data.message.readBy || [],
-            _updateCount: 0, // ✅ Initialize counter
+            _updateCount: 0,
           }
 
           console.log('💾 Adding message to local state:', {
             messageId: messageWithStatus._id,
             status: messageWithStatus.status,
-            deliveredBy: messageWithStatus.deliveredBy,
-            readBy: messageWithStatus.readBy,
-            updateCount: messageWithStatus._updateCount,
+            hasReply: !!messageWithStatus.replyTo, // ✅ Log if reply is included
           })
 
           setMessages((prev) => ({
