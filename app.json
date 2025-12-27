@@ -14,28 +14,58 @@
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.anonymous.PeepGram"
+      "bundleIdentifier": "com.anonymous.PeepGram",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera for video calls",
+        "NSMicrophoneUsageDescription": "This app uses the microphone for calls",
+        "UIBackgroundModes": [
+          "audio",
+          "voip"
+        ]
+      }
     },
-  "android": {
-  "adaptiveIcon": {
-    "foregroundImage": "./assets/adaptive-icon.png",
-    "backgroundColor": "#ffffff"
-  },
-  "edgeToEdgeEnabled": true,
-  "package": "com.anonymous.PeepGram",
-  "usesCleartextTraffic": true,
-  "permissions": [
-    "android.permission.RECORD_AUDIO",
-    "android.permission.MODIFY_AUDIO_SETTINGS"
-  ]
-},
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.anonymous.PeepGram",
+      "usesCleartextTraffic": true,
+      "permissions": [
+        "CAMERA",
+        "RECORD_AUDIO",
+        "MODIFY_AUDIO_SETTINGS",
+        "NOTIFICATIONS"
+      ]
+    },
     "web": {
       "favicon": "./assets/favicon-32x32.png"
     },
     "plugins": [
+      [
+        "@livekit/react-native-expo-plugin"
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/notification-icon.png",
+          "color": "#3396D3",
+          "sounds": [
+            "./assets/ringtone.mp3"
+          ]
+        }
+      ],
       "expo-video",
-      "expo-audio"
+      "expo-audio",
+      "expo-camera"
     ],
+    "notification": {
+      "icon": "./assets/notification-icon.png",
+      "color": "#3396D3",
+      "androidMode": "default",
+      "androidCollapsedTitle": "PeepGram"
+    },
     "extra": {
       "apiUrl": "${API_URL}",
       "eas": {
