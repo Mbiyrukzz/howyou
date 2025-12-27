@@ -1,6 +1,6 @@
-// CallScreen.js - Updated for LiveKit
-import React, { useEffect, useState } from 'react'
-import { View, Alert, BackHandler } from 'react-native'
+// CallScreen.js - Fixed LiveKit Connection
+import React, { useCallback, useEffect, useState } from 'react'
+import { View, Alert, BackHandler, Text, ActivityIndicator } from 'react-native'
 import { useRoute, useNavigation } from '@react-navigation/native'
 import styled from 'styled-components/native'
 import { useUser } from '../hooks/useUser'
@@ -22,12 +22,25 @@ const VideoContainer = styled.View`
   flex: 1;
 `
 
+const LoadingContainer = styled.View`
+  flex: 1;
+  justify-content: center;
+  align-items: center;
+  background-color: #0f172a;
+`
+
+const LoadingText = styled.Text`
+  color: white;
+  font-size: 18px;
+  margin-top: 16px;
+`
+
 const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 const CallScreen = () => {
   const route = useRoute()
   const navigation = useNavigation()
-  const { user } = useUser()
+  const { user, isLoading: authLoading } = useUser()
 
   const {
     chatId,
@@ -40,21 +53,97 @@ const CallScreen = () => {
     token: initialToken,
   } = route.params || {}
 
-  // State
+  console.log('📞 CallScreen mounted:', {
+    chatId,
+    remoteUserId,
+    callType,
+    isIncoming,
+    hasInitialToken: !!initialToken,
+    hasInitialUrl: !!initialLivekitUrl,
+    hasInitialCallId: !!initialCallId,
+    callAnswered: !isIncoming || !!(initialToken && initialLivekitUrl),
+  })
+
+  // State - ✅ Fixed: If we have initial credentials, we're already connected
+  const hasInitialCredentials = !!(initialToken && initialLivekitUrl)
+
   const [callStatus, setCallStatus] = useState(
-    isIncoming ? 'ringing' : 'connecting'
+    isIncoming && !hasInitialCredentials ? 'ringing' : 'connecting'
   )
-  const [callAnswered, setCallAnswered] = useState(!isIncoming)
+  const [callAnswered, setCallAnswered] = useState(
+    !isIncoming || hasInitialCredentials
+  )
   const [livekitUrl, setLivekitUrl] = useState(initialLivekitUrl)
   const [token, setToken] = useState(initialToken)
   const [callId, setCallId] = useState(initialCallId)
   const [isConnected, setIsConnected] = useState(false)
+
+  const getIdTokenSafely = async () => {
+    if (authLoading || !user) {
+      console.warn('⚠️ Cannot get token: auth loading or no user')
+      return null
+    }
+    try {
+      return await user.getIdToken()
+    } catch (err) {
+      console.error('❌ Failed to get ID token:', err)
+      return null
+    }
+  }
+
+  useEffect(() => {
+    if (authLoading) return // Wait for auth to finish
+
+    const needsToInitiate =
+      !isIncoming && !token && chatId && remoteUserId && user
+
+    if (needsToInitiate) {
+      initiateOutgoingCall()
+    }
+  }, [authLoading, user, isIncoming, token, chatId, remoteUserId])
+
+  const initiateOutgoingCall = useCallback(async () => {
+    const idToken = await getIdTokenSafely()
+    if (!idToken) {
+      Alert.alert('Error', 'Authentication required')
+      navigation.goBack()
+      return
+    }
+
+    try {
+      const response = await fetch(`${API_URL}/initiate-call`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${idToken}`,
+        },
+        body: JSON.stringify({
+          chatId,
+          callType,
+          recipientId: remoteUserId,
+        }),
+      })
+
+      const data = await response.json()
+      if (!data.success) throw new Error(data.error || 'Failed')
+
+      setCallId(data.call._id.toString())
+      setToken(data.callerToken)
+      setLivekitUrl(data.livekitUrl)
+      setCallAnswered(true)
+    } catch (error) {
+      console.error('❌ Error initiating call:', error)
+      Alert.alert('Error', 'Failed to start call')
+      navigation.goBack()
+    }
+  }, [chatId, callType, remoteUserId, navigation, authLoading, user]) // deps
 
   // Ringtones and timers
   const { stopRingtones } = useRingtones(isIncoming, callAnswered)
   const { callDuration } = useCallTimer(isConnected)
 
   const handleTimeout = () => {
+    console.log('⏰ Call timeout')
     stopRingtones()
     handleEndCall()
     Alert.alert('Call Ended', 'No answer', [
@@ -64,7 +153,14 @@ const CallScreen = () => {
 
   const { clearRingTimer } = useRingTimer(handleTimeout, !callAnswered)
 
-  // LiveKit hook
+  // ✅ LiveKit hook - now receives proper credentials
+  console.log('🎬 Initializing useLiveKit with:', {
+    hasLivekitUrl: !!livekitUrl,
+    hasToken: !!token,
+    callAnswered,
+    willConnect: callAnswered && !!livekitUrl && !!token,
+  })
+
   const {
     isConnected: livekitConnected,
     localVideoTrack,
@@ -107,13 +203,33 @@ const CallScreen = () => {
     }
   )
 
+  // ✅ Log LiveKit connection state changes
+  useEffect(() => {
+    console.log('🔍 LiveKit state:', {
+      livekitConnected,
+      hasLocalVideo: !!localVideoTrack,
+      hasLocalAudio: !!localAudioTrack,
+      hasRemoteVideo: !!remoteVideoTrack,
+      hasRemoteAudio: !!remoteAudioTrack,
+      remoteParticipantsCount: remoteParticipants.length,
+    })
+  }, [
+    livekitConnected,
+    localVideoTrack,
+    localAudioTrack,
+    remoteVideoTrack,
+    remoteAudioTrack,
+    remoteParticipants,
+  ])
+
   // Update connection status from LiveKit
   useEffect(() => {
     if (livekitConnected && callStatus === 'connecting') {
-      setCallStatus('connected')
-      setIsConnected(true)
+      console.log('✅ LiveKit connected, waiting for remote participant...')
+      // Don't set to 'connected' until remote participant joins
+      // This happens in onParticipantConnected callback
     }
-  }, [livekitConnected])
+  }, [livekitConnected, callStatus])
 
   // Handle back button
   useEffect(() => {
@@ -185,34 +301,34 @@ const CallScreen = () => {
     navigation.goBack()
   }
 
-  // End call
   const handleEndCall = async () => {
     stopRingtones()
     clearRingTimer()
 
     console.log('🔴 Ending call...')
 
-    // Disconnect from LiveKit
     if (disconnectLiveKit) {
       await disconnectLiveKit()
     }
 
-    // Notify backend
     if (callId) {
-      try {
-        await fetch(`${API_URL}/end-call/${callId}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${await user.getIdToken()}`,
-          },
-        })
-      } catch (error) {
-        console.error('❌ Error ending call:', error)
+      const idToken = await getIdTokenSafely()
+      if (idToken) {
+        try {
+          await fetch(`${API_URL}/end-call/${callId}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${idToken}`,
+            },
+          })
+        } catch (error) {
+          console.error('❌ Error notifying backend of call end:', error)
+        }
       }
     }
 
-    setTimeout(() => navigation.goBack(), 100)
+    navigation.goBack() // ← Removed setTimeout, not needed
   }
 
   // Handle call ended notification
@@ -244,8 +360,17 @@ const CallScreen = () => {
     await switchCamera()
   }
 
-  // Incoming call screen
-  if (isIncoming && !callAnswered) {
+  if (authLoading) {
+    return (
+      <LoadingContainer>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <LoadingText>Loading user...</LoadingText>
+      </LoadingContainer>
+    )
+  }
+
+  // Incoming call screen - ✅ Only show if truly incoming and no credentials yet
+  if (isIncoming && !callAnswered && !hasInitialCredentials) {
     return (
       <Container>
         <IncomingCallScreen
@@ -255,6 +380,16 @@ const CallScreen = () => {
           onReject={handleRejectCall}
         />
       </Container>
+    )
+  }
+
+  // ✅ Show loading state while fetching credentials
+  if (!token || !livekitUrl) {
+    return (
+      <LoadingContainer>
+        <ActivityIndicator size="large" color="#3b82f6" />
+        <LoadingText>Connecting to call...</LoadingText>
+      </LoadingContainer>
     )
   }
 

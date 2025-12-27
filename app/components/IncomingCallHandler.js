@@ -1,3 +1,4 @@
+// IncomingCallHandler.js - FIXED
 import React, { useContext, useEffect } from 'react'
 import { useNavigation } from '@react-navigation/native'
 import * as Notifications from 'expo-notifications'
@@ -72,14 +73,13 @@ export default function IncomingCallHandler() {
       // Only dismiss notifications on native platforms
       if (Platform.OS !== 'web') {
         await Notifications.dismissAllNotificationsAsync()
-      } else {
-        console.log('ℹ️ Skipping dismissAllNotificationsAsync on web')
       }
 
       const result = await answerCall(incomingCall.callId, true)
       console.log('📞 Answer call result:', result)
 
       if (result.success) {
+        // ✅ FIX: Pass the correct parameters for incoming calls
         navigation.navigate('Chats', {
           screen: 'CallScreen',
           params: {
@@ -87,6 +87,10 @@ export default function IncomingCallHandler() {
             remoteUserId: incomingCall.caller,
             remoteUserName: incomingCall.callerName,
             callType: incomingCall.callType,
+
+            callId: incomingCall.callId, // ✅ Pass the callId
+            livekitUrl: result.livekitUrl, // ✅ Pass LiveKit URL
+            token: result.recipientToken, // ✅ Pass the recipient token
           },
         })
       } else {
@@ -110,8 +114,6 @@ export default function IncomingCallHandler() {
     try {
       if (Platform.OS !== 'web') {
         await Notifications.dismissAllNotificationsAsync()
-      } else {
-        console.log('ℹ️ Skipping dismissAllNotificationsAsync on web')
       }
 
       await rejectCall(incomingCall.callId)
