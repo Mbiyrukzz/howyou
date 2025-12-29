@@ -229,6 +229,62 @@ const CallScreen = () => {
     }
   )
 
+  // Add this right after your useLiveKit hook
+  useEffect(() => {
+    console.log('🔍 COMPREHENSIVE TRACK DEBUG:', {
+      // Local tracks
+      hasLocalVideo: !!localVideoTrack,
+      hasLocalAudio: !!localAudioTrack,
+      localVideoDetails: localVideoTrack
+        ? {
+            kind: localVideoTrack.kind,
+            sid: localVideoTrack.sid,
+            enabled: localVideoTrack.enabled,
+            muted: localVideoTrack.muted,
+            mediaStreamTrack: localVideoTrack.mediaStreamTrack
+              ? {
+                  readyState: localVideoTrack.mediaStreamTrack.readyState,
+                  enabled: localVideoTrack.mediaStreamTrack.enabled,
+                  muted: localVideoTrack.mediaStreamTrack.muted,
+                }
+              : null,
+          }
+        : null,
+
+      // Remote tracks
+      hasRemoteVideo: !!remoteVideoTrack,
+      hasRemoteAudio: !!remoteAudioTrack,
+      remoteVideoDetails: remoteVideoTrack
+        ? {
+            kind: remoteVideoTrack.kind,
+            sid: remoteVideoTrack.sid,
+            enabled: remoteVideoTrack.enabled,
+            muted: remoteVideoTrack.muted,
+            mediaStreamTrack: remoteVideoTrack.mediaStreamTrack
+              ? {
+                  readyState: remoteVideoTrack.mediaStreamTrack.readyState,
+                  enabled: remoteVideoTrack.mediaStreamTrack.enabled,
+                  muted: remoteVideoTrack.mediaStreamTrack.muted,
+                }
+              : null,
+          }
+        : null,
+
+      // Connection state
+      isConnected,
+      callStatus,
+      remoteParticipantsCount: remoteParticipants?.length || 0,
+    })
+  }, [
+    localVideoTrack,
+    localAudioTrack,
+    remoteVideoTrack,
+    remoteAudioTrack,
+    isConnected,
+    callStatus,
+    remoteParticipants,
+  ])
+
   // Update connection status from LiveKit
   useEffect(() => {
     if (livekitConnected && callStatus === 'connecting') {

@@ -1,4 +1,4 @@
-// hooks/useLiveKit.native.js - Fixed to prevent infinite re-renders
+// hooks/useLiveKit.native.js - Fixed video rendering issues
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { Room, RoomEvent, ParticipantEvent, Track } from 'livekit-client'
 
@@ -24,7 +24,6 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
   const roomRef = useRef(null)
   const cleanupInProgress = useRef(false)
   const tracksPublished = useRef(false)
-  // ✅ Store callbacks in refs to prevent re-render loops
   const callbacksRef = useRef({
     onParticipantConnected,
     onParticipantDisconnected,
@@ -32,7 +31,6 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
     onError,
   })
 
-  // ✅ Update callbacks ref when they change
   useEffect(() => {
     callbacksRef.current = {
       onParticipantConnected,
@@ -42,7 +40,6 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
     }
   }, [onParticipantConnected, onParticipantDisconnected, onCallEnded, onError])
 
-  // Disconnect function
   const disconnectRoom = useCallback(async () => {
     if (cleanupInProgress.current) {
       console.log('⏭️ Cleanup already in progress')
@@ -86,57 +83,33 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
     }
   }, [localVideoTrack, localAudioTrack])
 
-  // Publish local audio/video tracks
+  // ✅ FIXED: Publish tracks - let the event listener handle track capture
   const publishTracks = useCallback(async (room, type) => {
-    if (tracksPublished.current) return
+    if (tracksPublished.current) {
+      console.log('⏭️ Tracks already published')
+      return
+    }
 
     try {
-      // Enable microphone
+      console.log('🎤 Publishing local tracks...')
+
+      // Enable microphone - trackPublished event will handle setting the track
       await room.localParticipant.setMicrophoneEnabled(true)
       console.log('✅ Microphone enabled')
 
-      // Wait a bit for track to be available
-      await new Promise((resolve) => setTimeout(resolve, 300))
-
-      // Get audio track safely
-      if (
-        room.localParticipant.audioTracks &&
-        room.localParticipant.audioTracks.size > 0
-      ) {
-        const audioTrackPub = Array.from(
-          room.localParticipant.audioTracks.values()
-        )[0]
-        if (audioTrackPub?.track) {
-          setLocalAudioTrack(audioTrackPub.track)
-          console.log('✅ Audio track set')
-        }
-      }
-
       // Enable camera if video call
       if (type === 'video') {
+        // Wait a bit before enabling camera
+        await new Promise((resolve) => setTimeout(resolve, 500))
+
         await room.localParticipant.setCameraEnabled(true)
         console.log('✅ Camera enabled')
-
-        // Wait a bit for track to be available
-        await new Promise((resolve) => setTimeout(resolve, 300))
-
-        // Get video track safely
-        if (
-          room.localParticipant.videoTracks &&
-          room.localParticipant.videoTracks.size > 0
-        ) {
-          const videoTrackPub = Array.from(
-            room.localParticipant.videoTracks.values()
-          )[0]
-          if (videoTrackPub?.track) {
-            setLocalVideoTrack(videoTrackPub.track)
-            setIsVideoEnabled(true)
-            console.log('✅ Video track set')
-          }
-        }
       }
 
       tracksPublished.current = true
+      console.log(
+        '✅ All tracks publishing initiated - waiting for trackPublished events'
+      )
     } catch (err) {
       console.error('❌ Error enabling tracks:', err)
       if (callbacksRef.current.onError) {
@@ -145,7 +118,7 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
     }
   }, [])
 
-  // ✅ Initialize room - only depends on livekitUrl and token
+  // Initialize room
   useEffect(() => {
     if (!livekitUrl || !token || cleanupInProgress.current) {
       console.log('⏭️ Skipping connection:', {
@@ -165,6 +138,12 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
       dynacast: true,
       videoCaptureDefaults: {
         resolution: { width: 1280, height: 720 },
+        facingMode: 'user',
+      },
+      audioCaptureDefaults: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
       },
     })
 
@@ -186,7 +165,28 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
         setIsConnected(true)
         setLocalParticipant(newRoom.localParticipant)
 
-        await new Promise((resolve) => setTimeout(resolve, 500))
+        // ✅ Listen for local track publications
+        const handleLocalTrackPublished = (publication) => {
+          console.log('📢 Local track published:', {
+            kind: publication.kind,
+            source: publication.source,
+          })
+
+          if (publication.track) {
+            if (publication.kind === 'audio') {
+              setLocalAudioTrack(publication.track)
+              console.log('✅ Local audio track set from published event')
+            } else if (publication.kind === 'video') {
+              setLocalVideoTrack(publication.track)
+              console.log('✅ Local video track set from published event')
+            }
+          }
+        }
+
+        newRoom.localParticipant.on('trackPublished', handleLocalTrackPublished)
+
+        // Give room a moment to stabilize
+        await new Promise((resolve) => setTimeout(resolve, 300))
 
         if (mounted && !cleanupInProgress.current) {
           await publishTracks(newRoom, callType)
@@ -204,19 +204,24 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
     return () => {
       console.log('🧹 Component unmounting, cleaning up...')
       mounted = false
+
+      // Remove local track listener
+      if (roomRef.current?.localParticipant) {
+        roomRef.current.localParticipant.off('trackPublished')
+      }
+
       if (!cleanupInProgress.current) {
         disconnectRoom()
       }
     }
-  }, [livekitUrl, token]) // ✅ Only these two deps
+  }, [livekitUrl, token, callType, publishTracks, disconnectRoom])
 
-  // ✅ Room event listeners - separate effect with stable handlers
+  // Room event listeners
   useEffect(() => {
     if (!room) return
 
     console.log('👂 Setting up room event listeners')
 
-    // ✅ Define handlers inside effect but don't recreate room state setters
     const handleParticipantConnected = (participant) => {
       console.log('👤 Participant connected:', participant.identity)
       setRemoteParticipants((prev) => [...prev, participant])
@@ -226,11 +231,21 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
       }
 
       const handleTrackSubscribed = (track, publication) => {
-        console.log('🎬 Track subscribed:', track.kind)
+        console.log('🎬 Track subscribed:', {
+          kind: track.kind,
+          sid: track.sid,
+          enabled: track.enabled,
+          muted: track.muted,
+        })
+
         if (track.kind === Track.Kind.Video) {
           setRemoteVideoTrack(track)
+          console.log('📹 Remote video track set')
         } else if (track.kind === Track.Kind.Audio) {
           setRemoteAudioTrack(track)
+          console.log('🔊 Remote audio track set')
+          // ✅ Audio will be played automatically by React Native WebRTC
+          // No need to manually attach on native - that's web-only
         }
       }
 
@@ -240,6 +255,7 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
           setRemoteVideoTrack(null)
         } else if (track.kind === Track.Kind.Audio) {
           setRemoteAudioTrack(null)
+          console.log('🔇 Audio track removed')
         }
       }
 
@@ -249,6 +265,7 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
         handleTrackUnsubscribed
       )
 
+      // Handle existing tracks
       participant.trackPublications.forEach((publication) => {
         if (publication.track) {
           handleTrackSubscribed(publication.track, publication)
@@ -295,7 +312,10 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
 
     // Check for already connected participants
     room.remoteParticipants.forEach((participant) => {
-      console.log('👤 Remote participant joined:', participant.identity)
+      console.log(
+        '👤 Remote participant already in room:',
+        participant.identity
+      )
       handleParticipantConnected(participant)
     })
 
@@ -307,18 +327,18 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
       room.off(RoomEvent.Reconnecting, handleReconnecting)
       room.off(RoomEvent.Reconnected, handleReconnected)
     }
-  }, [room]) // ✅ Only depends on room
+  }, [room])
 
-  // Toggle microphone
+  // ✅ FIXED: Toggle microphone using mute/unmute instead of setEnabled
   const toggleMute = useCallback(async () => {
-    if (!localAudioTrack) {
-      console.warn('⚠️ No audio track to mute')
+    if (!room?.localParticipant) {
+      console.warn('⚠️ No local participant to mute')
       return isMuted
     }
 
     try {
       const newMuted = !isMuted
-      await localAudioTrack.setEnabled(!newMuted)
+      await room.localParticipant.setMicrophoneEnabled(!newMuted)
       setIsMuted(newMuted)
       console.log('🎤 Microphone:', newMuted ? 'muted' : 'unmuted')
       return newMuted
@@ -326,18 +346,18 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
       console.error('❌ Error toggling mute:', err)
       return isMuted
     }
-  }, [localAudioTrack, isMuted])
+  }, [room, isMuted])
 
-  // Toggle video
+  // ✅ FIXED: Toggle video using mute/unmute instead of setEnabled
   const toggleVideo = useCallback(async () => {
-    if (!localVideoTrack) {
-      console.warn('⚠️ No video track to toggle')
+    if (!room?.localParticipant) {
+      console.warn('⚠️ No local participant to toggle video')
       return !isVideoEnabled
     }
 
     try {
       const newEnabled = !isVideoEnabled
-      await localVideoTrack.setEnabled(newEnabled)
+      await room.localParticipant.setCameraEnabled(newEnabled)
       setIsVideoEnabled(newEnabled)
       console.log('📹 Video:', newEnabled ? 'enabled' : 'disabled')
       return !newEnabled
@@ -345,11 +365,11 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
       console.error('❌ Error toggling video:', err)
       return !isVideoEnabled
     }
-  }, [localVideoTrack, isVideoEnabled])
+  }, [room, isVideoEnabled])
 
   // Switch camera
   const switchCamera = useCallback(async () => {
-    if (!localVideoTrack || !room || !localParticipant) {
+    if (!localVideoTrack || !room) {
       console.warn('⚠️ Cannot switch camera - missing requirements')
       return
     }
@@ -357,16 +377,15 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
     try {
       console.log('🔄 Switching camera...')
       const facingMode =
-        localVideoTrack.mediaStreamTrack.getSettings().facingMode
-      await room.switchActiveDevice(
-        'videoinput',
-        facingMode === 'user' ? 'environment' : 'user'
-      )
-      console.log('✅ Camera switched')
+        localVideoTrack.mediaStreamTrack?.getSettings?.()?.facingMode || 'user'
+      const newFacingMode = facingMode === 'user' ? 'environment' : 'user'
+
+      await room.switchActiveDevice('videoinput', newFacingMode)
+      console.log('✅ Camera switched to:', newFacingMode)
     } catch (err) {
       console.error('❌ Error switching camera:', err)
     }
-  }, [localVideoTrack, room, localParticipant])
+  }, [localVideoTrack, room])
 
   return {
     room,
