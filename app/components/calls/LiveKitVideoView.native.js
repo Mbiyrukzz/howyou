@@ -267,7 +267,7 @@ const NativeVideoElement = ({ track, mirrored = false }) => {
         width: '100%',
         height: '100%',
       }}
-      track={track}
+      videoTrack={track}
       mirror={mirrored}
       objectFit="cover"
       zOrder={0}
