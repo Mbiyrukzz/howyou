@@ -1,4 +1,4 @@
-import React from 'react'
+import React, { useState } from 'react'
 import { View, TouchableOpacity } from 'react-native'
 import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
@@ -14,6 +14,7 @@ import {
   HeaderActionButton,
 } from '../../styles/chatStyles'
 import { getInitials } from '../../utils/chatHelpers'
+import LoadingIndicator from '../LoadingIndicator'
 
 // Styled components
 const OnlineIndicator = styled.View`
@@ -79,6 +80,12 @@ export const ChatHeader = ({
     isOnline = false,
     avatar,
   } = chatInfo
+
+  const [loading, setLoading] = useState(false)
+
+  if (loading) {
+    return <LoadingIndicator size="small" message="Loading user's details..." />
+  }
 
   return (
     <Header>

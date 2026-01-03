@@ -11,135 +11,76 @@ import { Ionicons } from '@expo/vector-icons'
 import styled from 'styled-components/native'
 
 const CallLogContainer = styled.View`
-  padding: 0 16px;
-  margin-bottom: 12px;
+  padding: 0;
+  margin-bottom: 0;
 `
 
 const CallLogCard = styled.TouchableOpacity`
   background-color: #fff;
-  border-radius: 16px;
-  padding: 16px;
+  padding: 12px 16px;
   flex-direction: row;
   align-items: center;
-  border-width: 1px;
-  border-color: ${(props) => {
-    if (props.status === 'missed') return '#fecaca'
-    if (props.status === 'rejected') return '#fde68a'
-    return '#e2e8f0'
-  }};
-  shadow-color: #000;
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.08;
-  shadow-radius: 8px;
-  elevation: 3;
+  border-bottom-width: 1px;
+  border-bottom-color: #f0f0f0;
 `
 
 const CallIconContainer = styled.View`
-  width: 56px;
-  height: 56px;
-  border-radius: 28px;
+  width: 48px;
+  height: 48px;
+  border-radius: 24px;
   background-color: ${(props) => {
-    if (props.status === 'missed') return '#fee2e2'
-    if (props.status === 'rejected') return '#fef3c7'
-    if (props.status === 'cancelled') return '#f3f4f6'
-    if (props.callType === 'video') return '#dcfce7'
-    return '#dbeafe'
+    if (props.status === 'missed') return '#ffebee'
+    if (props.status === 'rejected') return '#fff3e0'
+    if (props.callType === 'video') return '#e8f5e9'
+    return '#e3f2fd'
   }};
   justify-content: center;
   align-items: center;
-  margin-right: 14px;
-  position: relative;
-  shadow-color: ${(props) => {
-    if (props.status === 'missed') return '#ef4444'
-    if (props.status === 'rejected') return '#f59e0b'
-    if (props.status === 'cancelled') return '#9ca3af'
-    if (props.callType === 'video') return '#10b981'
-    return '#3b82f6'
-  }};
-  shadow-offset: 0px 2px;
-  shadow-opacity: 0.3;
-  shadow-radius: 4px;
-  elevation: 3;
+  margin-right: 12px;
 `
 
 const CallInfo = styled.View`
   flex: 1;
 `
 
+const TopRow = styled.View`
+  flex-direction: row;
+  align-items: center;
+  margin-bottom: 2px;
+`
+
 const CallTypeText = styled.Text`
-  font-size: 17px;
-  font-weight: 700;
-  color: #1e293b;
-  margin-bottom: 6px;
-`
-
-const MetaRow = styled.View`
-  flex-direction: row;
-  align-items: center;
-  flex-wrap: wrap;
-`
-
-const StatusBadge = styled.View`
-  flex-direction: row;
-  align-items: center;
-  background-color: ${(props) => {
-    switch (props.status) {
-      case 'missed':
-        return '#fee2e2'
-      case 'rejected':
-        return '#fef3c7'
-      case 'cancelled':
-        return '#f3f4f6'
-      case 'completed':
-        return '#dcfce7'
-      default:
-        return '#e0f2fe'
-    }
-  }};
-  padding: 4px 10px;
-  border-radius: 12px;
-  margin-right: 8px;
-  margin-bottom: 4px;
-`
-
-const StatusText = styled.Text`
-  font-size: 12px;
-  font-weight: 600;
-  color: ${(props) => {
-    switch (props.status) {
-      case 'missed':
-        return '#dc2626'
-      case 'rejected':
-        return '#d97706'
-      case 'cancelled':
-        return '#6b7280'
-      case 'completed':
-        return '#16a34a'
-      default:
-        return '#0284c7'
-    }
-  }};
-  margin-left: 4px;
-`
-
-const DurationBadge = styled.View`
-  background-color: #dcfce7;
-  padding: 4px 10px;
-  border-radius: 12px;
-  margin-right: 8px;
-  margin-bottom: 4px;
-`
-
-const DurationText = styled.Text`
-  font-size: 12px;
-  font-weight: 700;
-  color: #16a34a;
+  font-size: 16px;
+  font-weight: 500;
+  color: #000;
+  flex: 1;
 `
 
 const TimeText = styled.Text`
   font-size: 13px;
-  color: #64748b;
-  font-weight: 500;
+  color: #667781;
+  margin-left: 8px;
+`
+
+const BottomRow = styled.View`
+  flex-direction: row;
+  align-items: center;
+`
+
+const StatusText = styled.Text`
+  font-size: 14px;
+  color: ${(props) => {
+    if (props.status === 'missed') return '#d32f2f'
+    if (props.status === 'rejected') return '#f57c00'
+    return '#667781'
+  }};
+  margin-left: 4px;
+`
+
+const DurationText = styled.Text`
+  font-size: 14px;
+  color: #667781;
+  margin-left: 4px;
 `
 
 const Actions = styled.View`
@@ -149,17 +90,12 @@ const Actions = styled.View`
 `
 
 const ActionButton = styled.TouchableOpacity`
-  width: 44px;
-  height: 44px;
-  border-radius: 22px;
-  background-color: ${(props) => props.color || '#3b82f6'};
+  width: 40px;
+  height: 40px;
+  border-radius: 20px;
+  background-color: transparent;
   align-items: center;
   justify-content: center;
-  shadow-color: ${(props) => props.color || '#3b82f6'};
-  shadow-offset: 0px 3px;
-  shadow-opacity: 0.3;
-  shadow-radius: 6px;
-  elevation: 4;
 `
 
 const getCallIcon = (callType, status, direction) => {
@@ -167,46 +103,51 @@ const getCallIcon = (callType, status, direction) => {
 
   if (status === 'missed') {
     return {
-      name: isVideo ? 'videocam-off' : 'call-outline',
-      color: '#dc2626',
-      size: 22,
+      name: direction === 'incoming' ? 'call-outline' : 'call-outline',
+      color: '#d32f2f',
+      size: 24,
+      statusIcon: 'arrow-down',
     }
   }
 
   if (status === 'rejected' || status === 'declined') {
     return {
-      name: 'close-circle-outline',
-      color: '#d97706',
-      size: 22,
+      name: isVideo ? 'videocam-outline' : 'call-outline',
+      color: '#f57c00',
+      size: 24,
+      statusIcon: 'close',
     }
   }
 
   if (status === 'cancelled') {
     return {
-      name: 'ban-outline',
-      color: '#6b7280',
-      size: 22,
+      name: isVideo ? 'videocam-outline' : 'call-outline',
+      color: '#667781',
+      size: 24,
+      statusIcon: 'arrow-up',
     }
   }
 
   if (direction === 'incoming') {
     return {
       name: isVideo ? 'videocam' : 'call',
-      color: '#16a34a',
-      size: 22,
+      color: '#00a884',
+      size: 24,
+      statusIcon: 'arrow-down',
     }
   }
 
   return {
     name: isVideo ? 'videocam' : 'call',
-    color: '#2563eb',
-    size: 22,
+    color: '#00a884',
+    size: 24,
+    statusIcon: 'arrow-up',
   }
 }
 
 const getCallStatusText = (status, direction) => {
   if (status === 'missed') {
-    return direction === 'incoming' ? 'Missed' : 'Unanswered'
+    return 'Missed'
   }
   if (status === 'rejected' || status === 'declined') {
     return 'Declined'
@@ -215,7 +156,7 @@ const getCallStatusText = (status, direction) => {
     return 'Cancelled'
   }
   if (status === 'completed' || status === 'ended') {
-    return 'Completed'
+    return direction === 'incoming' ? 'Incoming' : 'Outgoing'
   }
   return direction === 'incoming' ? 'Incoming' : 'Outgoing'
 }
@@ -227,10 +168,14 @@ const formatCallDuration = (seconds) => {
   const secs = seconds % 60
 
   if (mins === 0) {
-    return `${secs}s`
+    return `${secs} seconds`
   }
 
-  return `${mins}m ${secs}s`
+  if (secs === 0) {
+    return `${mins} minute${mins > 1 ? 's' : ''}`
+  }
+
+  return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
 const formatCallTime = (timestamp) => {
@@ -238,17 +183,29 @@ const formatCallTime = (timestamp) => {
 
   const date = new Date(timestamp)
   const now = new Date()
-  const diff = now - date
-  const minutes = Math.floor(diff / (1000 * 60))
-  const hours = Math.floor(minutes / 60)
-  const days = Math.floor(hours / 24)
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+  const yesterday = new Date(today)
+  yesterday.setDate(yesterday.getDate() - 1)
+  const callDate = new Date(date.getFullYear(), date.getMonth(), date.getDate())
 
-  if (minutes < 1) return 'Just now'
-  if (minutes < 60) return `${minutes}m ago`
-  if (hours < 24) {
-    return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+  const time = date.toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit',
+  })
+
+  if (callDate.getTime() === today.getTime()) {
+    return time
   }
-  if (days < 7) return `${days}d ago`
+
+  if (callDate.getTime() === yesterday.getTime()) {
+    return 'Yesterday'
+  }
+
+  const diffDays = Math.floor((now - date) / (1000 * 60 * 60 * 24))
+
+  if (diffDays < 7) {
+    return date.toLocaleDateString([], { weekday: 'short' })
+  }
 
   return date.toLocaleDateString([], { month: 'short', day: 'numeric' })
 }
@@ -261,9 +218,8 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
   const durationText = formatCallDuration(duration)
   const timeText = formatCallTime(createdAt)
 
-  const callTypeDisplay = callType === 'video' ? 'Video Call' : 'Voice Call'
+  const callTypeDisplay = callType === 'video' ? 'Video call' : 'Voice call'
 
-  // Show callback button for missed, rejected, or cancelled calls
   const showCallbackButton = [
     'missed',
     'rejected',
@@ -273,15 +229,13 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
 
   const handleDelete = () => {
     if (Platform.OS === 'web') {
-      const confirmed = window.confirm(
-        'Are you sure you want to delete this call log?'
-      )
+      const confirmed = window.confirm('Delete this call log?')
       if (confirmed && onDelete) {
         onDelete(callLog)
       }
     } else {
       Alert.alert(
-        'Delete Call Log',
+        'Delete call log',
         'Are you sure you want to delete this call log?',
         [
           { text: 'Cancel', style: 'cancel' },
@@ -315,34 +269,41 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
 
   return (
     <CallLogContainer>
-      <CallLogCard onPress={handlePress} activeOpacity={0.7} status={status}>
+      <CallLogCard onPress={handlePress} activeOpacity={0.95} status={status}>
         <CallIconContainer status={status} callType={callType}>
           <Ionicons name={icon.name} size={icon.size} color={icon.color} />
         </CallIconContainer>
 
         <CallInfo>
-          <CallTypeText>{callTypeDisplay}</CallTypeText>
-
-          <MetaRow>
-            <StatusBadge status={status}>
-              <Ionicons name={icon.name} size={14} color={icon.color} />
-              <StatusText status={status}>{statusText}</StatusText>
-            </StatusBadge>
-
-            {durationText && (
-              <DurationBadge>
-                <DurationText>{durationText}</DurationText>
-              </DurationBadge>
-            )}
-
+          <TopRow>
+            <CallTypeText>{callTypeDisplay}</CallTypeText>
             <TimeText>{timeText}</TimeText>
-          </MetaRow>
+          </TopRow>
+
+          <BottomRow>
+            <Ionicons
+              name={icon.statusIcon}
+              size={16}
+              color={icon.color}
+              style={{
+                transform: [
+                  { rotate: status === 'cancelled' ? '45deg' : '0deg' },
+                ],
+              }}
+            />
+            <StatusText status={status}>{statusText}</StatusText>
+            {durationText && (
+              <>
+                <Text style={{ color: '#667781', fontSize: 14 }}> · </Text>
+                <DurationText>{durationText}</DurationText>
+              </>
+            )}
+          </BottomRow>
         </CallInfo>
 
         <Actions>
           {onCallback && showCallbackButton && (
             <ActionButton
-              color={callType === 'video' ? '#10b981' : '#3b82f6'}
               onPress={(e) => {
                 if (e && e.stopPropagation) e.stopPropagation()
                 handleActionPress(onCallback)
@@ -350,21 +311,20 @@ const CallLogItem = ({ callLog, onCallback, onDelete, onPress }) => {
             >
               <Ionicons
                 name={callType === 'video' ? 'videocam' : 'call'}
-                size={20}
-                color="#fff"
+                size={24}
+                color="#00a884"
               />
             </ActionButton>
           )}
 
           {onDelete && (
             <ActionButton
-              color="#ef4444"
               onPress={(e) => {
                 if (e && e.stopPropagation) e.stopPropagation()
                 handleDelete()
               }}
             >
-              <Ionicons name="trash-outline" size={20} color="#fff" />
+              <Ionicons name="ellipsis-vertical" size={24} color="#667781" />
             </ActionButton>
           )}
         </Actions>

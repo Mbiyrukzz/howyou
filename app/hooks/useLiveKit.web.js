@@ -111,6 +111,34 @@ export function useLiveKit(livekitUrl, token, callType, options = {}) {
       if (onError) onError(err)
     }
   }
+  useEffect(() => {
+    if (!remoteAudioTrack) return
+    if (typeof document === 'undefined') return
+
+    const audioEl = document.createElement('audio')
+    audioEl.autoplay = true
+    audioEl.playsInline = true
+    audioEl.muted = false
+
+    remoteAudioTrack.attach(audioEl)
+
+    const tryPlay = async () => {
+      try {
+        await audioEl.play()
+        console.log('🔊 Remote audio playing')
+      } catch (err) {
+        console.warn('⚠️ Autoplay blocked, waiting for user interaction')
+      }
+    }
+
+    tryPlay()
+
+    return () => {
+      remoteAudioTrack.detach(audioEl)
+      audioEl.pause()
+      audioEl.remove()
+    }
+  }, [remoteAudioTrack])
 
   // Room event listeners
   useEffect(() => {
