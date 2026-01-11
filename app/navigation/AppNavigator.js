@@ -1,3 +1,4 @@
+// navigation/AppNavigator.js - Updated (no CallProvider needed)
 import React, { useEffect, useState, useRef } from 'react'
 import { NavigationContainer } from '@react-navigation/native'
 import { createNativeStackNavigator } from '@react-navigation/native-stack'
@@ -10,6 +11,7 @@ import LoginScreen from '../screens/LoginScreen'
 import { auth } from '../firebase/setUpFirebase'
 
 import IncomingCallHandler from '../components/IncomingCallHandler'
+import { ActiveCallBanner } from '../components/calls/ActiveCallBanner'
 import { useNotifications } from '../hooks/useNotifications'
 import LoadingIndicator from '../components/LoadingIndicator'
 
@@ -29,7 +31,6 @@ export default function AppNavigator() {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser)
 
-      // If user is authenticated, verify/create user in backend
       if (currentUser) {
         try {
           const token = await currentUser.getIdToken()
@@ -66,14 +67,12 @@ export default function AppNavigator() {
     return unsubscribe
   }, [])
 
-  // Handle notification tap when app is in background/closed
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(
       (response) => {
         const data = response.notification.request.content.data
 
         if (data.type === 'incoming_call' && navigationRef.current) {
-          // Navigate to call screen
           navigationRef.current.navigate('Chats', {
             screen: 'CallScreen',
             params: {
@@ -81,6 +80,8 @@ export default function AppNavigator() {
               remoteUserId: data.caller,
               remoteUserName: data.callerName,
               callType: data.callType,
+              isIncoming: true,
+              callId: data.callId,
             },
           })
         }
@@ -106,6 +107,8 @@ export default function AppNavigator() {
         <>
           <BottomTabs />
           <IncomingCallHandler />
+          {/* ✅ Add the banner - it will only show when there's an active call */}
+          <ActiveCallBanner />
         </>
       ) : (
         <Stack.Navigator screenOptions={{ headerShown: false }}>

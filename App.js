@@ -3,6 +3,7 @@ import React, { useEffect, useState } from 'react'
 import { Platform, Text, View } from 'react-native'
 import AppNavigator from './app/navigation/AppNavigator'
 import AppProviders from './app/providers/AppProviders'
+import LoadingIndicator from './app/components/LoadingIndicator'
 
 // Register LiveKit globals for React Native (iOS/Android only)
 let livekitReady = false
@@ -26,6 +27,7 @@ if (Platform.OS !== 'web') {
 
 export default function App() {
   const [isReady, setIsReady] = useState(Platform.OS === 'web' || livekitReady)
+  const [loading, setLoading] = useState(false)
 
   useEffect(() => {
     if (Platform.OS !== 'web') {
@@ -45,6 +47,10 @@ export default function App() {
         <Text>Initializing LiveKit...</Text>
       </View>
     )
+  }
+
+  if (loading) {
+    return <LoadingIndicator text="Loading..." subtext="Please wait..." />
   }
 
   return (

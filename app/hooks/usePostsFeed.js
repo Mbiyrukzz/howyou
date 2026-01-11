@@ -44,6 +44,7 @@ export const usePostsFeed = () => {
     refetch().finally(() => setRefreshing(false))
   }
 
+  // ✅ FIXED: Support both images AND videos
   const handleAddStatus = async () => {
     setModalVisible(false)
 
@@ -53,15 +54,36 @@ export const usePostsFeed = () => {
       return
     }
 
+    // ✅ Allow both images and videos
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.All,
+      mediaTypes: ImagePicker.MediaTypeOptions.All, // This allows both photos and videos
       quality: 0.8,
+      videoMaxDuration: 60, // Max 60 seconds for videos
+      allowsEditing: false,
     })
 
     if (!result.canceled && result.assets[0]) {
+      const asset = result.assets[0]
+
+      console.log('📱 Selected media:', {
+        uri: asset.uri,
+        type: asset.type,
+        mediaType: asset.mediaType, // This will be 'photo' or 'video'
+        fileName: asset.fileName,
+        width: asset.width,
+        height: asset.height,
+        duration: asset.duration,
+      })
+
       try {
-        await createPost(result.assets[0])
-        Alert.alert('Success', 'Status added!')
+        await createPost(asset)
+
+        const mediaType = asset.mediaType === 'video' ? 'Video' : 'Photo'
+        if (Platform.OS === 'web') {
+          alert(`${mediaType} status added!`)
+        } else {
+          Alert.alert('Success', `${mediaType} status added!`)
+        }
       } catch (error) {
         console.error('Failed to add status:', error)
         if (error.status === 429 || error.message?.includes('Daily limit')) {

@@ -1,16 +1,18 @@
-// providers/PostsProvider.js - FIXED MOBILE FILE UPLOADS
+// providers/PostsProvider.js - FIXED: Contact filtering + Mobile video uploads
 import React, { useEffect, useState, useCallback, useContext } from 'react'
 import { Platform } from 'react-native'
 import useAuthedRequest from '../hooks/useAuthedRequest'
 import PostsContext from '../contexts/PostsContext'
 import { useUser } from '../hooks/useUser'
 import useWebSocket from '../hooks/useWebSocket'
+import { useContacts } from './ContactsProvider'
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL
 
 export const PostsProvider = ({ children }) => {
   const { isReady, get, post, put, del } = useAuthedRequest()
   const { user } = useUser()
+  const { contacts } = useContacts() // ✅ Get contacts
 
   const [posts, setPosts] = useState([])
   const [statuses, setStatuses] = useState([])
@@ -18,6 +20,14 @@ export const PostsProvider = ({ children }) => {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [onlineUsers, setOnlineUsers] = useState(new Set())
+
+  // ✅ Create contact IDs set for filtering
+  const contactIds = useCallback(() => {
+    const ids = new Set(contacts.map((c) => c.contactUserId))
+    // Always include current user
+    if (user?.uid) ids.add(user.uid)
+    return ids
+  }, [contacts, user?.uid])
 
   // ─── WebSocket Message Handler ────────────────────────────────
   const handleWebSocketMessage = useCallback(
@@ -111,6 +121,13 @@ export const PostsProvider = ({ children }) => {
     (data) => {
       const { post: newPost, senderId } = data
 
+      // ✅ Filter: Only add if from contact or self
+      const allowedIds = contactIds()
+      if (!allowedIds.has(senderId)) {
+        console.log('⏭️ Skipping post from non-contact:', senderId)
+        return
+      }
+
       if (senderId === user?.uid) {
         console.log('⏭️ Skipping own post (already in state)')
         return
@@ -126,7 +143,7 @@ export const PostsProvider = ({ children }) => {
         return [newPost, ...prevPosts]
       })
     },
-    [user?.uid]
+    [user?.uid, contactIds]
   )
 
   const handlePostUpdated = useCallback((data) => {
@@ -204,6 +221,13 @@ export const PostsProvider = ({ children }) => {
     (data) => {
       const { status: newStatus, userId: senderId } = data
 
+      // ✅ Filter: Only add if from contact or self
+      const allowedIds = contactIds()
+      if (!allowedIds.has(senderId)) {
+        console.log('⏭️ Skipping status from non-contact:', senderId)
+        return
+      }
+
       if (senderId === user?.uid) {
         console.log('⏭️ Skipping own status (already in state)')
         setMyStatus((prev) => {
@@ -255,7 +279,7 @@ export const PostsProvider = ({ children }) => {
         }
       })
     },
-    [user?.uid]
+    [user?.uid, contactIds]
   )
 
   const handleStatusDeleted = useCallback(
@@ -343,21 +367,41 @@ export const PostsProvider = ({ children }) => {
     if (!isReady) return
     try {
       const data = await get(`${API_URL}/posts`)
-      setPosts(data.posts || [])
+      // ✅ Filter posts by contacts
+      const allowedIds = contactIds()
+      const filteredPosts = (data.posts || []).filter((p) =>
+        allowedIds.has(p.userId)
+      )
+      setPosts(filteredPosts)
+      console.log(
+        `✅ Loaded ${filteredPosts.length}/${
+          data.posts?.length || 0
+        } posts from contacts`
+      )
     } catch (e) {
       console.error('Fetch posts error:', e)
     }
-  }, [isReady, get])
+  }, [isReady, get, contactIds])
 
   const fetchStatuses = useCallback(async () => {
     if (!isReady) return
     try {
       const data = await get(`${API_URL}/statuses`)
-      setStatuses(data.statuses || [])
+      // ✅ Filter statuses by contacts
+      const allowedIds = contactIds()
+      const filteredStatuses = (data.statuses || []).filter((s) =>
+        allowedIds.has(s.userId)
+      )
+      setStatuses(filteredStatuses)
+      console.log(
+        `✅ Loaded ${filteredStatuses.length}/${
+          data.statuses?.length || 0
+        } statuses from contacts`
+      )
     } catch (e) {
       console.error('Fetch statuses error:', e)
     }
-  }, [isReady, get])
+  }, [isReady, get, contactIds])
 
   const fetchMyStatus = useCallback(async () => {
     if (!isReady) return
@@ -377,7 +421,7 @@ export const PostsProvider = ({ children }) => {
   }, [fetchPosts, fetchStatuses, fetchMyStatus])
 
   // ─── Create Post or Status ────────────────────────────────
-  // ✅ FIXED: Proper FormData handling for mobile image uploads
+  // ✅ FIXED: Proper video support for mobile
   const createPost = async (contentOrAsset, files = []) => {
     if (!isReady || !user?.uid) throw new Error('Auth not ready')
 
@@ -388,7 +432,6 @@ export const PostsProvider = ({ children }) => {
     console.log('files count:', files.length)
     console.log('═══════════════════════════════════')
 
-    // Get auth token
     const token = await user.getIdToken()
     console.log('✅ Got auth token')
 
@@ -413,7 +456,6 @@ export const PostsProvider = ({ children }) => {
 
       if (isWeb) {
         console.log('🌐 Web status upload')
-        // Web: Convert blob to file
         const response = await fetch(asset.uri)
         const blob = await response.blob()
         const fileType = blob.type || asset.type || 'image/jpeg'
@@ -424,17 +466,25 @@ export const PostsProvider = ({ children }) => {
         console.log('Added file to FormData:', { fileName, fileType })
       } else {
         console.log('📱 Mobile status upload')
-        // Mobile: Determine file type from URI or asset
-        let fileType = asset.type || asset.mimeType || 'image/jpeg'
 
-        // If no type provided, infer from URI extension
-        if (!fileType || fileType === 'image') {
+        // ✅ FIXED: Better video type detection
+        let fileType = asset.mimeType || asset.type || 'image/jpeg'
+
+        // Check asset.type first (ImagePicker returns 'video' or 'image')
+        if (asset.type === 'video' || fileType === 'video') {
+          fileType = 'video/mp4'
+        } else if (asset.mediaType === 'video') {
+          fileType = 'video/mp4'
+        } else if (!fileType || fileType === 'image') {
+          // Infer from URI
+          const uriLower = asset.uri.toLowerCase()
           if (
-            asset.uri.toLowerCase().includes('.mp4') ||
-            asset.uri.toLowerCase().includes('.mov')
+            uriLower.includes('.mp4') ||
+            uriLower.includes('.mov') ||
+            uriLower.includes('.avi')
           ) {
             fileType = 'video/mp4'
-          } else if (asset.uri.toLowerCase().includes('.png')) {
+          } else if (uriLower.includes('.png')) {
             fileType = 'image/png'
           } else {
             fileType = 'image/jpeg'
@@ -448,40 +498,52 @@ export const PostsProvider = ({ children }) => {
           : 'jpg'
         const fileName = asset.fileName || `status-${Date.now()}.${extension}`
 
-        // Clean URI for iOS
-        let cleanUri = asset.uri
-        if (Platform.OS === 'ios' && cleanUri.startsWith('file://')) {
-          cleanUri = cleanUri.replace('file://', '')
-        }
-
         console.log('Mobile file details:', {
           originalUri: asset.uri,
-          cleanUri,
           fileName,
           fileType,
+          type: asset.type,
+          mediaType: asset.mediaType,
           platform: Platform.OS,
+          duration: asset.duration,
+          fileSize: asset.fileSize,
         })
 
-        // React Native FormData format
+        // ✅ React Native FormData format - use original URI
+        // Important: On Android, this might be a content:// URI
+        // React Native's FormData implementation handles this internally
         formData.append('files', {
-          uri: cleanUri,
+          uri: asset.uri,
           name: fileName,
           type: fileType,
         })
+
+        console.log('✅ File appended to FormData')
       }
 
       console.log('📤 Uploading status to:', `${API_URL}/status`)
+      console.log('📦 FormData prepared, starting upload...')
 
       try {
+        // ✅ Add timeout for large video uploads
+        const controller = new AbortController()
+        const timeoutId = setTimeout(() => {
+          console.log('⏱️ Upload timeout after 2 minutes')
+          controller.abort()
+        }, 120000) // 2 minute timeout
+
+        console.log('🚀 Starting fetch request...')
         const response = await fetch(`${API_URL}/status`, {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,
-            // Don't set Content-Type - let FormData set it with boundary
+            // Don't set Content-Type - FormData sets it with boundary
           },
           body: formData,
+          signal: controller.signal,
         })
 
+        clearTimeout(timeoutId)
         console.log('📡 Status response status:', response.status)
 
         if (!response.ok) {
@@ -510,6 +572,16 @@ export const PostsProvider = ({ children }) => {
           name: error.name,
           stack: error.stack,
         })
+
+        // ✅ Provide more specific error messages
+        if (error.name === 'AbortError') {
+          throw new Error(
+            'Upload timeout - video file may be too large. Try a shorter video.'
+          )
+        } else if (error.message.includes('Network request failed')) {
+          throw new Error('Network error - check your connection and try again')
+        }
+
         throw error
       }
     }
@@ -535,12 +607,12 @@ export const PostsProvider = ({ children }) => {
         uri: f.uri?.substring(0, 50) + '...',
         name: f.name,
         type: f.type,
+        mediaType: f.mediaType,
         isBlob: fileIsBlob,
       })
 
       if (isWeb && fileIsBlob) {
         console.log(`🌐 Web file ${i}`)
-        // Web: Convert blob to file
         const response = await fetch(f.uri)
         const blob = await response.blob()
         const fileType = blob.type || f.type || 'image/jpeg'
@@ -550,36 +622,48 @@ export const PostsProvider = ({ children }) => {
         console.log(`Added web file ${i}:`, { fileName, fileType })
       } else {
         console.log(`📱 Mobile file ${i}`)
-        // Mobile: Determine file type
-        let fileType = f.type || f.mimeType || 'image/jpeg'
 
-        // Infer from URI if needed
-        if (!fileType || fileType === 'image') {
-          if (f.uri.toLowerCase().includes('.png')) {
+        // ✅ FIXED: Better type detection for videos
+        let fileType = f.mimeType || f.type || 'image/jpeg'
+
+        // Check f.type first (ImagePicker returns 'video' or 'image')
+        if (f.type === 'video' || fileType === 'video') {
+          fileType = 'video/mp4'
+        } else if (f.mediaType === 'video') {
+          fileType = 'video/mp4'
+        } else if (!fileType || fileType === 'image') {
+          const uriLower = f.uri.toLowerCase()
+          if (
+            uriLower.includes('.mp4') ||
+            uriLower.includes('.mov') ||
+            uriLower.includes('.avi')
+          ) {
+            fileType = 'video/mp4'
+          } else if (uriLower.includes('.png')) {
             fileType = 'image/png'
           } else {
             fileType = 'image/jpeg'
           }
         }
 
-        const extension = fileType.includes('png') ? 'png' : 'jpg'
+        const extension = fileType.includes('video')
+          ? 'mp4'
+          : fileType.includes('png')
+          ? 'png'
+          : 'jpg'
         const fileName = f.name || `post_${Date.now()}_${i}.${extension}`
 
-        // Clean URI for iOS
-        let cleanUri = f.uri
-        if (Platform.OS === 'ios' && cleanUri.startsWith('file://')) {
-          cleanUri = cleanUri.replace('file://', '')
-        }
-
+        // ✅ React Native FormData - use original URI without modification
         console.log(`Mobile file ${i} details:`, {
           originalUri: f.uri,
-          cleanUri,
           fileName,
           fileType,
+          type: f.type,
+          mediaType: f.mediaType,
         })
 
         formData.append('files', {
-          uri: cleanUri,
+          uri: f.uri, // Use original URI
           name: fileName,
           type: fileType,
         })
@@ -589,15 +673,20 @@ export const PostsProvider = ({ children }) => {
     console.log('📤 Creating post at:', `${API_URL}/posts`)
 
     try {
+      // ✅ Add timeout for large uploads
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
+
       const response = await fetch(`${API_URL}/posts`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,
-          // Don't set Content-Type - let FormData set it with boundary
         },
         body: formData,
+        signal: controller.signal,
       })
 
+      clearTimeout(timeoutId)
       console.log('📡 Post response status:', response.status)
 
       if (!response.ok) {
@@ -626,6 +715,14 @@ export const PostsProvider = ({ children }) => {
         name: error.name,
         stack: error.stack,
       })
+
+      // ✅ Provide more specific error messages
+      if (error.name === 'AbortError') {
+        throw new Error('Upload timeout - files may be too large')
+      } else if (error.message.includes('Network request failed')) {
+        throw new Error('Network error - check your connection and try again')
+      }
+
       throw error
     }
   }
@@ -748,6 +845,14 @@ export const PostsProvider = ({ children }) => {
   useEffect(() => {
     if (isReady) refetch()
   }, [isReady, refetch])
+
+  // ✅ Refetch when contacts change
+  useEffect(() => {
+    if (isReady && contacts.length > 0) {
+      console.log('🔄 Contacts changed, refetching posts/statuses...')
+      refetch()
+    }
+  }, [contacts.length, isReady])
 
   const value = {
     posts,

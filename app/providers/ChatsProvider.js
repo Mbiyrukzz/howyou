@@ -14,6 +14,7 @@ const ChatsProvider = ({ children }) => {
   const [onlineUsers, setOnlineUsers] = useState(new Set())
   const [messages, setMessages] = useState({})
   const [calls, setCalls] = useState({})
+  const [activeCall, setActiveCall] = useState(null)
   const [incomingCall, setIncomingCall] = useState(null)
   const [callNotification, setCallNotification] = useState(null)
   const [typingUsers, setTypingUsers] = useState({})
@@ -1614,6 +1615,23 @@ const ChatsProvider = ({ children }) => {
     [isReady, del, user?.uid]
   )
 
+  const startActiveCall = useCallback((callData) => {
+    console.log('📞 Starting active call:', callData)
+    setActiveCall({
+      ...callData,
+      startTime: Date.now(),
+    })
+  }, [])
+
+  const endActiveCall = useCallback(() => {
+    console.log('📞 Ending active call')
+    setActiveCall(null)
+  }, [])
+
+  const updateActiveCallStatus = useCallback((status) => {
+    setActiveCall((prev) => (prev ? { ...prev, status } : null))
+  }, [])
+
   // Utility functions
   const getMessagesForChat = useCallback(
     (chatId) => messages[chatId] || [],
@@ -1820,6 +1838,11 @@ const ChatsProvider = ({ children }) => {
     getCallHistory,
     dismissCallNotification,
     deleteCallLog,
+
+    activeCall,
+    startActiveCall,
+    endActiveCall,
+    updateActiveCallStatus,
 
     sendTypingIndicator,
     getTypingUsersForChat,
