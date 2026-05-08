@@ -53,7 +53,7 @@ const CallNotification = () => {
           shouldPlay: true,
           isLooping: true,
           volume: 0.8,
-        }
+        },
       )
       setSound(newSound)
     } catch (error) {
@@ -114,45 +114,20 @@ const CallNotification = () => {
   const handleRejectCall = async () => {
     console.log('📵 User rejecting call...')
 
-    stopRingtones()
-    clearRingTimer()
-
     try {
-      // Notify backend that call was rejected
-      const response = await fetch(
-        `http://10.123.59.87:5000/answer-call/${route.params?.callId}`,
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            Authorization: `Bearer ${await user.getIdToken()}`,
-          },
-          body: JSON.stringify({ accepted: false }),
-        }
-      )
+      stopRingtone()
+      stopVibration()
 
-      const data = await response.json()
-      console.log('✅ Backend notified of call rejection')
-
-      // Send WebSocket notification to caller
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(
-          JSON.stringify({
-            type: 'call-rejected',
-            from: user?.uid,
-            to: remoteUserId,
-            chatId,
-          })
-        )
+      if (incomingCall?.callId) {
+        await rejectCall(incomingCall.callId)
       }
+
+      dismissCallNotification()
     } catch (error) {
       console.error('❌ Error rejecting call:', error)
-    } finally {
-      cleanup()
-      navigation.goBack()
+      dismissCallNotification()
     }
   }
-
   const handleDismiss = () => {
     stopRingtone()
     stopVibration()

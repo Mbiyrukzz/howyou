@@ -16,7 +16,7 @@ let API_BASE_URL = ''
 if (__DEV__) {
   // Development - Using localhost for iOS Simulator/Android Emulator
   // For physical devices, use your computer's IP address
-  API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:5000'
+  API_BASE_URL = process.env.EXPO_PUBLIC_API_URL || 'https://peepapi.ashmif.com'
 
   // Auto-detect platform for better development experience
   if (process.env.EXPO_PUBLIC_API_URL) {
@@ -29,7 +29,7 @@ if (__DEV__) {
 } else {
   // Production - Use your deployed backend URL
   API_BASE_URL =
-    process.env.EXPO_PUBLIC_API_URL || 'https://your-production-api.com'
+    process.env.EXPO_PUBLIC_API_URL || 'https://peepapi.ashmif.com'
   console.log('🚀 Production mode: Using production API')
 }
 

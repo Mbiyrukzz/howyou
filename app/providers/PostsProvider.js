@@ -1,4 +1,3 @@
-// providers/PostsProvider.js - FIXED: Contact filtering + Mobile video uploads
 import React, { useEffect, useState, useCallback, useContext } from 'react'
 import { Platform } from 'react-native'
 import useAuthedRequest from '../hooks/useAuthedRequest'

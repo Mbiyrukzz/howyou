@@ -66,11 +66,11 @@
       "androidMode": "default",
       "androidCollapsedTitle": "PeepGram"
     },
-    "extra": {
-      "apiUrl": "${API_URL}",
-      "eas": {
-        "projectId": "67fcb371-70dc-42dd-8584-3d7b0f32990c"
-      }
-    }
+  "extra": {
+  "apiUrl": "https://peepapi.ashmif.com",
+  "eas": {
+    "projectId": "67fcb371-70dc-42dd-8584-3d7b0f32990c"
+  }
+}
   }
 }
