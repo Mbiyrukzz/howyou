@@ -16,25 +16,25 @@
         "EXPO_PUBLIC_LIVEKIT_URL": "ws://YOUR_LOCAL_IP:7880"
       }
     },
-    "preview": {
-      "distribution": "internal",
-      "android": {
-        "buildType": "apk"
-      },
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://peepapi.ashmif.com",
-        "EXPO_PUBLIC_SOCKET_URL": "wss://peepapi.ashmif.com",
-        "EXPO_PUBLIC_LIVEKIT_URL": "wss://peepapi.ashmif.com:7880"
-      }
-    },
-    "production": {
-      "autoIncrement": true,
-      "env": {
-        "EXPO_PUBLIC_API_URL": "https://peepapi.ashmif.com",
-        "EXPO_PUBLIC_SOCKET_URL": "wss://peepapi.ashmif.com",
-        "EXPO_PUBLIC_LIVEKIT_URL": "wss://peepapi.ashmif.com:7880"
-      }
-    }
+   "preview": {
+  "distribution": "internal",
+  "android": {
+    "buildType": "apk"
+  },
+  "env": {
+    "EXPO_PUBLIC_API_URL": "https://peepapi.ashmif.com",
+    "EXPO_PUBLIC_SOCKET_URL": "wss://peepapi.ashmif.com",
+    "EXPO_PUBLIC_LIVEKIT_URL": "ws://116.203.113.108:7880"
+  }
+},
+"production": {
+  "autoIncrement": true,
+  "env": {
+    "EXPO_PUBLIC_API_URL": "https://peepapi.ashmif.com",
+    "EXPO_PUBLIC_SOCKET_URL": "wss://peepapi.ashmif.com",
+    "EXPO_PUBLIC_LIVEKIT_URL": "ws://116.203.113.108:7880"
+  }
+}
   },
   "submit": {
     "production": {}
